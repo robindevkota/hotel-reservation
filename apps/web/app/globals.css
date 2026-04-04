@@ -1,0 +1,155 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&display=swap');
+
+/* ─── Design Tokens ──────────────────────────────────────────────── */
+:root {
+  --navy:        #0D1B3E;
+  --gold:        #C9A84C;
+  --gold-light:  #E8C97A;
+  --gold-dark:   #8B6914;
+  --lapis:       #1A2E6E;
+  --ivory:       #F5ECD7;
+  --ivory-dark:  #EAD9C0;
+  --white:       #FFFFFF;
+  --text-dark:   #0D1B3E;
+  --text-muted:  #5A6478;
+  --error:       #D32F2F;
+  --success:     #2E7D32;
+  --warning:     #F57C00;
+  --radius:      2px;
+  --radius-sm:   2px;
+  --shadow-gold: 0 4px 24px rgba(201, 168, 76, 0.18);
+  --shadow-navy: 0 8px 32px rgba(13, 27, 62, 0.16);
+  --transition:  0.3s ease;
+}
+
+/* ─── Reset ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  background: var(--ivory);
+  color: var(--navy);
+  line-height: 1.7;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Typography ─────────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Cinzel', serif;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  color: var(--navy);
+}
+
+.display {
+  font-family: 'Cinzel Decorative', serif;
+}
+
+p { margin-bottom: 0; }
+
+a {
+  color: inherit;
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+a:hover { color: var(--gold); }
+
+/* ─── Gold Shimmer Animation ─────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes goldPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201,168,76,0); }
+  50%       { box-shadow: 0 0 0 8px rgba(201,168,76,0.15); }
+}
+
+.animate-fade-up    { animation: fadeUp 0.7s ease forwards; }
+.animate-fade-in    { animation: fadeIn 0.5s ease forwards; }
+.animate-shimmer    {
+  background: linear-gradient(90deg, var(--gold-dark), var(--gold), var(--gold-light), var(--gold), var(--gold-dark));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
+}
+
+/* ─── Gold Divider ───────────────────────────────────────────────── */
+.gold-divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.gold-divider::before,
+.gold-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+.gold-divider .ornament {
+  color: var(--gold);
+  font-size: 1.1rem;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--ivory-dark); }
+::-webkit-scrollbar-thumb { background: var(--gold-dark); border-radius: 3px; }
+
+/* ─── Focus Ring ─────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* ─── Utility Classes ────────────────────────────────────────────── */
+.container {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.section {
+  padding: 5rem 0;
+}
+
+.text-gold      { color: var(--gold); }
+.text-navy      { color: var(--navy); }
+.text-ivory     { color: var(--ivory); }
+.text-muted     { color: var(--text-muted); }
+.bg-navy        { background: var(--navy); }
+.bg-ivory       { background: var(--ivory); }
+.bg-gold        { background: var(--gold); }
+.border-gold    { border-color: var(--gold); }
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}

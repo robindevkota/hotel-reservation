@@ -1,0 +1,90 @@
+import 'dotenv/config';
+import 'express-async-errors';
+import express from 'express';
+import http from 'http';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+import mongoSanitize from 'express-mongo-sanitize';
+import rateLimit from 'express-rate-limit';
+
+import { connectDB } from './config/db';
+import { initSocket } from './services/socket.service';
+import { errorHandler } from './middleware/errorHandler';
+
+// Routes
+import authRoutes from './routes/auth.routes';
+import roomRoutes from './routes/room.routes';
+import reservationRoutes from './routes/reservation.routes';
+import checkinRoutes from './routes/checkin.routes';
+import qrRoutes from './routes/qr.routes';
+import menuRoutes from './routes/menu.routes';
+import orderRoutes from './routes/order.routes';
+import spaRoutes from './routes/spa.routes';
+import billingRoutes from './routes/billing.routes';
+import paymentRoutes from './routes/payment.routes';
+
+const app = express();
+const server = http.createServer(app);
+
+// Init Socket.io
+initSocket(server);
+
+// Security middleware
+app.use(helmet());
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true,
+}));
+
+// Raw body for Stripe webhooks (before json parser)
+app.use('/api/payment/webhook', express.raw({ type: 'application/json' }));
+
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+app.use(cookieParser());
+app.use(mongoSanitize()); // Prevent NoSQL injection
+app.use(morgan(process.env.NODE_ENV === 'development' ? 'dev' : 'combined'));
+
+// Global rate limiter
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 min
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+app.use(globalLimiter);
+
+// Stricter auth rate limiter
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'Too many auth attempts, please try again later.' },
+});
+
+// Routes
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/rooms', roomRoutes);
+app.use('/api/reservations', reservationRoutes);
+app.use('/api/checkin', checkinRoutes);
+app.use('/api/qr', qrRoutes);
+app.use('/api/menu', menuRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/spa', spaRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/payment', paymentRoutes);
+
+app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
+
+// Error handler (must be last)
+app.use(errorHandler);
+
+const PORT = process.env.PORT || 5000;
+
+connectDB().then(() => {
+  server.listen(PORT, () => {
+    console.log(`🏰 Royal Suites server running on port ${PORT}`);
+  });
+});
