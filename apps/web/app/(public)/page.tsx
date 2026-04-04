@@ -112,14 +112,12 @@ export default function HomePage() {
           </div>
 
           {/* Cards */}
+          <style>{`.room-card { background:#fff; border:1px solid hsl(35 25% 82%); overflow:hidden; transition:all 0.5s ease; box-shadow:0 8px 32px -8px hsl(220 55% 18% / 0.12); } .room-card:hover { border-color:hsl(43 72% 55% / 0.5); box-shadow:0 4px 20px -4px hsl(43 72% 55% / 0.3); } .room-card:hover .room-img { transform:scale(1.1); } .room-img { transition:transform 0.7s ease; width:100%; height:100%; object-fit:cover; }`}</style>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
             {ROOMS.map((room) => (
               <div
                 key={room.name}
-                className="group"
-                style={{ background: '#fff', border: '1px solid hsl(35 25% 82%)', overflow: 'hidden', transition: 'all 0.5s ease', boxShadow: '0 8px 32px -8px hsl(220 55% 18% / 0.12)' }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = 'hsl(43 72% 55% / 0.5)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 20px -4px hsl(43 72% 55% / 0.3)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = 'hsl(35 25% 82%)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 8px 32px -8px hsl(220 55% 18% / 0.12)'; }}
+                className="room-card"
               >
                 {/* Image */}
                 <div style={{ position: 'relative', overflow: 'hidden', height: '16rem' }}>
@@ -127,7 +125,7 @@ export default function HomePage() {
                     src={room.image}
                     alt={room.name}
                     fill
-                    className="object-cover group-hover:scale-110 transition-transform duration-700"
+                    className="room-img"
                   />
                   <div style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'hsl(220 55% 18% / 0.9)', color: 'hsl(43 72% 65%)', fontFamily: "'Cinzel', serif", fontSize: '0.85rem', padding: '0.4rem 1rem', letterSpacing: '0.05em' }}>
                     {room.price}<span style={{ fontSize: '0.7rem', color: 'hsl(35 25% 88% / 0.7)' }}> / night</span>
