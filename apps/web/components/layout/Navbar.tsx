@@ -6,8 +6,10 @@ import { useAuthStore } from '../../store/authStore';
 import { useCartStore } from '../../store/cartStore';
 
 const NAV_LINKS = [
+  { href: '/',           label: 'Home' },
   { href: '/rooms',      label: 'Rooms' },
   { href: '/amenities',  label: 'Amenities' },
+  { href: '/reserve',    label: 'Reserve' },
   { href: '/contact',    label: 'Contact' },
 ];
 

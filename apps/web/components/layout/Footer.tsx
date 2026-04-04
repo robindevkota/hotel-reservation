@@ -2,46 +2,54 @@ import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 
+const S = {
+  gold:    'hsl(43 72% 55%)',
+  navy:    'hsl(220 55% 18%)',
+  cream:   'rgba(245,236,215,0.85)',
+  muted:   'rgba(245,236,215,0.5)',
+  faint:   'rgba(245,236,215,0.3)',
+  cinzel:  "'Cinzel', serif",
+  cormo:   "'Cormorant Garamond', serif",
+  raleway: "'Raleway', sans-serif",
+};
+
 export default function Footer() {
   return (
-    <footer className="bg-primary text-primary-foreground">
-      <div className="container mx-auto px-4 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
+    <footer style={{ background: S.navy, color: S.cream }}>
+      <div style={{ maxWidth:'1280px', margin:'0 auto', padding:'4rem 1.5rem 2rem' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1.4fr 1fr 1fr', gap:'3rem', marginBottom:'3rem' }}>
+
           {/* Brand */}
           <div>
-            <div className="flex items-center gap-3 mb-4">
-              <Image
-                src="/logo.jpg"
-                alt="Royal Suites"
-                width={48}
-                height={48}
-                className="rounded-full object-cover border-2 border-gold"
-              />
+            <div style={{ display:'flex', alignItems:'center', gap:'0.875rem', marginBottom:'1.25rem' }}>
+              <div style={{ width:'52px', height:'52px', borderRadius:'50%', overflow:'hidden', border:`2px solid ${S.gold}`, flexShrink:0 }}>
+                <Image src="/logo.jpg" alt="Royal Suites" width={52} height={52} style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
+              </div>
               <div>
-                <p className="font-display text-sm text-primary-foreground tracking-widest">Royal Suites</p>
-                <p className="text-xs text-gold-light tracking-wider">Boutique Hotel &amp; Spa</p>
+                <p style={{ fontFamily:S.cinzel, fontSize:'0.85rem', letterSpacing:'0.15em', color:S.cream, marginBottom:'0.15rem' }}>Royal Suites</p>
+                <p style={{ fontFamily:S.raleway, fontSize:'0.65rem', letterSpacing:'0.1em', color:S.gold }}>Boutique Hotel &amp; Spa Pvt. Ltd.</p>
               </div>
             </div>
-            <p className="font-body text-cream-dark/70 text-sm leading-relaxed">
-              An Egyptian-inspired sanctuary where ancient luxury meets modern refinement.
-              Your pharaoh&apos;s journey begins here.
+            <p style={{ fontFamily:S.raleway, fontSize:'0.82rem', lineHeight:1.8, color:S.muted }}>
+              Where the grandeur of ancient pharaohs meets the comfort of modern luxury. Your divine sanctuary.
             </p>
           </div>
 
-          {/* Links */}
+          {/* Quick Links */}
           <div>
-            <h4 className="font-display text-xs tracking-widest uppercase text-secondary mb-6">Explore</h4>
-            <ul className="space-y-3">
+            <h4 style={{ fontFamily:S.cinzel, fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:S.gold, marginBottom:'1.5rem' }}>Quick Links</h4>
+            <ul style={{ listStyle:'none', padding:0, margin:0, display:'flex', flexDirection:'column', gap:'0.75rem' }}>
               {[
-                { href: '/rooms',     label: 'Our Rooms' },
-                { href: '/amenities', label: 'Amenities & Spa' },
-                { href: '/reserve',   label: 'Reservations' },
-                { href: '/contact',   label: 'Contact Us' },
+                { href:'/', label:'Home' },
+                { href:'/rooms', label:'Rooms' },
+                { href:'/amenities', label:'Amenities' },
+                { href:'/reserve', label:'Reserve' },
+                { href:'/contact', label:'Contact' },
               ].map(({ href, label }) => (
                 <li key={href}>
-                  <Link
-                    href={href}
-                    className="font-body text-sm text-cream-dark/60 hover:text-gold transition-colors duration-300"
+                  <Link href={href} style={{ fontFamily:S.raleway, fontSize:'0.82rem', color:S.muted, transition:'color 0.2s' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.color = S.gold)}
+                    onMouseLeave={(e) => (e.currentTarget.style.color = S.muted)}
                   >
                     {label}
                   </Link>
@@ -52,34 +60,30 @@ export default function Footer() {
 
           {/* Contact */}
           <div>
-            <h4 className="font-display text-xs tracking-widest uppercase text-secondary mb-6">Contact</h4>
-            <address className="not-italic font-body text-sm text-cream-dark/60 space-y-2">
-              <p>1 Royal Suites Boulevard</p>
-              <p>Cairo, Egypt 11511</p>
-              <p className="mt-4">
-                <a href="tel:+201234567890" className="hover:text-gold transition-colors">
-                  +20 123 456 7890
-                </a>
-              </p>
-              <p>
-                <a href="mailto:reservations@royalsuites.com" className="hover:text-gold transition-colors">
-                  reservations@royalsuites.com
-                </a>
-              </p>
-            </address>
+            <h4 style={{ fontFamily:S.cinzel, fontSize:'0.7rem', letterSpacing:'0.2em', textTransform:'uppercase', color:S.gold, marginBottom:'1.5rem' }}>Contact</h4>
+            <div style={{ display:'flex', flexDirection:'column', gap:'0.75rem' }}>
+              <a href="tel:+12345678890" style={{ fontFamily:S.raleway, fontSize:'0.82rem', color:S.muted, display:'flex', alignItems:'center', gap:'0.5rem' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={S.gold} strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 7.91a16 16 0 006.18 6.18l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                +1 234 567 890
+              </a>
+              <a href="mailto:info@royalsuites.com" style={{ fontFamily:S.raleway, fontSize:'0.82rem', color:S.muted, display:'flex', alignItems:'center', gap:'0.5rem' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={S.gold} strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                info@royalsuites.com
+              </a>
+              <address style={{ fontFamily:S.raleway, fontSize:'0.82rem', color:S.muted, fontStyle:'normal', display:'flex', alignItems:'flex-start', gap:'0.5rem' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={S.gold} strokeWidth="2" style={{ flexShrink:0, marginTop:'0.1rem' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                123 Pharaoh&apos;s Boulevard, Royal District
+              </address>
+            </div>
           </div>
         </div>
 
-        {/* Gold divider */}
-        <div className="w-full h-px bg-gradient-to-r from-transparent via-gold to-transparent mb-8" />
+        {/* Divider */}
+        <div style={{ width:'100%', height:'1px', background:'linear-gradient(90deg, transparent, hsl(43 72% 55% / 0.4), transparent)', marginBottom:'1.5rem' }} />
 
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-cream-dark/40 font-display tracking-widest">
-          <p>© {new Date().getFullYear()} Royal Suites. All rights reserved.</p>
-          <div className="flex gap-6">
-            <Link href="/privacy" className="hover:text-gold transition-colors">Privacy Policy</Link>
-            <Link href="/terms"   className="hover:text-gold transition-colors">Terms of Service</Link>
-          </div>
-        </div>
+        <p style={{ textAlign:'center', fontFamily:S.raleway, fontSize:'0.75rem', color:S.faint }}>
+          © {new Date().getFullYear()} Royal Suites Boutique Hotel &amp; Spa Pvt. Ltd. All rights reserved.
+        </p>
       </div>
     </footer>
   );
