@@ -37,7 +37,7 @@ export default function HomePage() {
   return (
     <>
       {/* ── Hero ── */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+      <section style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         <div className="absolute inset-0">
           <Image
             src="/hero-bg.jpg"
@@ -50,20 +50,30 @@ export default function HomePage() {
           <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, hsl(220 55% 18% / 0.85) 0%, transparent 50%, hsl(220 55% 18% / 0.3) 100%)' }} />
         </div>
 
-        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
-          {/* Logo — circular, fixed size */}
-          <div
-            className="w-32 h-32 mx-auto mb-8 rounded-full border-4 overflow-hidden animate-fade-in-up"
-            style={{ borderColor: 'hsl(43 72% 55%)', boxShadow: '0 4px 24px hsl(43 72% 55% / 0.4)' }}
-          >
-            <Image
-              src="/logo.jpg"
-              alt="Royal Suites Logo"
-              width={128}
-              height={128}
-              className="w-full h-full object-cover"
-              priority
-            />
+        <div style={{ position: 'relative', zIndex: 10, textAlign: 'center', padding: '0 1rem', maxWidth: '56rem', margin: '0 auto', width: '100%' }}>
+          {/* Logo — circular, fixed size, forced center */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '2rem' }}>
+            <div
+              className="animate-fade-in-up"
+              style={{
+                width: '128px',
+                height: '128px',
+                borderRadius: '50%',
+                border: '4px solid hsl(43 72% 55%)',
+                boxShadow: '0 4px 24px hsl(43 72% 55% / 0.4)',
+                overflow: 'hidden',
+                flexShrink: 0,
+              }}
+            >
+              <Image
+                src="/logo.jpg"
+                alt="Royal Suites Logo"
+                width={128}
+                height={128}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                priority
+              />
+            </div>
           </div>
 
           <p
