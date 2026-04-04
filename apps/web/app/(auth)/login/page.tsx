@@ -1,11 +1,11 @@
 'use client';
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../../store/authStore';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
-import GoldDivider from '../../../components/ui/GoldDivider';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
@@ -17,7 +17,7 @@ export default function LoginPage() {
 
   const validate = () => {
     const e: typeof errors = {};
-    if (!form.email) e.email = 'Email is required';
+    if (!form.email)    e.email    = 'Email is required';
     if (!form.password) e.password = 'Password is required';
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -39,23 +39,39 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0D1B3E] flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-primary flex items-center justify-center p-6 relative overflow-hidden">
+      {/* Background texture */}
+      <div className="absolute inset-0 opacity-10">
+        <Image src="/hero-bg.jpg" alt="" fill className="object-cover" />
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-b from-primary/80 via-primary/60 to-primary/90" />
+
+      <div className="relative z-10 w-full max-w-md">
+        {/* Logo */}
         <div className="text-center mb-8">
-          <Link href="/">
-            <h1 className="font-[Cinzel_Decorative] text-[#C9A84C] text-3xl cursor-pointer hover:opacity-80 transition-opacity">
-              ROYAL SUITES
-            </h1>
+          <Link href="/" className="inline-flex flex-col items-center gap-3">
+            <Image
+              src="/logo.jpg"
+              alt="Royal Suites"
+              width={72}
+              height={72}
+              className="rounded-full border-2 border-gold shadow-gold object-cover"
+            />
+            <div>
+              <p className="font-display text-primary-foreground text-xl tracking-widest">Royal Suites</p>
+              <p className="font-body text-gold-light text-xs tracking-wider">Staff Portal</p>
+            </div>
           </Link>
-          <p className="font-[Cinzel] text-[#F5ECD7]/50 text-xs tracking-widest uppercase mt-1">Staff Portal</p>
         </div>
 
-        <div className="bg-[#F5ECD7] p-8">
-          <div className="h-[2px] bg-gradient-to-r from-transparent via-[#C9A84C] to-transparent -mt-8 mb-8" />
-          <h2 className="font-[Cinzel] text-[#0D1B3E] text-lg tracking-widest uppercase mb-2">Sign In</h2>
-          <GoldDivider ornament="𓂀" />
+        {/* Card */}
+        <div className="glass p-8">
+          <div className="w-full h-px bg-gradient-gold mb-8" />
 
-          <form onSubmit={handleSubmit} className="space-y-4 mt-4" noValidate>
+          <h2 className="font-display text-primary-foreground text-lg tracking-widest uppercase mb-1">Sign In</h2>
+          <p className="font-elegant text-cream-dark/60 text-sm italic mb-6">Enter your credentials to access the staff portal</p>
+
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <Input
               label="Email"
               type="email"
@@ -72,20 +88,24 @@ export default function LoginPage() {
               error={errors.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
-            <Button type="submit" variant="primary" loading={loading} className="w-full mt-2">
-              Enter the Palace
-            </Button>
+            <div className="pt-2">
+              <Button type="submit" variant="primary" loading={loading} className="w-full">
+                Enter the Palace
+              </Button>
+            </div>
           </form>
 
-          <p className="text-center mt-6 font-[Cinzel] text-xs text-[#5A6478] tracking-wider">
+          <div className="w-full h-px bg-gradient-to-r from-transparent via-gold/30 to-transparent my-6" />
+
+          <p className="text-center font-body text-xs text-cream-dark/60">
             New staff member?{' '}
-            <Link href="/register" className="text-[#C9A84C] hover:text-[#0D1B3E] transition-colors">
-              Register
+            <Link href="/register" className="text-gold hover:text-gold-light transition-colors">
+              Register here
             </Link>
           </p>
         </div>
 
-        <p className="text-center mt-4 font-[Cinzel] text-xs text-[#F5ECD7]/30 tracking-wider">
+        <p className="text-center mt-4 font-body text-xs text-cream-dark/30">
           Guest? Scan the QR code in your room.
         </p>
       </div>

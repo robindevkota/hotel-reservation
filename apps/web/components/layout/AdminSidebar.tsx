@@ -1,17 +1,19 @@
 'use client';
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
 
 const NAV = [
-  { href: '/admin/dashboard',     label: 'Dashboard',     icon: '𓂀', roles: ['admin', 'staff'] },
-  { href: '/admin/reservations',  label: 'Reservations',  icon: '𓏤', roles: ['admin', 'staff'] },
-  { href: '/admin/rooms',         label: 'Rooms',         icon: '𓉐', roles: ['admin'] },
-  { href: '/admin/orders',        label: 'Kitchen Board', icon: '𓌀', roles: ['admin', 'staff', 'kitchen', 'waiter'] },
-  { href: '/admin/spa',           label: 'Spa Schedule',  icon: '𓆉', roles: ['admin', 'staff'] },
-  { href: '/admin/guests',        label: 'Guests',        icon: '𓀀', roles: ['admin', 'staff'] },
-  { href: '/admin/menu',          label: 'Menu',          icon: '𓌈', roles: ['admin'] },
+  { href: '/admin/dashboard',    label: 'Dashboard',     icon: '𓂀', roles: ['admin', 'staff'] },
+  { href: '/admin/reservations', label: 'Reservations',  icon: '𓏤', roles: ['admin', 'staff'] },
+  { href: '/admin/rooms',        label: 'Rooms',         icon: '𓉐', roles: ['admin'] },
+  { href: '/admin/orders',       label: 'Kitchen Board', icon: '𓌀', roles: ['admin', 'staff', 'kitchen', 'waiter'] },
+  { href: '/admin/spa',          label: 'Spa Schedule',  icon: '𓆉', roles: ['admin', 'staff'] },
+  { href: '/admin/guests',       label: 'Guests',        icon: '𓀀', roles: ['admin', 'staff'] },
+  { href: '/admin/menu',         label: 'Menu',          icon: '𓌈', roles: ['admin'] },
+  { href: '/admin/billing',      label: 'Billing',       icon: '𓎡', roles: ['admin', 'staff'] },
 ];
 
 export default function AdminSidebar() {
@@ -25,21 +27,30 @@ export default function AdminSidebar() {
   return (
     <aside
       className={[
-        'h-screen sticky top-0 bg-[#0D1B3E] flex flex-col transition-all duration-300',
+        'h-screen sticky top-0 bg-primary flex flex-col transition-all duration-300 border-r border-gold/10',
         collapsed ? 'w-16' : 'w-64',
       ].join(' ')}
     >
       {/* Logo / Toggle */}
-      <div className="flex items-center justify-between p-4 border-b border-[#C9A84C]/20 h-20">
+      <div className="flex items-center justify-between p-4 border-b border-gold/20 h-20">
         {!collapsed && (
-          <div>
-            <p className="font-[Cinzel_Decorative] text-[#C9A84C] text-sm">ROYAL</p>
-            <p className="font-[Cinzel] text-[#F5ECD7]/60 text-[10px] tracking-widest uppercase">Admin</p>
+          <div className="flex items-center gap-3">
+            <Image
+              src="/logo.jpg"
+              alt="Royal Suites"
+              width={36}
+              height={36}
+              className="rounded-full object-cover border border-gold"
+            />
+            <div>
+              <p className="font-display text-primary-foreground text-xs tracking-widest">Royal Suites</p>
+              <p className="font-body text-gold-light text-[10px] tracking-wider">Admin Panel</p>
+            </div>
           </div>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="text-[#F5ECD7]/60 hover:text-[#C9A84C] transition-colors ml-auto"
+          className="text-cream-dark/60 hover:text-gold transition-colors ml-auto flex-shrink-0"
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {collapsed ? '▶' : '◀'}
@@ -58,10 +69,10 @@ export default function AdminSidebar() {
                   title={collapsed ? label : undefined}
                   className={[
                     'flex items-center gap-3 px-3 py-2.5 transition-all duration-200',
-                    'font-[Cinzel] text-xs tracking-wider uppercase',
+                    'font-display text-xs tracking-wider uppercase',
                     active
-                      ? 'bg-[#C9A84C]/15 text-[#C9A84C] border-l-2 border-[#C9A84C]'
-                      : 'text-[#F5ECD7]/60 hover:text-[#C9A84C] hover:bg-[#C9A84C]/5',
+                      ? 'bg-gold/15 text-gold border-l-2 border-gold'
+                      : 'text-cream-dark/60 hover:text-gold hover:bg-gold/5',
                   ].join(' ')}
                 >
                   <span className="text-lg flex-shrink-0" aria-hidden="true">{icon}</span>
@@ -74,20 +85,17 @@ export default function AdminSidebar() {
       </nav>
 
       {/* User + Logout */}
-      <div className="p-4 border-t border-[#C9A84C]/20">
+      <div className="p-4 border-t border-gold/20">
         {!collapsed && user?.type === 'staff' && (
           <div className="mb-3">
-            <p className="text-[#F5ECD7] text-xs font-[Cinzel] truncate">{(user as any).name}</p>
-            <p className="text-[#C9A84C] text-[10px] tracking-wider uppercase">{(user as any).role}</p>
+            <p className="font-display text-primary-foreground text-xs truncate">{(user as any).name}</p>
+            <p className="font-body text-gold text-[10px] tracking-wider uppercase">{(user as any).role}</p>
           </div>
         )}
         <button
           onClick={logout}
           title="Sign out"
-          className={[
-            'flex items-center gap-2 text-[#F5ECD7]/40 hover:text-[#C9A84C] transition-colors',
-            'font-[Cinzel] text-[10px] tracking-widest uppercase',
-          ].join(' ')}
+          className="flex items-center gap-2 text-cream-dark/40 hover:text-gold transition-colors font-display text-[10px] tracking-widest uppercase"
         >
           <span>⎋</span>
           {!collapsed && <span>Sign Out</span>}

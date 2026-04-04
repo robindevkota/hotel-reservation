@@ -1,15 +1,21 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useAuthStore } from '../../store/authStore';
 import { useCartStore } from '../../store/cartStore';
-import Button from '../ui/Button';
+
+const NAV_LINKS = [
+  { href: '/rooms',      label: 'Rooms' },
+  { href: '/amenities',  label: 'Amenities' },
+  { href: '/contact',    label: 'Contact' },
+];
 
 export default function Navbar() {
   const { user, logout } = useAuthStore();
   const itemCount = useCartStore((s) => s.itemCount());
-  const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled]   = useState(false);
+  const [menuOpen, setMenuOpen]   = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -18,47 +24,53 @@ export default function Navbar() {
   }, []);
 
   return (
-    <header
+    <nav
       className={[
-        'fixed top-0 left-0 right-0 z-40 transition-all duration-500',
-        scrolled ? 'bg-[#0D1B3E]/95 backdrop-blur-md shadow-[0_4px_24px_rgba(13,27,62,0.3)]' : 'bg-transparent',
+        'fixed top-0 left-0 right-0 z-50 transition-all duration-500',
+        scrolled
+          ? 'bg-primary/95 backdrop-blur-md border-b border-gold/20 shadow-royal'
+          : 'bg-primary/80 backdrop-blur-sm border-b border-gold/10',
       ].join(' ')}
     >
-      <div className="container flex items-center justify-between h-20">
+      <div className="container mx-auto flex items-center justify-between py-3 px-4">
         {/* Logo */}
-        <Link href="/" className="flex flex-col leading-tight">
-          <span className="font-[Cinzel_Decorative] text-[#C9A84C] text-lg tracking-widest">ROYAL</span>
-          <span className="font-[Cinzel] text-[#F5ECD7] text-xs tracking-[0.5em] uppercase">Suites</span>
+        <Link href="/" className="flex items-center gap-3">
+          <Image
+            src="/logo.jpg"
+            alt="Royal Suites Logo"
+            width={48}
+            height={48}
+            className="rounded-full object-cover border-2 border-gold"
+          />
+          <div className="hidden sm:block">
+            <p className="font-display text-sm text-primary-foreground tracking-widest">Royal Suites</p>
+            <p className="text-xs text-gold-light tracking-wider">Boutique Hotel &amp; Spa</p>
+          </div>
         </Link>
 
         {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center gap-8" aria-label="Main navigation">
-          {[
-            { href: '/rooms', label: 'Rooms' },
-            { href: '/amenities', label: 'Amenities' },
-            { href: '/contact', label: 'Contact' },
-          ].map(({ href, label }) => (
-            <Link
-              key={href}
-              href={href}
-              className="font-[Cinzel] text-xs tracking-widest uppercase text-[#F5ECD7]/80 hover:text-[#C9A84C] transition-colors"
-            >
-              {label}
-            </Link>
+        <ul className="hidden lg:flex items-center gap-8">
+          {NAV_LINKS.map(({ href, label }) => (
+            <li key={href}>
+              <Link
+                href={href}
+                className="font-display text-xs tracking-[0.2em] uppercase text-cream-dark hover:text-gold transition-colors duration-300"
+              >
+                {label}
+              </Link>
+            </li>
           ))}
-        </nav>
+        </ul>
 
-        {/* Actions */}
-        <div className="hidden md:flex items-center gap-4">
+        {/* Desktop Actions */}
+        <div className="hidden lg:flex items-center gap-4">
           {user ? (
             <>
               {user.type === 'guest' && (
-                <Link href="/guest/menu" className="relative">
-                  <span className="font-[Cinzel] text-xs text-[#F5ECD7]/80 hover:text-[#C9A84C] transition-colors uppercase tracking-widest">
-                    Menu
-                  </span>
+                <Link href="/guest/menu" className="relative font-display text-xs tracking-[0.2em] uppercase text-cream-dark hover:text-gold transition-colors">
+                  Menu
                   {itemCount > 0 && (
-                    <span className="absolute -top-2 -right-4 bg-[#C9A84C] text-[#0D1B3E] text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
+                    <span className="absolute -top-2 -right-4 bg-gradient-gold text-primary text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
                       {itemCount}
                     </span>
                   )}
@@ -66,39 +78,45 @@ export default function Navbar() {
               )}
               <Link
                 href={user.type === 'staff' ? '/admin/dashboard' : '/guest/dashboard'}
-                className="font-[Cinzel] text-xs text-[#F5ECD7]/80 hover:text-[#C9A84C] transition-colors uppercase tracking-widest"
+                className="font-display text-xs tracking-[0.2em] uppercase text-cream-dark hover:text-gold transition-colors"
               >
                 Dashboard
               </Link>
               <button
                 onClick={logout}
-                className="font-[Cinzel] text-xs text-[#F5ECD7]/60 hover:text-[#C9A84C] transition-colors uppercase tracking-widest"
+                className="font-display text-xs tracking-[0.2em] uppercase text-cream-dark/60 hover:text-gold transition-colors"
               >
                 Sign Out
               </button>
             </>
           ) : (
             <>
-              <Link href="/login">
-                <Button variant="ghost" size="sm">Login</Button>
+              <Link
+                href="/login"
+                className="font-display text-xs tracking-[0.2em] uppercase text-cream-dark hover:text-gold transition-colors"
+              >
+                Login
               </Link>
-              <Link href="/reserve">
-                <Button variant="primary" size="sm">Reserve Now</Button>
+              <Link
+                href="/reserve"
+                className="bg-gradient-gold text-primary font-display text-xs tracking-[0.2em] uppercase px-6 py-2.5 hover:shadow-gold transition-all duration-300 hover:-translate-y-0.5"
+              >
+                Reserve Now
               </Link>
             </>
           )}
         </div>
 
-        {/* Mobile menu toggle */}
+        {/* Mobile toggle */}
         <button
-          className="md:hidden text-[#F5ECD7] p-2"
+          className="lg:hidden text-cream-dark p-2"
           onClick={() => setMenuOpen(!menuOpen)}
           aria-label="Toggle menu"
           aria-expanded={menuOpen}
         >
           <div className="w-6 flex flex-col gap-1.5">
             <span className={`h-px bg-current transition-all duration-300 ${menuOpen ? 'rotate-45 translate-y-2.5' : ''}`} />
-            <span className={`h-px bg-current transition-all duration-300 ${menuOpen ? 'opacity-0' : ''}`} />
+            <span className={`h-px bg-current transition-all duration-300 ${menuOpen ? 'opacity-0 scale-x-0' : ''}`} />
             <span className={`h-px bg-current transition-all duration-300 ${menuOpen ? '-rotate-45 -translate-y-2.5' : ''}`} />
           </div>
         </button>
@@ -106,29 +124,53 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       {menuOpen && (
-        <div className="md:hidden bg-[#0D1B3E] border-t border-[#C9A84C]/20 px-6 py-6 flex flex-col gap-4">
-          {[
-            { href: '/rooms', label: 'Rooms' },
-            { href: '/amenities', label: 'Amenities' },
-            { href: '/contact', label: 'Contact' },
-            { href: '/reserve', label: 'Reserve Now' },
-          ].map(({ href, label }) => (
+        <div className="lg:hidden bg-primary border-t border-gold/20 px-6 py-6 space-y-4">
+          {NAV_LINKS.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
               onClick={() => setMenuOpen(false)}
-              className="font-[Cinzel] text-sm tracking-widest uppercase text-[#F5ECD7]/80 hover:text-[#C9A84C] transition-colors py-2 border-b border-[#C9A84C]/10"
+              className="block font-display text-sm tracking-widest uppercase text-cream-dark hover:text-gold transition-colors py-2 border-b border-gold/10"
             >
               {label}
             </Link>
           ))}
-          {!user && (
-            <Link href="/login" onClick={() => setMenuOpen(false)}>
-              <Button variant="secondary" size="sm" className="w-full mt-2">Login</Button>
-            </Link>
+          {!user ? (
+            <div className="flex flex-col gap-3 pt-2">
+              <Link
+                href="/login"
+                onClick={() => setMenuOpen(false)}
+                className="block text-center font-display text-sm tracking-widest uppercase text-cream-dark border border-gold/40 py-3 hover:border-gold transition-colors"
+              >
+                Login
+              </Link>
+              <Link
+                href="/reserve"
+                onClick={() => setMenuOpen(false)}
+                className="block text-center bg-gradient-gold text-primary font-display text-sm tracking-widest uppercase py-3"
+              >
+                Reserve Now
+              </Link>
+            </div>
+          ) : (
+            <div className="pt-2 flex flex-col gap-3">
+              <Link
+                href={user.type === 'staff' ? '/admin/dashboard' : '/guest/dashboard'}
+                onClick={() => setMenuOpen(false)}
+                className="block font-display text-sm tracking-widest uppercase text-cream-dark hover:text-gold transition-colors py-2"
+              >
+                Dashboard
+              </Link>
+              <button
+                onClick={() => { logout(); setMenuOpen(false); }}
+                className="text-left font-display text-sm tracking-widest uppercase text-cream-dark/60 hover:text-gold transition-colors py-2"
+              >
+                Sign Out
+              </button>
+            </div>
           )}
         </div>
       )}
-    </header>
+    </nav>
   );
 }

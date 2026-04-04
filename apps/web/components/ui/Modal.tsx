@@ -26,28 +26,27 @@ export default function Modal({ open, onClose, title, children, className = '' }
       aria-labelledby={title ? 'modal-title' : undefined}
     >
       <div
-        className="absolute inset-0 bg-[#0D1B3E]/80 backdrop-blur-sm"
+        className="absolute inset-0 bg-primary/80 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
       <div
         className={[
-          'relative bg-[#F5ECD7] border border-[#C9A84C] w-full max-w-lg max-h-[90vh] overflow-y-auto',
-          'shadow-[0_24px_80px_rgba(13,27,62,0.4)]',
-          'animate-fade-up',
+          'relative bg-card border border-gold w-full max-w-lg max-h-[90vh] overflow-y-auto',
+          'shadow-royal animate-fade-in',
           className,
         ].join(' ')}
       >
-        <div className="h-[2px] bg-gradient-to-r from-transparent via-[#C9A84C] to-transparent" />
+        <div className="w-full h-px bg-gradient-gold" />
         <div className="p-6">
           {title && (
-            <h2 id="modal-title" className="text-xl font-[Cinzel] text-[#0D1B3E] mb-4 tracking-widest uppercase">
+            <h2 id="modal-title" className="font-display text-lg text-foreground mb-4 tracking-widest uppercase pr-8">
               {title}
             </h2>
           )}
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 text-[#5A6478] hover:text-[#C9A84C] transition-colors text-2xl leading-none"
+            className="absolute top-4 right-4 text-muted-foreground hover:text-gold transition-colors text-2xl leading-none"
             aria-label="Close"
           >
             ×

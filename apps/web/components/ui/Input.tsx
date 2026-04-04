@@ -10,12 +10,9 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 export default function Input({ label, error, hint, className = '', id, ...props }: InputProps) {
   const inputId = id || label?.toLowerCase().replace(/\s+/g, '-');
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {label && (
-        <label
-          htmlFor={inputId}
-          className="text-xs font-[Cinzel] tracking-widest uppercase text-[#0D1B3E]"
-        >
+        <label htmlFor={inputId} className="text-xs font-display tracking-widest uppercase text-foreground">
           {label}
         </label>
       )}
@@ -23,17 +20,18 @@ export default function Input({ label, error, hint, className = '', id, ...props
         id={inputId}
         {...props}
         className={[
-          'w-full px-4 py-3 bg-white',
-          'border border-[#0D1B3E]/20 focus:border-[#C9A84C]',
-          'text-[#0D1B3E] font-[Cormorant_Garamond] text-base',
-          'outline-none transition-colors duration-200',
-          'placeholder:text-[#5A6478]',
-          error ? 'border-[#D32F2F]' : '',
+          'w-full px-4 py-3 bg-card',
+          'border outline-none transition-colors duration-200',
+          'text-foreground font-elegant text-base',
+          'placeholder:text-muted-foreground',
+          error
+            ? 'border-destructive focus:border-destructive'
+            : 'border-border focus:border-gold',
           className,
         ].join(' ')}
       />
-      {error && <p className="text-xs text-[#D32F2F] font-[Cinzel]">{error}</p>}
-      {hint && !error && <p className="text-xs text-[#5A6478]">{hint}</p>}
+      {error && <p className="text-xs text-destructive font-body">{error}</p>}
+      {hint && !error && <p className="text-xs text-muted-foreground font-body">{hint}</p>}
     </div>
   );
 }

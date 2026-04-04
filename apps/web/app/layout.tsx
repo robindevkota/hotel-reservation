@@ -5,7 +5,7 @@ import { Toaster } from 'react-hot-toast';
 export const metadata: Metadata = {
   title: 'Royal Suites — Boutique Hotel & Spa',
   description: 'An Egyptian-inspired luxury boutique hotel experience. Reserve your chamber, indulge in our spa, and dine like royalty.',
-  icons: { icon: '/logo.svg' },
+  icons: { icon: '/logo.jpg' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -21,15 +21,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           position="top-right"
           toastOptions={{
             style: {
-              background: '#0D1B3E',
-              color: '#F5ECD7',
-              border: '1px solid #C9A84C',
+              background: 'hsl(220 55% 18%)',
+              color: 'hsl(43 72% 65%)',
+              border: '1px solid hsl(43 72% 55% / 0.5)',
               fontFamily: 'Cinzel, serif',
-              fontSize: '14px',
+              fontSize: '13px',
               borderRadius: '2px',
+              letterSpacing: '0.05em',
             },
-            success: { iconTheme: { primary: '#C9A84C', secondary: '#0D1B3E' } },
-            error: { iconTheme: { primary: '#D32F2F', secondary: '#F5ECD7' } },
+            success: { iconTheme: { primary: 'hsl(43 72% 55%)', secondary: 'hsl(220 55% 18%)' } },
+            error: { iconTheme: { primary: 'hsl(0 84% 60%)', secondary: 'hsl(43 65% 72%)' } },
           }}
         />
       </body>
