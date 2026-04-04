@@ -35,16 +35,18 @@ export default function Navbar() {
       <div className="container mx-auto flex items-center justify-between py-3 px-4">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3">
-          <Image
-            src="/logo.jpg"
-            alt="Royal Suites Logo"
-            width={48}
-            height={48}
-            className="rounded-full object-cover border-2 border-gold"
-          />
+          <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0 border-2" style={{ borderColor: 'hsl(43 72% 55%)' }}>
+            <Image
+              src="/logo.jpg"
+              alt="Royal Suites Logo"
+              width={48}
+              height={48}
+              className="w-full h-full object-cover"
+            />
+          </div>
           <div className="hidden sm:block">
-            <p className="font-display text-sm text-primary-foreground tracking-widest">Royal Suites</p>
-            <p className="text-xs text-gold-light tracking-wider">Boutique Hotel &amp; Spa</p>
+            <p style={{ fontFamily: "'Cinzel', serif", fontSize: '0.8rem', color: 'hsl(43 65% 72%)', letterSpacing: '0.15em' }}>Royal Suites</p>
+            <p style={{ fontFamily: "'Raleway', sans-serif", fontSize: '0.65rem', color: 'hsl(43 72% 55%)', letterSpacing: '0.1em' }}>Boutique Hotel &amp; Spa</p>
           </div>
         </Link>
 
@@ -54,7 +56,16 @@ export default function Navbar() {
             <li key={href}>
               <Link
                 href={href}
-                className="font-display text-xs tracking-[0.2em] uppercase text-cream-dark hover:text-gold transition-colors duration-300"
+                style={{
+                  fontFamily: "'Cinzel', serif",
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: 'rgba(245, 236, 215, 0.9)',
+                  transition: 'color 0.3s ease',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'hsl(43 72% 55%)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'rgba(245, 236, 215, 0.9)')}
               >
                 {label}
               </Link>
@@ -67,10 +78,10 @@ export default function Navbar() {
           {user ? (
             <>
               {user.type === 'guest' && (
-                <Link href="/guest/menu" className="relative font-display text-xs tracking-[0.2em] uppercase text-cream-dark hover:text-gold transition-colors">
+                <Link href="/guest/menu" className="relative" style={{ fontFamily: "'Cinzel', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(245, 236, 215, 0.9)' }}>
                   Menu
                   {itemCount > 0 && (
-                    <span className="absolute -top-2 -right-4 bg-gradient-gold text-primary text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
+                    <span className="absolute -top-2 -right-4 text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full" style={{ background: 'hsl(43 72% 55%)', color: 'hsl(220 55% 18%)' }}>
                       {itemCount}
                     </span>
                   )}
@@ -78,13 +89,13 @@ export default function Navbar() {
               )}
               <Link
                 href={user.type === 'staff' ? '/admin/dashboard' : '/guest/dashboard'}
-                className="font-display text-xs tracking-[0.2em] uppercase text-cream-dark hover:text-gold transition-colors"
+                style={{ fontFamily: "'Cinzel', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(245, 236, 215, 0.9)' }}
               >
                 Dashboard
               </Link>
               <button
                 onClick={logout}
-                className="font-display text-xs tracking-[0.2em] uppercase text-cream-dark/60 hover:text-gold transition-colors"
+                style={{ fontFamily: "'Cinzel', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(245, 236, 215, 0.5)' }}
               >
                 Sign Out
               </button>
@@ -93,13 +104,31 @@ export default function Navbar() {
             <>
               <Link
                 href="/login"
-                className="font-display text-xs tracking-[0.2em] uppercase text-cream-dark hover:text-gold transition-colors"
+                style={{ fontFamily: "'Cinzel', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(245, 236, 215, 0.9)' }}
               >
                 Login
               </Link>
+              <a
+                href="tel:+12345678890"
+                style={{ fontFamily: "'Raleway', sans-serif", fontSize: '0.72rem', color: 'rgba(245, 236, 215, 0.7)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 7.91a16 16 0 006.18 6.18l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                +1 234 567 890
+              </a>
               <Link
                 href="/reserve"
-                className="bg-gradient-gold text-primary font-display text-xs tracking-[0.2em] uppercase px-6 py-2.5 hover:shadow-gold transition-all duration-300 hover:-translate-y-0.5"
+                style={{
+                  fontFamily: "'Cinzel', serif",
+                  fontSize: '0.7rem',
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                  background: 'linear-gradient(135deg, hsl(43 72% 55%), hsl(43 65% 72%))',
+                  color: 'hsl(220 55% 18%)',
+                  padding: '0.6rem 1.5rem',
+                  display: 'inline-block',
+                  transition: 'all 0.3s ease',
+                }}
               >
                 Reserve Now
               </Link>

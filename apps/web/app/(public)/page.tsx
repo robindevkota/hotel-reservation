@@ -46,48 +46,102 @@ export default function HomePage() {
             className="object-cover"
             priority
           />
-          <div className="absolute inset-0 bg-primary/60" />
-          <div className="absolute inset-0 bg-gradient-to-t from-primary via-transparent to-primary/40" />
+          <div className="absolute inset-0" style={{ background: 'hsl(220 55% 18% / 0.55)' }} />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, hsl(220 55% 18% / 0.85) 0%, transparent 50%, hsl(220 55% 18% / 0.3) 100%)' }} />
         </div>
 
         <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
-          <Image
-            src="/logo.jpg"
-            alt="Royal Suites Logo"
-            width={128}
-            height={128}
-            className="mx-auto mb-8 rounded-full border-4 border-gold shadow-gold object-cover animate-fade-in-up"
-          />
+          {/* Logo — circular, fixed size */}
+          <div
+            className="w-32 h-32 mx-auto mb-8 rounded-full border-4 overflow-hidden animate-fade-in-up"
+            style={{ borderColor: 'hsl(43 72% 55%)', boxShadow: '0 4px 24px hsl(43 72% 55% / 0.4)' }}
+          >
+            <Image
+              src="/logo.jpg"
+              alt="Royal Suites Logo"
+              width={128}
+              height={128}
+              className="w-full h-full object-cover"
+              priority
+            />
+          </div>
 
           <p
-            className="font-elegant text-gold text-lg md:text-xl tracking-[0.3em] uppercase mb-4 animate-fade-in-up"
-            style={{ animationDelay: '0.2s', opacity: 0 }}
+            className="animate-fade-in-up"
+            style={{
+              fontFamily: "'Cormorant Garamond', serif",
+              color: 'hsl(43 72% 55%)',
+              fontSize: '1.1rem',
+              letterSpacing: '0.3em',
+              textTransform: 'uppercase',
+              marginBottom: '1rem',
+              animationDelay: '0.2s',
+              opacity: 0,
+            }}
           >
             Welcome to
           </p>
 
           <h1
-            className="font-display text-4xl md:text-6xl lg:text-7xl text-gradient-gold leading-tight mb-6 animate-fade-in-up"
-            style={{ animationDelay: '0.4s', opacity: 0 }}
+            className="animate-fade-in-up"
+            style={{
+              fontFamily: "'Cinzel', serif",
+              fontWeight: 800,
+              fontSize: 'clamp(3rem, 8vw, 6rem)',
+              background: 'linear-gradient(135deg, hsl(43 75% 40%), hsl(43 72% 55%), hsl(43 65% 72%), hsl(43 72% 55%), hsl(43 75% 40%))',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              lineHeight: 1.1,
+              marginBottom: '0.75rem',
+              animationDelay: '0.4s',
+              opacity: 0,
+            }}
           >
             Royal Suites
           </h1>
 
           <p
-            className="font-display text-xl md:text-2xl text-cream-dark tracking-[0.15em] mb-4 animate-fade-in-up"
-            style={{ animationDelay: '0.5s', opacity: 0 }}
+            className="animate-fade-in-up"
+            style={{
+              fontFamily: "'Cinzel', serif",
+              fontWeight: 400,
+              fontSize: '1.2rem',
+              color: 'hsl(35 25% 88%)',
+              letterSpacing: '0.15em',
+              marginBottom: '1.5rem',
+              animationDelay: '0.5s',
+              opacity: 0,
+            }}
           >
             Boutique Hotel &amp; Spa
           </p>
 
           <div
-            className="w-24 h-px bg-gradient-gold mx-auto mb-8 animate-fade-in-up"
-            style={{ animationDelay: '0.6s', opacity: 0 }}
+            className="animate-fade-in-up"
+            style={{
+              width: '6rem',
+              height: '1px',
+              background: 'linear-gradient(90deg, transparent, hsl(43 72% 55%), transparent)',
+              margin: '0 auto 2rem',
+              animationDelay: '0.6s',
+              opacity: 0,
+            }}
           />
 
           <p
-            className="font-elegant text-lg md:text-xl text-cream-dark/80 max-w-2xl mx-auto mb-10 italic animate-fade-in-up"
-            style={{ animationDelay: '0.7s', opacity: 0 }}
+            className="animate-fade-in-up"
+            style={{
+              fontFamily: "'Cormorant Garamond', serif",
+              fontStyle: 'italic',
+              fontSize: '1.15rem',
+              color: 'hsl(35 25% 88% / 0.8)',
+              maxWidth: '36rem',
+              margin: '0 auto 2.5rem',
+              lineHeight: 1.7,
+              animationDelay: '0.7s',
+              opacity: 0,
+            }}
           >
             Experience the grandeur of ancient Egypt reimagined for the modern traveler.
             Where timeless luxury meets pharaonic splendor.
@@ -99,13 +153,34 @@ export default function HomePage() {
           >
             <Link
               href="/reserve"
-              className="inline-block bg-gradient-gold text-primary font-display text-sm tracking-[0.2em] uppercase px-10 py-4 hover:shadow-gold transition-all duration-300 hover:-translate-y-0.5"
+              style={{
+                display: 'inline-block',
+                background: 'linear-gradient(135deg, hsl(43 72% 55%), hsl(43 65% 72%))',
+                color: 'hsl(220 55% 18%)',
+                fontFamily: "'Cinzel', serif",
+                fontSize: '0.75rem',
+                letterSpacing: '0.2em',
+                textTransform: 'uppercase',
+                padding: '1rem 2.5rem',
+                transition: 'all 0.3s ease',
+                fontWeight: 600,
+              }}
             >
               Reserve Now
             </Link>
             <Link
               href="/rooms"
-              className="inline-block border border-gold text-gold font-display text-sm tracking-[0.2em] uppercase px-10 py-4 hover:bg-gold/10 transition-all duration-300"
+              style={{
+                display: 'inline-block',
+                border: '1px solid hsl(43 72% 55%)',
+                color: 'hsl(43 72% 55%)',
+                fontFamily: "'Cinzel', serif",
+                fontSize: '0.75rem',
+                letterSpacing: '0.2em',
+                textTransform: 'uppercase',
+                padding: '1rem 2.5rem',
+                transition: 'all 0.3s ease',
+              }}
             >
               Explore Rooms
             </Link>
@@ -114,8 +189,8 @@ export default function HomePage() {
 
         {/* Scroll indicator */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
-          <div className="w-6 h-10 border-2 border-gold/50 rounded-full flex justify-center pt-2">
-            <div className="w-1 h-2 bg-gold rounded-full" />
+          <div style={{ width: '1.5rem', height: '2.5rem', border: '2px solid hsl(43 72% 55% / 0.5)', borderRadius: '9999px', display: 'flex', justifyContent: 'center', paddingTop: '0.4rem' }}>
+            <div style={{ width: '0.25rem', height: '0.5rem', background: 'hsl(43 72% 55%)', borderRadius: '9999px' }} />
           </div>
         </div>
       </section>
