@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import * as rooms from '../controllers/room.controller';
 import { requireStaff } from '../middleware/auth.middleware';
-import { adminOnly } from '../middleware/role.middleware';
+import { adminOnly, adminOrStaff } from '../middleware/role.middleware';
 import { validate } from '../middleware/validate.middleware';
 
 const router = Router();
 
 router.get('/', rooms.listRooms);
+router.get('/availability', rooms.getRoomAvailability);          // date-aware availability
+router.get('/calendar', ...requireStaff, adminOrStaff, rooms.getRoomCalendar); // admin calendar
+
 router.get('/:slug', rooms.getRoomBySlug);
 
 // Admin routes

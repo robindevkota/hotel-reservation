@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import {
   LayoutDashboard, CalendarCheck, BedDouble, UtensilsCrossed,
   Flower2, Users, BookOpen, Receipt, LogOut, Menu, UserCircle,
+  Package2,
 } from 'lucide-react';
 
 const NAV = [
@@ -18,6 +19,7 @@ const NAV = [
   { href: '/admin/spa',          label: 'Spa Schedule',  icon: Flower2,          roles: ['admin','staff'] },
   { href: '/admin/guests',       label: 'Guests',        icon: Users,            roles: ['admin','staff'] },
   { href: '/admin/menu',         label: 'Menu',          icon: BookOpen,         roles: ['admin'] },
+  { href: '/admin/inventory',    label: 'Inventory',     icon: Package2,         roles: ['admin'] },
   { href: '/admin/billing',      label: 'Billing',       icon: Receipt,          roles: ['admin','staff'] },
   { href: '/admin/profile',      label: 'Profile',       icon: UserCircle,       roles: ['admin','staff','kitchen','waiter'] },
 ];
@@ -183,11 +185,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { user } = useAuthStore();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    if (!user || user.type !== 'staff') router.replace('/login');
-  }, [user, router]);
+    setHydrated(true);
+  }, []);
 
+  useEffect(() => {
+    if (hydrated && (!user || user.type !== 'staff')) router.replace('/login');
+  }, [user, router, hydrated]);
+
+  if (!hydrated) return null;
   if (!user || user.type !== 'staff') return null;
 
   const sidebarW = collapsed ? '4.5rem' : '15rem';

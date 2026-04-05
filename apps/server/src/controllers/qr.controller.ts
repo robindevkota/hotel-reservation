@@ -23,7 +23,17 @@ export async function verifyQR(req: Request, res: Response): Promise<void> {
   // Issue short-lived guest JWT
   const token = signGuestToken(guest);
 
-  res.json({ success: true, token, guestId: guest._id, roomId: room._id, roomName: room.name });
+  res.json({
+    success: true,
+    token,
+    guestId: guest._id,
+    roomId: room._id,
+    roomName: room.name,
+    roomNumber: room.roomNumber,
+    roomType: room.type,
+    floorNumber: room.floorNumber,
+    guestName: guest.name,
+  });
 }
 
 export async function refreshQR(req: Request, res: Response): Promise<void> {

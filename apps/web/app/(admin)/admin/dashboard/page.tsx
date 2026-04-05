@@ -4,6 +4,7 @@ import api from '../../../../lib/api';
 import {
   CalendarCheck, UserCheck, Clock3, TrendingUp, BedDouble,
   ShoppingCart, DollarSign, ArrowRight, Users,
+  Package2, AlertTriangle, AlertOctagon,
 } from 'lucide-react';
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis,
@@ -100,11 +101,17 @@ export default function AdminDashboardPage() {
   const [data, setData] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [invStats, setInvStats] = useState<{ totalIngredients: number; lowStockCount: number; outOfStockCount: number } | null>(null);
 
   useEffect(() => {
-    api.get('/analytics')
-      .then(r => { setData(r.data); setLoading(false); })
-      .catch(() => { setError('Failed to load analytics'); setLoading(false); });
+    Promise.all([
+      api.get('/analytics'),
+      api.get('/inventory/stats').catch(() => null),
+    ]).then(([analytics, inv]) => {
+      setData(analytics.data);
+      if (inv) setInvStats({ totalIngredients: inv.data.totalIngredients, lowStockCount: inv.data.lowStockCount, outOfStockCount: inv.data.outOfStockCount });
+      setLoading(false);
+    }).catch(() => { setError('Failed to load analytics'); setLoading(false); });
   }, []);
 
   const Spinner = () => (
@@ -168,6 +175,33 @@ export default function AdminDashboardPage() {
               {!loading && <div style={{ fontFamily:A.raleway, fontSize:'0.72rem', color:A.muted }}>{sub}</div>}
             </div>
           ))}
+        </div>
+
+        {/* Inventory Snapshot */}
+        <div style={{ marginBottom:'2.5rem' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
+            <p style={{ fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, margin:0 }}>Inventory Snapshot</p>
+            <a href="/admin/inventory" style={{ display:'flex', alignItems:'center', gap:'0.3rem', fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.gold, textDecoration:'none' }}>
+              View Inventory <ArrowRight size={11} />
+            </a>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'1rem' }}>
+            {[
+              { label:'Total Ingredients', value: invStats?.totalIngredients ?? '—', Icon: Package2,     iconColor: A.gold,            bg: '#fff',              border: A.border },
+              { label:'Low Stock Alerts',  value: invStats?.lowStockCount    ?? '—', Icon: AlertTriangle, iconColor:'hsl(38 80% 45%)',  bg:'hsl(38 90% 96%)',   border:'hsl(38 80% 78%)' },
+              { label:'Out of Stock',      value: invStats?.outOfStockCount  ?? '—', Icon: AlertOctagon,  iconColor:'hsl(0 60% 50%)',   bg:'hsl(0 60% 97%)',    border:'hsl(0 60% 80%)' },
+            ].map(({ label, value, Icon, iconColor, bg, border }) => (
+              <div key={label} style={{ background:bg, border:`1px solid ${border}`, padding:'1.1rem 1.25rem', display:'flex', alignItems:'center', gap:'1rem' }}>
+                <div style={{ width:'2.5rem', height:'2.5rem', background:`${iconColor}18`, border:`1px solid ${border}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                  <Icon size={18} color={iconColor} strokeWidth={1.8} />
+                </div>
+                <div>
+                  <div style={{ fontFamily:A.cinzel, fontSize:'1.6rem', fontWeight:700, color:A.navy, lineHeight:1 }}>{loading ? '—' : value}</div>
+                  <div style={{ fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.muted, marginTop:'0.25rem' }}>{label}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Charts Row 1 */}

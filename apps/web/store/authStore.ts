@@ -43,10 +43,15 @@ export const useAuthStore = create<AuthState>()(
 
       login: async (email, password) => {
         set({ isLoading: true });
-        const { data } = await api.post('/auth/login', { email, password });
-        const token = data.accessToken;
-        if (typeof window !== 'undefined') localStorage.setItem('accessToken', token);
-        set({ user: { ...data.user, type: 'staff' }, accessToken: token, isLoading: false });
+        try {
+          const { data } = await api.post('/auth/login', { email, password });
+          const token = data.accessToken;
+          if (typeof window !== 'undefined') localStorage.setItem('accessToken', token);
+          set({ user: { ...data.user, type: 'staff' }, accessToken: token, isLoading: false });
+        } catch (err) {
+          set({ isLoading: false });
+          throw err;
+        }
       },
 
       loginAsGuest: (token, guestId, roomId, roomName) => {

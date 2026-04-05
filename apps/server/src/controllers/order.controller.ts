@@ -97,8 +97,10 @@ export async function updateOrderStatus(req: AuthRequest, res: Response): Promis
     order.deliveredAt = now;
     // Add to bill
     const totalDesc = `Room service order #${order._id}`;
+    const guestDoc = await (await import('../models/Guest')).default.findById(order.guest);
+    if (!guestDoc?.bill) throw new AppError('Guest bill not found', 404);
     await addLineItem(
-      (order as any).guest?.bill || (await import('../models/Guest').then((m) => m.default.findById(order.guest).then((g) => g?.bill))),
+      guestDoc.bill as any,
       String(order.guest),
       'food_order',
       totalDesc,

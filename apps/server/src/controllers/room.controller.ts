@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { body } from 'express-validator';
 import Room from '../models/Room';
+import Reservation from '../models/Reservation';
 import { AppError } from '../middleware/errorHandler';
 import { generateQRToken, generateQRDataUrl } from '../utils/generateQR';
 
@@ -61,6 +62,102 @@ export async function deleteRoom(req: Request, res: Response): Promise<void> {
   const room = await Room.findByIdAndDelete(req.params.id);
   if (!room) throw new AppError('Room not found', 404);
   res.json({ success: true, message: 'Room deleted' });
+}
+
+// Returns all rooms with their availability status for a date range
+// Also includes today's reservation/occupancy info for admin calendar
+export async function getRoomAvailability(req: Request, res: Response): Promise<void> {
+  const { checkIn, checkOut } = req.query;
+
+  const allRooms = await Room.find().select('-qrToken').lean();
+
+  if (!checkIn || !checkOut) {
+    // No dates — return all rooms with today's status
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const activeReservations = await Reservation.find({
+      status: { $in: ['confirmed', 'checked_in'] },
+      checkInDate: { $lt: tomorrow },
+      checkOutDate: { $gt: today },
+    }).populate('room', 'name roomNumber').lean();
+
+    const reservedRoomIds = new Set(activeReservations.map(r => String(r.room)));
+
+    const rooms = allRooms.map(room => {
+      const res = activeReservations.find(r => String(r.room) === String(room._id));
+      return {
+        ...room,
+        availabilityStatus: res
+          ? (res.status === 'checked_in' ? 'occupied' : 'reserved')
+          : 'available',
+        currentReservation: res ? {
+          _id: res._id,
+          guestName: res.guest?.name,
+          checkInDate: res.checkInDate,
+          checkOutDate: res.checkOutDate,
+          status: res.status,
+        } : null,
+      };
+    });
+
+    res.json({ success: true, rooms });
+    return;
+  }
+
+  const checkInDate = new Date(checkIn as string);
+  // For single-day queries (same date passed for both), extend checkOut by 1 day
+  const checkOutDate = new Date(checkOut as string);
+  if (checkOutDate <= checkInDate) {
+    checkOutDate.setDate(checkOutDate.getDate() + 1);
+  }
+
+  // Find rooms that have conflicting reservations for these dates
+  const conflictingReservations = await Reservation.find({
+    status: { $in: ['confirmed', 'checked_in'] },
+    checkInDate: { $lt: checkOutDate },
+    checkOutDate: { $gt: checkInDate },
+  }).lean();
+
+  const reservationByRoom = new Map(conflictingReservations.map(r => [String(r.room), r]));
+
+  const rooms = allRooms.map(room => {
+    const res = reservationByRoom.get(String(room._id));
+    return {
+      ...room,
+      availabilityStatus: res ? (res.status === 'checked_in' ? 'occupied' : 'reserved') : 'available',
+      isAvailableForDates: !res,
+      currentReservation: res ? {
+        guestName: res.guest.name,
+        checkInDate: res.checkInDate,
+        checkOutDate: res.checkOutDate,
+        status: res.status,
+      } : null,
+    };
+  });
+
+  res.json({ success: true, rooms, checkIn: checkInDate, checkOut: checkOutDate });
+}
+
+// Admin calendar: returns all reservations for a date range grouped by room
+export async function getRoomCalendar(req: Request, res: Response): Promise<void> {
+  const { startDate, endDate } = req.query;
+
+  const start = startDate ? new Date(startDate as string) : new Date();
+  const end = endDate ? new Date(endDate as string) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  const [rooms, reservations] = await Promise.all([
+    Room.find().select('name roomNumber type floorNumber pricePerNight').lean(),
+    Reservation.find({
+      status: { $in: ['pending', 'confirmed', 'checked_in'] },
+      checkInDate: { $lt: end },
+      checkOutDate: { $gt: start },
+    }).select('room guest checkInDate checkOutDate status numberOfGuests').lean(),
+  ]);
+
+  res.json({ success: true, rooms, reservations, startDate: start, endDate: end });
 }
 
 export async function regenerateQR(req: Request, res: Response): Promise<void> {

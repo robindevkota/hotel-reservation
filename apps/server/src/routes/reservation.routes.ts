@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate.middleware';
 const router = Router();
 
 router.post('/', reservations.reservationValidation, validate, reservations.createReservation);
+router.post('/walk-in', ...requireStaff, adminOrStaff, reservations.walkInReservation);
 router.get('/', ...requireStaff, adminOrStaff, reservations.listReservations);
 router.get('/:id', ...requireStaff, adminOrStaff, reservations.getReservation);
 router.patch('/:id/confirm', ...requireStaff, adminOrStaff, reservations.confirmReservation);

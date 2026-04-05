@@ -5,7 +5,6 @@ import Bill from '../models/Bill';
 import Room from '../models/Room';
 import { AppError } from '../middleware/errorHandler';
 import { v4 as uuidv4 } from 'uuid';
-import { generateQRToken, generateQRDataUrl } from '../utils/generateQR';
 
 export async function checkIn(req: Request, res: Response): Promise<void> {
   const reservation = await Reservation.findById(req.params.reservationId).populate('room');
@@ -48,13 +47,10 @@ export async function checkIn(req: Request, res: Response): Promise<void> {
   guest.bill = bill._id as any;
   await guest.save();
 
-  // Update reservation status
+  // Update reservation status + mark room occupied
   reservation.status = 'checked_in';
   await reservation.save();
-
-  // Refresh room QR token for this guest
-  room.qrToken = generateQRToken();
-  room.qrCodeUrl = await generateQRDataUrl(room.qrToken, process.env.CLIENT_URL || 'http://localhost:3000');
+  room.isAvailable = false;
   await room.save();
 
   res.json({ success: true, guest, bill, qrToken: room.qrToken, qrCodeUrl: room.qrCodeUrl });
@@ -79,8 +75,9 @@ export async function checkOut(req: Request, res: Response): Promise<void> {
   guest.checkOutTime = new Date();
   await guest.save();
 
-  // Update reservation
+  // Update reservation + mark room available again
   await Reservation.findByIdAndUpdate(guest.reservation, { status: 'checked_out' });
+  await Room.findByIdAndUpdate(guest.room, { isAvailable: true });
 
   res.json({ success: true, bill });
 }

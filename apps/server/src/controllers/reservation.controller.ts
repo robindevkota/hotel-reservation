@@ -101,3 +101,47 @@ export async function cancelReservation(req: AuthRequest, res: Response): Promis
   await reservation.save();
   res.json({ success: true, reservation });
 }
+
+// Walk-in: create reservation + confirm in one step (admin only)
+export async function walkInReservation(req: Request, res: Response): Promise<void> {
+  const { guest, room: roomId, checkInDate, checkOutDate, numberOfGuests, specialRequests } = req.body;
+
+  const checkIn = new Date(checkInDate);
+  const checkOut = new Date(checkOutDate);
+  if (checkOut <= checkIn) throw new AppError('Check-out must be after check-in', 400);
+
+  const room = await Room.findById(roomId);
+  if (!room) throw new AppError('Room not found', 404);
+
+  // Check for conflicts — block walk-in if room has online reservation overlapping these dates
+  const conflict = await Reservation.findOne({
+    room: roomId,
+    status: { $in: ['confirmed', 'checked_in'] },
+    checkInDate: { $lt: checkOut },
+    checkOutDate: { $gt: checkIn },
+  });
+  if (conflict) {
+    throw new AppError(
+      `Room is already reserved for these dates (Reservation for ${conflict.guest.name}, ${new Date(conflict.checkInDate).toLocaleDateString()} – ${new Date(conflict.checkOutDate).toLocaleDateString()})`,
+      409
+    );
+  }
+
+  const totalNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+  const roomCharges = totalNights * room.pricePerNight;
+
+  // Create and immediately confirm reservation
+  const reservation = await Reservation.create({
+    guest,
+    room: roomId,
+    checkInDate: checkIn,
+    checkOutDate: checkOut,
+    numberOfGuests: numberOfGuests || 1,
+    specialRequests,
+    totalNights,
+    roomCharges,
+    status: 'confirmed', // skip pending for walk-ins
+  });
+
+  res.status(201).json({ success: true, reservation });
+}
