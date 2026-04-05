@@ -6,3 +6,8 @@ dist/
 *.log
 .turbo/
 apps/server/seeds/
+
+# Test output
+playwright-report/
+test-results/
+*.tsbuildinfo
