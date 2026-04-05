@@ -19,12 +19,15 @@ echo ""
 echo "🚀 Starting Server (port 5000) and Web (port 3000)..."
 echo ""
 
+# Capture root dir before any cd
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Start server in background
-cd apps/server && npm run dev &
+(cd "$ROOT_DIR/apps/server" && npm run dev) &
 SERVER_PID=$!
 
 # Start web in background
-cd ../web && npm run dev &
+(cd "$ROOT_DIR/apps/web" && npm run dev) &
 WEB_PID=$!
 
 echo "┌─────────────────────────────────────┐"

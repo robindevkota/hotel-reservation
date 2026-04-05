@@ -3,154 +3,118 @@ import React, { useEffect } from 'react';
 import api from '../../../../lib/api';
 import { useOrderStore } from '../../../../store/orderStore';
 import { useKitchenSocket } from '../../../../hooks/useSocket';
-import { StatusBadge } from '../../../../components/ui/Badge';
-import GoldDivider from '../../../../components/ui/GoldDivider';
 import toast from 'react-hot-toast';
+import { ChefHat, ArrowRight } from 'lucide-react';
+import { A, StatusPill, PageHeader, AdminTable, AdminRow, AdminTd, Spinner, EmptyRow, adminTableCss } from '../../_adminStyles';
 
-const STATUS_TRANSITIONS: Record<string, string> = {
-  pending: 'accepted',
-  accepted: 'preparing',
-  preparing: 'ready',
-  ready: 'delivering',
-  delivering: 'delivered',
-};
+const TRANSITIONS: Record<string,string> = { pending:'accepted', accepted:'preparing', preparing:'ready', ready:'delivering', delivering:'delivered' };
+const NEXT_LABEL: Record<string,string>  = { pending:'Accept', accepted:'Start Cooking', preparing:'Mark Ready', ready:'Send Out', delivering:'Delivered' };
 
-const NEXT_LABEL: Record<string, string> = {
-  pending: 'Accept',
-  accepted: 'Start Cooking',
-  preparing: 'Mark Ready',
-  ready: 'Send Out',
-  delivering: 'Mark Delivered',
-};
+const STATUS_ORDER = ['pending','accepted','preparing','ready','delivering'];
 
 export default function KitchenOrdersPage() {
   const { orders, setOrders, updateOrderStatus } = useOrderStore();
   useKitchenSocket();
 
-  useEffect(() => {
-    api.get('/orders').then(({ data }) => setOrders(data.orders));
-  }, [setOrders]);
+  useEffect(() => { api.get('/orders').then(({ data }) => setOrders(data.orders || [])); }, [setOrders]);
 
-  const handleAdvance = async (orderId: string, currentStatus: string) => {
-    const nextStatus = STATUS_TRANSITIONS[currentStatus];
-    if (!nextStatus) return;
-    try {
-      await api.patch(`/orders/${orderId}/status`, { status: nextStatus });
-      updateOrderStatus(orderId, nextStatus);
-      toast.success(`Order ${nextStatus}`);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed');
-    }
+  const advance = async (id: string, cur: string) => {
+    const next = TRANSITIONS[cur]; if (!next) return;
+    try { await api.patch(`/orders/${id}/status`, { status: next }); updateOrderStatus(id, next); toast.success(`Order ${next}`); }
+    catch(e:any){ toast.error(e.response?.data?.message||'Failed'); }
   };
-
-  const handleCancel = async (orderId: string) => {
+  const cancel = async (id: string) => {
     if (!confirm('Cancel this order?')) return;
-    try {
-      await api.patch(`/orders/${orderId}/cancel`, { reason: 'Cancelled by staff' });
-      updateOrderStatus(orderId, 'cancelled');
-      toast.success('Order cancelled');
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed');
-    }
+    try { await api.patch(`/orders/${id}/cancel`, { reason:'Cancelled by staff' }); updateOrderStatus(id,'cancelled'); toast.success('Cancelled'); }
+    catch(e:any){ toast.error(e.response?.data?.message||'Failed'); }
   };
 
-  const active = orders.filter((o) => !['delivered', 'cancelled'].includes(o.status));
-  const done = orders.filter((o) => ['delivered', 'cancelled'].includes(o.status));
+  const active = orders.filter(o => STATUS_ORDER.includes(o.status));
+  const done   = orders.filter(o => ['delivered','cancelled'].includes(o.status));
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <p className="font-[Cinzel] text-[#C9A84C] text-xs tracking-[0.4em] uppercase mb-1">Live Board</p>
-        <h1 className="font-[Cinzel_Decorative] text-[#0D1B3E] text-3xl">Kitchen Orders</h1>
-        <GoldDivider />
-        <p className="font-[Cinzel] text-[#5A6478] text-xs tracking-wider">Updates in real-time via Socket.io</p>
-      </div>
-
-      {/* Active Orders */}
-      {active.length === 0 ? (
-        <div className="text-center py-16 bg-white border border-[#0D1B3E]/10">
-          <div className="text-4xl text-[#C9A84C] mb-3">𓌀</div>
-          <p className="font-[Cinzel] text-[#5A6478] tracking-widest">No active orders</p>
+    <>
+      <style>{adminTableCss + `
+        .ord-card{background:#fff;border:1px solid hsl(35 25% 82%);overflow:hidden;transition:box-shadow 0.3s;}
+        .ord-card:hover{box-shadow:0 4px 20px -4px hsl(220 55% 18%/0.12);}
+        .adv-btn{background:linear-gradient(135deg,hsl(43 72% 55%),hsl(43 65% 72%));color:hsl(220 55% 18%);font-family:'Cinzel',serif;font-size:0.58rem;letter-spacing:0.12em;text-transform:uppercase;padding:0.35rem 0.875rem;border:none;cursor:pointer;font-weight:700;transition:opacity 0.2s;display:flex;align-items:center;gap:0.3rem;}
+        .adv-btn:hover{opacity:0.88;}
+      `}</style>
+      <div style={{ padding:'2rem', maxWidth:'1280px' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'2rem' }}>
+          <PageHeader eyebrow="Live Board" title="Kitchen Orders" />
+          <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:A.papyrus, padding:'0.75rem 1.25rem', border:`1px solid ${A.border}` }}>
+            <div style={{ width:'0.6rem', height:'0.6rem', borderRadius:'50%', background:'hsl(142 50% 45%)', boxShadow:'0 0 0 3px hsl(142 60% 85%)', animation:'pulse 2s infinite' }} />
+            <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
+            <span style={{ fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>Live via Socket</span>
+          </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
-          {active.map((order: any) => (
-            <div key={order._id} className="bg-white border border-[#C9A84C]/30 overflow-hidden">
-              <div className="bg-[#0D1B3E] px-4 py-3 flex justify-between items-center">
-                <div>
-                  <p className="font-[Cinzel] text-[#C9A84C] text-xs tracking-wider">Room {order.room?.roomNumber}</p>
-                  <p className="font-[Cinzel] text-[#F5ECD7]/50 text-[10px]">{new Date(order.placedAt).toLocaleTimeString()}</p>
+
+        {/* Active orders grid */}
+        {active.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'4rem 2rem', background:'#fff', border:`1px solid ${A.border}`, marginBottom:'2rem' }}>
+            <div style={{ display:'flex', justifyContent:'center', color:A.gold, marginBottom:'1rem' }}><ChefHat size={40} strokeWidth={1.2} /></div>
+            <p style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.muted }}>No active orders</p>
+          </div>
+        ) : (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))', gap:'1.25rem', marginBottom:'2.5rem' }}>
+            {active.map((order:any) => (
+              <div key={order._id} className="ord-card">
+                <div style={{ background:A.navy, padding:'0.875rem 1.25rem', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <div>
+                    <div style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.gold, marginBottom:'0.15rem' }}>Room {order.room?.roomNumber}</div>
+                    <div style={{ fontFamily:A.raleway, fontSize:'0.68rem', color:'rgba(245,236,215,0.5)' }}>{new Date(order.placedAt).toLocaleTimeString()}</div>
+                  </div>
+                  <StatusPill status={order.status} />
                 </div>
-                <StatusBadge status={order.status} />
-              </div>
-              <div className="p-4">
-                <div className="space-y-1 mb-4">
-                  {order.items?.map((item: any, i: number) => (
-                    <div key={i} className="flex justify-between text-sm">
-                      <span className="text-[#0D1B3E]">{item.quantity}× {item.menuItem?.name}</span>
-                      <span className="font-[Cinzel] text-[#C9A84C]">${(item.unitPrice * item.quantity).toFixed(2)}</span>
+                <div style={{ padding:'1rem 1.25rem' }}>
+                  <div style={{ marginBottom:'0.875rem' }}>
+                    {order.items?.map((item:any,i:number) => (
+                      <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'0.3rem 0', borderBottom:`1px solid ${A.border}` }}>
+                        <span style={{ fontFamily:A.raleway, fontSize:'0.8rem', color:A.navy }}>{item.quantity}× {item.menuItem?.name}</span>
+                        <span style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.gold }}>${(item.unitPrice*item.quantity).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {order.notes && <p style={{ fontFamily:A.cormo, fontStyle:'italic', fontSize:'0.82rem', color:A.muted, marginBottom:'0.875rem' }}>"{order.notes}"</p>}
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span style={{ fontFamily:A.cinzel, fontSize:'1.1rem', color:A.gold, fontWeight:700 }}>${order.totalAmount}</span>
+                    <div style={{ display:'flex', gap:'0.5rem' }}>
+                      {TRANSITIONS[order.status] && (
+                        <button className="adv-btn" onClick={()=>advance(order._id,order.status)}>
+                          {NEXT_LABEL[order.status]} <ArrowRight size={10} strokeWidth={2.5} />
+                        </button>
+                      )}
+                      {['pending','accepted'].includes(order.status) && (
+                        <button onClick={()=>cancel(order._id)} style={{ color:'hsl(0 60% 42%)', border:'1px solid hsl(0 60% 75%)', background:'hsl(0 70% 97%)', fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.35rem 0.75rem', cursor:'pointer' }}>Cancel</button>
+                      )}
                     </div>
-                  ))}
-                </div>
-                {order.notes && (
-                  <p className="text-[#5A6478] text-xs italic border-t border-[#0D1B3E]/10 pt-2 mb-3">"{order.notes}"</p>
-                )}
-                <div className="flex justify-between items-center">
-                  <span className="font-[Cinzel_Decorative] text-[#C9A84C] text-lg">${order.totalAmount}</span>
-                  <div className="flex gap-2">
-                    {STATUS_TRANSITIONS[order.status] && (
-                      <button
-                        onClick={() => handleAdvance(order._id, order.status)}
-                        className="font-[Cinzel] text-[9px] tracking-wider uppercase text-[#0D1B3E] bg-[#C9A84C] px-3 py-1.5 hover:bg-[#E8C97A] transition-colors"
-                      >
-                        {NEXT_LABEL[order.status]}
-                      </button>
-                    )}
-                    {['pending', 'accepted'].includes(order.status) && (
-                      <button
-                        onClick={() => handleCancel(order._id)}
-                        className="font-[Cinzel] text-[9px] tracking-wider uppercase text-red-600 border border-red-200 px-2 py-1 hover:bg-red-50"
-                      >
-                        Cancel
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Completed Orders */}
-      {done.length > 0 && (
-        <div>
-          <h2 className="font-[Cinzel] text-[#0D1B3E] text-xs tracking-widest uppercase mb-4">Completed / Cancelled</h2>
-          <div className="bg-white border border-[#0D1B3E]/10 overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-[#0D1B3E]/5">
-                <tr>
-                  {['Order ID', 'Room', 'Items', 'Total', 'Status', 'Time'].map((h) => (
-                    <th key={h} className="text-left px-4 py-2 font-[Cinzel] text-[#5A6478] tracking-widest uppercase text-[10px]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#0D1B3E]/5">
-                {done.map((o: any) => (
-                  <tr key={o._id} className="hover:bg-[#F5ECD7]">
-                    <td className="px-4 py-2 font-[Cinzel] text-[#5A6478]">#{String(o._id).slice(-6).toUpperCase()}</td>
-                    <td className="px-4 py-2">{o.room?.roomNumber}</td>
-                    <td className="px-4 py-2">{o.items?.length}</td>
-                    <td className="px-4 py-2 font-[Cinzel] text-[#C9A84C]">${o.totalAmount}</td>
-                    <td className="px-4 py-2"><StatusBadge status={o.status} /></td>
-                    <td className="px-4 py-2 text-[#5A6478]">{new Date(o.placedAt).toLocaleTimeString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            ))}
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* Completed table */}
+        {done.length > 0 && (
+          <>
+            <h2 style={{ fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, marginBottom:'1rem' }}>Completed / Cancelled</h2>
+            <AdminTable headers={['Order ID','Room','Items','Total','Status','Time']} minWidth={600}>
+              {done.map((o:any) => (
+                <AdminRow key={o._id}>
+                  <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.muted }}>#{String(o._id).slice(-6).toUpperCase()}</AdminTd>
+                  <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy }}>{o.room?.roomNumber}</AdminTd>
+                  <AdminTd>{o.items?.length}</AdminTd>
+                  <AdminTd style={{ fontFamily:A.cinzel, color:A.gold }}>${o.totalAmount}</AdminTd>
+                  <AdminTd><StatusPill status={o.status} /></AdminTd>
+                  <AdminTd>{new Date(o.placedAt).toLocaleTimeString()}</AdminTd>
+                </AdminRow>
+              ))}
+            </AdminTable>
+          </>
+        )}
+      </div>
+    </>
   );
 }

@@ -1,6 +1,22 @@
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { Users, BedDouble, ArrowRight, Star } from 'lucide-react';
+
+const S = {
+  gold: 'hsl(43 72% 55%)', goldLight: 'hsl(43 65% 72%)',
+  navy: 'hsl(220 55% 18%)', navyLight: 'hsl(220 40% 28%)',
+  cream: 'hsl(40 33% 96%)', papyrus: 'hsl(38 40% 92%)', muted: 'hsl(220 15% 40%)',
+  border: 'hsl(35 25% 82%)',
+  gradGold: 'linear-gradient(135deg, hsl(43 72% 55%), hsl(43 65% 72%))',
+  gradNavy: 'linear-gradient(135deg, hsl(220 55% 18%), hsl(220 40% 28%))',
+  divider: 'linear-gradient(90deg, transparent, hsl(43 72% 55%), transparent)',
+  cinzel: "'Cinzel', serif", cormo: "'Cormorant Garamond', serif", raleway: "'Raleway', sans-serif",
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  standard: 'Standard', deluxe: 'Deluxe', suite: 'Suite', royal: 'Royal',
+};
 
 async function getRooms() {
   try {
@@ -8,96 +24,117 @@ async function getRooms() {
       next: { revalidate: 60 },
     });
     if (!res.ok) return [];
-    const data = await res.json();
-    return data.rooms || [];
-  } catch {
-    return [];
-  }
+    return (await res.json()).rooms || [];
+  } catch { return []; }
 }
-
-const TYPE_LABELS: Record<string, string> = {
-  standard: 'Standard',
-  deluxe:   'Deluxe',
-  suite:    'Suite',
-  royal:    'Royal',
-};
 
 export default async function RoomsPage() {
   const rooms = await getRooms();
 
   return (
-    <div className="pt-20 min-h-screen bg-background">
-      {/* Header */}
-      <div className="bg-primary py-24 text-center">
-        <p className="font-elegant text-secondary text-lg tracking-[0.3em] uppercase mb-3">Our Collection</p>
-        <h1 className="font-display text-4xl md:text-5xl text-primary-foreground mb-6">Royal Chambers</h1>
-        <div className="w-24 h-px bg-gradient-gold mx-auto mb-6" />
-        <p className="font-elegant text-cream-dark/70 text-xl italic max-w-xl mx-auto px-6">
-          Each room is a tribute to Egyptian splendor — from the gods-blessed Standard to the legendary
-          Pharaoh&apos;s Royal Chamber.
-        </p>
-      </div>
+    <>
+      <style>{`
+        .rc{background:#fff;border:1px solid hsl(35 25% 82%);overflow:hidden;transition:all 0.4s ease;box-shadow:0 4px 24px -4px hsl(220 55% 18%/0.1);}
+        .rc:hover{border-color:hsl(43 72% 55%/0.5);box-shadow:0 4px 20px -4px hsl(43 72% 55%/0.25);transform:translateY(-2px);}
+        .rc:hover .rc-img{transform:scale(1.07);}
+        .rc-img{transition:transform 0.7s ease;width:100%;height:100%;object-fit:cover;display:block;}
+        .rc-btn{display:block;text-align:center;background:linear-gradient(135deg,hsl(220 55% 18%),hsl(220 40% 28%));color:hsl(43 72% 65%);font-family:'Cinzel',serif;font-size:0.68rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.875rem;transition:opacity 0.2s;}
+        .rc-btn:hover{opacity:0.88;}
+      `}</style>
 
-      <div className="container mx-auto px-4 py-16">
-        {rooms.length === 0 ? (
-          <div className="text-center py-24">
-            <p className="font-display text-muted-foreground tracking-wider">No rooms available at this time.</p>
+      <div style={{ paddingTop: '5rem', minHeight: '100vh', background: S.cream }}>
+        {/* Header */}
+        <div style={{ background: S.navy, padding: '5rem 1.5rem', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
+          <Image src="/hero-bg.jpg" alt="" fill style={{ objectFit: 'cover', opacity: 0.18 }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+          <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Our Collection</p>
+          <h1 style={{ fontFamily: S.cinzel, fontWeight: 600, fontSize: 'clamp(2rem, 5vw, 3.5rem)', color: S.goldLight, marginBottom: '1.5rem' }}>Royal Chambers</h1>
+          <div style={{ width: '6rem', height: '1px', background: S.divider, margin: '0 auto 1.5rem' }} />
+          <p style={{ fontFamily: S.cormo, fontStyle: 'italic', color: 'hsl(35 25% 88% / 0.7)', fontSize: '1.15rem', maxWidth: '36rem', margin: '0 auto' }}>
+            Each room is a tribute to Egyptian splendor — from the gods-blessed Standard to the legendary Pharaoh&apos;s Royal Chamber.
+          </p>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {rooms.map((room: any) => (
-              <Link key={room._id} href={`/rooms/${room.slug}`} className="group block">
-                <div className="bg-card border border-border hover:border-gold/50 transition-all duration-500 overflow-hidden shadow-royal hover:shadow-gold">
-                  <div className="relative h-64 overflow-hidden">
-                    <Image
-                      src={room.images?.[0] || '/room-deluxe.jpg'}
-                      alt={room.name}
-                      fill
-                      className="object-cover group-hover:scale-110 transition-transform duration-700"
-                    />
-                    <div className="absolute top-4 right-4 bg-primary/90 text-primary-foreground font-display text-sm px-4 py-2 tracking-wider">
-                      ${room.pricePerNight}
-                      <span className="text-xs text-cream-dark/70"> / night</span>
-                    </div>
-                    <div className="absolute top-4 left-4">
-                      <span className="bg-gradient-gold text-primary font-display text-[10px] tracking-widest uppercase px-3 py-1.5">
+        </div>
+
+        {/* Grid */}
+        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '4rem 1.5rem' }}>
+          {rooms.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '6rem 0' }}>
+              <p style={{ fontFamily: S.cinzel, color: S.muted, letterSpacing: '0.1em' }}>No rooms available at this time.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '2rem' }}>
+              {rooms.map((room: any) => (
+                <Link key={room._id} href={`/rooms/${room.slug}`} style={{ display: 'block', textDecoration: 'none' }}>
+                  <div className="rc">
+                    {/* Image */}
+                    <div style={{ position: 'relative', overflow: 'hidden', height: '15rem' }}>
+                      <Image src={room.images?.[0] || '/room-deluxe.jpg'} alt={room.name} fill className="rc-img" />
+                      {/* Type badge */}
+                      <div style={{ position: 'absolute', top: '0.875rem', left: '0.875rem', background: S.gradGold, color: S.navy, fontFamily: S.cinzel, fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.3rem 0.75rem', fontWeight: 700 }}>
                         {TYPE_LABELS[room.type] || room.type}
-                      </span>
-                    </div>
-                    {!room.isAvailable && (
-                      <div className="absolute inset-0 bg-primary/70 flex items-center justify-center">
-                        <span className="font-display text-primary-foreground tracking-widest uppercase text-sm">Unavailable</span>
                       </div>
-                    )}
-                  </div>
-
-                  <div className="p-6">
-                    <h2 className="font-display text-xl text-foreground mb-3">{room.name}</h2>
-                    <p className="font-body text-muted-foreground text-sm leading-relaxed line-clamp-2 mb-4">
-                      {room.description}
-                    </p>
-
-                    <div className="flex flex-wrap gap-2 mb-6">
-                      {room.amenities?.slice(0, 3).map((a: string) => (
-                        <span key={a} className="text-xs font-body bg-papyrus text-muted-foreground px-3 py-1">
-                          {a}
-                        </span>
-                      ))}
-                      {room.amenities?.length > 3 && (
-                        <span className="text-xs font-body text-secondary">+{room.amenities.length - 3}</span>
+                      {/* Price badge */}
+                      <div style={{ position: 'absolute', top: '0.875rem', right: '0.875rem', background: 'hsl(220 55% 18% / 0.92)', color: 'hsl(43 72% 65%)', fontFamily: S.cinzel, fontSize: '0.82rem', padding: '0.35rem 0.875rem', letterSpacing: '0.05em' }}>
+                        ${room.pricePerNight}<span style={{ fontSize: '0.65rem', color: 'hsl(35 25% 88% / 0.6)' }}> / night</span>
+                      </div>
+                      {!room.isAvailable && (
+                        <div style={{ position: 'absolute', inset: 0, background: 'hsl(220 55% 18% / 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span style={{ fontFamily: S.cinzel, color: S.cream, letterSpacing: '0.2em', textTransform: 'uppercase', fontSize: '0.85rem' }}>Unavailable</span>
+                        </div>
                       )}
                     </div>
 
-                    <div className="block text-center bg-gradient-navy text-primary-foreground font-display text-xs tracking-[0.2em] uppercase py-3 group-hover:opacity-90 transition-opacity">
-                      View Room →
+                    {/* Content */}
+                    <div style={{ padding: '1.5rem' }}>
+                      <h2 style={{ fontFamily: S.cinzel, fontWeight: 600, fontSize: '1.05rem', color: S.navy, marginBottom: '0.5rem' }}>{room.name}</h2>
+                      <p style={{ fontFamily: S.raleway, color: S.muted, fontSize: '0.83rem', lineHeight: 1.6, marginBottom: '1rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        {room.description}
+                      </p>
+
+                      {/* Quick stats */}
+                      <div style={{ display: 'flex', gap: '1.25rem', marginBottom: '1rem' }}>
+                        {room.capacity && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway, fontSize: '0.75rem', color: S.muted }}>
+                            <Users size={13} color={S.gold} strokeWidth={1.8} />
+                            {room.capacity} Guests
+                          </span>
+                        )}
+                        {room.type && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway, fontSize: '0.75rem', color: S.muted }}>
+                            <BedDouble size={13} color={S.gold} strokeWidth={1.8} />
+                            {TYPE_LABELS[room.type] || room.type}
+                          </span>
+                        )}
+                        {room.rating && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway, fontSize: '0.75rem', color: S.muted }}>
+                            <Star size={12} color={S.gold} strokeWidth={1.8} fill={S.gold} />
+                            {room.rating}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Amenity tags */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginBottom: '1.25rem' }}>
+                        {room.amenities?.slice(0, 3).map((a: string) => (
+                          <span key={a} style={{ fontFamily: S.raleway, fontSize: '0.68rem', background: S.papyrus, color: S.muted, padding: '0.2rem 0.6rem', border: `1px solid ${S.border}` }}>{a}</span>
+                        ))}
+                        {room.amenities?.length > 3 && (
+                          <span style={{ fontFamily: S.raleway, fontSize: '0.68rem', color: S.gold }}>+{room.amenities.length - 3}</span>
+                        )}
+                      </div>
+
+                      <div className="rc-btn" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                        View Room <ArrowRight size={13} strokeWidth={2} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

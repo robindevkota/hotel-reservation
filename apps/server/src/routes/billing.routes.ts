@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate.middleware';
 const router = Router();
 
 router.get('/my', ...requireGuest, billing.getMyBill);
+router.get('/reservation/:reservationId', ...requireStaff, adminOrStaff, billing.getBillByReservation);
 router.get('/:guestId', ...requireStaff, adminOrStaff, billing.getGuestBill);
 router.post('/:guestId/add', ...requireStaff, adminOrStaff, billing.manualChargeValidation, validate, billing.addManualCharge);
 

@@ -98,3 +98,22 @@ export function logout(_req: Request, res: Response): void {
 export async function getMe(req: AuthRequest, res: Response): Promise<void> {
   res.json({ success: true, user: req.user });
 }
+
+export const changePasswordValidation = [
+  body('currentPassword').notEmpty().withMessage('Current password required'),
+  body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters'),
+];
+
+export async function changePassword(req: AuthRequest, res: Response): Promise<void> {
+  const { currentPassword, newPassword } = req.body;
+  const user = await User.findById(req.user!.id).select('+password');
+  if (!user) throw new AppError('User not found', 404);
+
+  const valid = await user.comparePassword(currentPassword);
+  if (!valid) throw new AppError('Current password is incorrect', 400);
+
+  user.password = newPassword;
+  await user.save(); // triggers bcrypt pre-save hook
+
+  res.json({ success: true, message: 'Password updated successfully' });
+}

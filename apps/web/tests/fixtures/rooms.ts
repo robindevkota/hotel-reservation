@@ -1,0 +1,32 @@
+export const ROOMS = [
+  {
+    name: "Pharaoh's Suite",
+    slug: 'pharaoh-suite',
+    type: 'royal',
+    pricePerNight: 450,
+    capacity: 4,
+    description: 'The crown jewel of Royal Suites.',
+    roomNumber: '101',
+    floorNumber: 1,
+  },
+  {
+    name: 'Nile Deluxe',
+    slug: 'nile-deluxe',
+    type: 'deluxe',
+    pricePerNight: 320,
+    capacity: 2,
+    description: 'Elegant room with Nile view.',
+    roomNumber: '201',
+    floorNumber: 2,
+  },
+  {
+    name: 'Cleopatra Standard',
+    slug: 'cleopatra-standard',
+    type: 'standard',
+    pricePerNight: 180,
+    capacity: 2,
+    description: 'Comfortable standard room.',
+    roomNumber: '301',
+    floorNumber: 3,
+  },
+];

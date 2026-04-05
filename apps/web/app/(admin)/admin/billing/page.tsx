@@ -1,44 +1,45 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import api from '../../../../lib/api';
-import GoldDivider from '../../../../components/ui/GoldDivider';
-import { StatusBadge } from '../../../../components/ui/Badge';
-import Modal from '../../../../components/ui/Modal';
-import Input from '../../../../components/ui/Input';
-import Button from '../../../../components/ui/Button';
 import toast from 'react-hot-toast';
+import { X, Plus, DollarSign } from 'lucide-react';
+import { A, StatusPill, PageHeader, AdminTable, AdminRow, AdminTd, ActionBtn, GoldBtn, Spinner, EmptyRow, adminTableCss } from '../../_adminStyles';
 
 export default function AdminBillingPage() {
   const [reservations, setReservations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBill, setSelectedBill] = useState<any>(null);
+  const [selectedGuestId, setSelectedGuestId] = useState<string>('');
   const [chargeForm, setChargeForm] = useState({ description: '', amount: '' });
   const [paying, setPaying] = useState(false);
 
-  const fetch = () => {
-    api.get('/reservations?status=checked_in').then(({ data }) => {
-      setReservations(data.reservations);
-      setLoading(false);
-    });
+  const fetchData = () => {
+    api.get('/reservations?status=checked_in')
+      .then(({ data }) => { setReservations(data.reservations || []); setLoading(false); })
+      .catch(() => setLoading(false));
   };
 
-  useEffect(() => { fetch(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const viewBill = async (guestId: string) => {
-    const { data } = await api.get(`/billing/${guestId}`);
-    setSelectedBill(data.bill);
+  const viewBill = async (reservationId: string) => {
+    try {
+      const { data } = await api.get(`/billing/reservation/${reservationId}`);
+      setSelectedBill(data.bill);
+      setSelectedGuestId(data.guestId);
+    } catch(e: any) {
+      toast.error(e.response?.data?.message || 'No bill found for this reservation');
+    }
   };
 
-  const handleAddCharge = async (guestId: string) => {
+  const addCharge = async () => {
     if (!chargeForm.description || !chargeForm.amount) { toast.error('Fill all fields'); return; }
     try {
-      await api.post(`/billing/${guestId}/add`, { description: chargeForm.description, amount: Number(chargeForm.amount) });
+      await api.post(`/billing/${selectedGuestId}/add`, { description: chargeForm.description, amount: Number(chargeForm.amount) });
       toast.success('Charge added');
       setChargeForm({ description: '', amount: '' });
-      viewBill(guestId);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed');
-    }
+      const { data } = await api.get(`/billing/${selectedGuestId}`);
+      setSelectedBill(data.bill);
+    } catch(e:any) { toast.error(e.response?.data?.message || 'Failed'); }
   };
 
   const markCash = async (billId: string) => {
@@ -47,90 +48,125 @@ export default function AdminBillingPage() {
       await api.post('/payment/cash', { billId });
       toast.success('Marked as cash payment');
       setSelectedBill(null);
-      fetch();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed');
-    } finally {
-      setPaying(false);
-    }
+      fetchData();
+    } catch(e:any) { toast.error(e.response?.data?.message || 'Failed'); }
+    finally { setPaying(false); }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '0.625rem 0.875rem',
+    border: `1px solid ${A.border}`, outline: 'none',
+    fontFamily: A.raleway, fontSize: '0.82rem', color: A.navy,
+    background: '#fff', boxSizing: 'border-box',
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <p className="font-[Cinzel] text-[#C9A84C] text-xs tracking-[0.4em] uppercase mb-1">Billing</p>
-        <h1 className="font-[Cinzel_Decorative] text-[#0D1B3E] text-3xl">Guest Bills</h1>
-        <GoldDivider ornament="𓎛" />
-      </div>
+    <>
+      <style>{adminTableCss + `
+        .bill-input:focus{border-color:hsl(43 72% 55%)!important;}
+        .line-item:last-child{border-bottom:none!important;}
+      `}</style>
+      <div style={{ padding: '2rem', maxWidth: '1280px' }}>
+        <PageHeader eyebrow="Billing" title="Guest Bills" />
 
-      <div className="bg-white border border-[#0D1B3E]/10 overflow-x-auto">
-        <table className="w-full text-sm min-w-[600px]">
-          <thead className="bg-[#0D1B3E]">
-            <tr>
-              {['Guest', 'Room', 'Check-Out', 'Status', 'Actions'].map((h) => (
-                <th key={h} className="text-left px-4 py-3 font-[Cinzel] text-[#C9A84C] text-[10px] tracking-widest uppercase">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#0D1B3E]/5">
-            {loading ? (
-              <tr><td colSpan={5} className="text-center py-8"><div className="w-6 h-6 border-2 border-[#C9A84C] border-t-transparent rounded-full animate-spin mx-auto" /></td></tr>
-            ) : reservations.map((r: any) => (
-              <tr key={r._id} className="hover:bg-[#F5ECD7]">
-                <td className="px-4 py-3 font-[Cinzel] text-[#0D1B3E] text-xs">{r.guest?.name}</td>
-                <td className="px-4 py-3 text-[#5A6478] text-xs">{r.room?.name}</td>
-                <td className="px-4 py-3 text-[#5A6478] text-xs">{new Date(r.checkOutDate).toLocaleDateString()}</td>
-                <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                <td className="px-4 py-3">
-                  <button onClick={() => viewBill(r._id)} className="font-[Cinzel] text-[9px] tracking-wider uppercase text-blue-700 border border-blue-200 px-2 py-1 hover:bg-blue-50">View Bill</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <AdminTable headers={['Guest','Room','Check-Out','Status','Actions']} minWidth={600}>
+          {loading ? <Spinner />
+          : reservations.length === 0 ? <EmptyRow colSpan={5} message="No checked-in guests" />
+          : reservations.map((r:any) => (
+            <AdminRow key={r._id}>
+              <AdminTd>
+                <div style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy, marginBottom:'0.15rem' }}>{r.guest?.name}</div>
+                <div style={{ fontSize:'0.7rem', color:A.muted }}>{r.guest?.email}</div>
+              </AdminTd>
+              <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy }}>{r.room?.name || '—'}</AdminTd>
+              <AdminTd>{new Date(r.checkOutDate).toLocaleDateString()}</AdminTd>
+              <AdminTd><StatusPill status={r.status} /></AdminTd>
+              <AdminTd><ActionBtn variant="view" onClick={() => viewBill(r._id)}>View Bill</ActionBtn></AdminTd>
+            </AdminRow>
+          ))}
+        </AdminTable>
       </div>
 
       {/* Bill Modal */}
-      <Modal open={!!selectedBill} onClose={() => setSelectedBill(null)} title="Guest Bill" className="max-w-lg">
-        {selectedBill && (
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <span className="font-[Cinzel] text-[#0D1B3E] text-xs tracking-widest uppercase">Bill Status</span>
-              <StatusBadge status={selectedBill.status} />
-            </div>
-            <div className="bg-[#F5ECD7] p-4 mb-4 space-y-1">
-              {selectedBill.lineItems?.map((item: any, i: number) => (
-                <div key={i} className="flex justify-between text-sm">
-                  <span className="text-[#5A6478]">{item.description}</span>
-                  <span className="font-[Cinzel] text-[#0D1B3E]">${item.amount.toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
-            <GoldDivider />
-            <div className="flex justify-between items-center mb-4">
-              <span className="font-[Cinzel] text-[#0D1B3E] tracking-wider uppercase text-sm">Grand Total</span>
-              <span className="font-[Cinzel_Decorative] text-[#C9A84C] text-2xl">${selectedBill.grandTotal?.toFixed(2)}</span>
-            </div>
-
-            {selectedBill.status === 'open' && (
-              <div className="border-t border-[#0D1B3E]/10 pt-4 space-y-3">
-                <p className="font-[Cinzel] text-[#0D1B3E] text-xs tracking-widest uppercase">Add Manual Charge</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Input label="Description" value={chargeForm.description} onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })} />
-                  <Input label="Amount ($)" type="number" value={chargeForm.amount} onChange={(e) => setChargeForm({ ...chargeForm, amount: e.target.value })} />
-                </div>
-                <Button variant="secondary" size="sm" onClick={() => handleAddCharge(selectedBill.guest?._id)}>Add Charge</Button>
+      {selectedBill && (
+        <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:'1.5rem' }}>
+          <div style={{ position:'absolute', inset:0, background:'hsl(220 55% 18%/0.65)', backdropFilter:'blur(6px)' }} onClick={() => setSelectedBill(null)} />
+          <div style={{ position:'relative', width:'100%', maxWidth:'30rem', background:'#fff', border:`1px solid ${A.border}`, boxShadow:'0 25px 60px hsl(220 55% 8%/0.35)', maxHeight:'90vh', overflowY:'auto' }}>
+            {/* Modal header */}
+            <div style={{ background:A.navy, padding:'1.25rem 1.5rem', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <p style={{ fontFamily:A.cormo, color:A.gold, fontSize:'0.8rem', letterSpacing:'0.2em', textTransform:'uppercase', marginBottom:'0.2rem' }}>Guest Bill</p>
+                <h3 style={{ fontFamily:A.cinzel, fontSize:'1.1rem', color:'rgba(245,236,215,0.9)' }}>{selectedBill.guest?.name}</h3>
               </div>
-            )}
+              <button onClick={() => setSelectedBill(null)} style={{ background:'none', border:'none', color:'rgba(245,236,215,0.45)', cursor:'pointer', padding:'0.25rem' }}>
+                <X size={20} />
+              </button>
+            </div>
 
-            {selectedBill.status === 'pending_payment' && (
-              <Button variant="primary" loading={paying} className="w-full mt-4" onClick={() => markCash(selectedBill._id)}>
-                Mark as Cash Payment
-              </Button>
-            )}
+            <div style={{ padding:'1.5rem' }}>
+              {/* Status */}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1.25rem' }}>
+                <span style={{ fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.muted }}>Bill Status</span>
+                <StatusPill status={selectedBill.status} />
+              </div>
+
+              {/* Line items */}
+              <div style={{ background:A.papyrus, border:`1px solid ${A.border}`, marginBottom:'1.25rem' }}>
+                {selectedBill.lineItems?.map((item:any, i:number) => (
+                  <div key={i} className="line-item" style={{ display:'flex', justifyContent:'space-between', padding:'0.75rem 1rem', borderBottom:`1px solid ${A.border}` }}>
+                    <div>
+                      <div style={{ fontFamily:A.raleway, fontSize:'0.8rem', color:A.navy }}>{item.description}</div>
+                      <div style={{ fontFamily:A.raleway, fontSize:'0.68rem', color:A.muted, textTransform:'capitalize' }}>{item.type.replace('_',' ')}</div>
+                    </div>
+                    <span style={{ fontFamily:A.cinzel, fontSize:'0.85rem', color:A.navy, whiteSpace:'nowrap', marginLeft:'1rem' }}>${item.amount.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Totals */}
+              <div style={{ borderTop:`2px solid ${A.border}`, paddingTop:'1rem', marginBottom:'1.5rem' }}>
+                {[
+                  ['Subtotal', `$${selectedBill.totalAmount?.toFixed(2)}`],
+                  ['Tax (13%)', `$${selectedBill.taxAmount?.toFixed(2)}`],
+                ].map(([k,v]) => (
+                  <div key={k} style={{ display:'flex', justifyContent:'space-between', marginBottom:'0.4rem' }}>
+                    <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted }}>{k}</span>
+                    <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.navy }}>{v}</span>
+                  </div>
+                ))}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'0.75rem', paddingTop:'0.75rem', borderTop:`1px solid ${A.border}` }}>
+                  <span style={{ fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>Grand Total</span>
+                  <span style={{ fontFamily:A.cinzel, fontSize:'1.5rem', fontWeight:700, color:A.gold }}>${selectedBill.grandTotal?.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Add charge */}
+              {selectedBill.status === 'open' && (
+                <div style={{ borderTop:`1px solid ${A.border}`, paddingTop:'1.25rem', marginBottom:'1.25rem' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.875rem' }}>
+                    <Plus size={13} color={A.gold} strokeWidth={2} />
+                    <span style={{ fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>Add Manual Charge</span>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:'0.625rem' }}>
+                    <input className="bill-input" style={inputStyle} placeholder="Description" value={chargeForm.description} onChange={e => setChargeForm({...chargeForm, description:e.target.value})} />
+                    <input className="bill-input" style={{...inputStyle, width:'6rem'}} type="number" placeholder="$0" value={chargeForm.amount} onChange={e => setChargeForm({...chargeForm, amount:e.target.value})} />
+                  </div>
+                  <button onClick={() => addCharge()} style={{ marginTop:'0.625rem', display:'flex', alignItems:'center', gap:'0.4rem', color:'hsl(210 70% 35%)', border:'1px solid hsl(210 70% 75%)', background:'hsl(210 80% 97%)', fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.4rem 1rem', cursor:'pointer' }}>
+                    <DollarSign size={11} strokeWidth={2} /> Add Charge
+                  </button>
+                </div>
+              )}
+
+              {/* Pay button */}
+              {selectedBill.status === 'pending_payment' && (
+                <GoldBtn onClick={() => markCash(selectedBill._id)} disabled={paying}>
+                  {paying ? 'Processing...' : 'Mark as Cash Payment'}
+                </GoldBtn>
+              )}
+            </div>
           </div>
-        )}
-      </Modal>
-    </div>
+        </div>
+      )}
+    </>
   );
 }

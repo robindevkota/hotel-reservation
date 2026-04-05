@@ -1,84 +1,72 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import api from '../../../../lib/api';
-import GoldDivider from '../../../../components/ui/GoldDivider';
-import { StatusBadge } from '../../../../components/ui/Badge';
-import Button from '../../../../components/ui/Button';
 import toast from 'react-hot-toast';
+import { LogOut } from 'lucide-react';
+import { A, StatusPill, PageHeader, AdminTable, AdminRow, AdminTd, ActionBtn, Spinner, EmptyRow, adminTableCss } from '../../_adminStyles';
 
 export default function GuestsPage() {
   const [reservations, setReservations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [checkingOut, setCheckingOut] = useState<string | null>(null);
+  const [checkingOut, setCheckingOut] = useState<string|null>(null);
 
-  const fetch = () => {
-    api.get('/reservations?status=checked_in').then(({ data }) => {
-      setReservations(data.reservations);
-      setLoading(false);
-    });
+  const fetchData = () => {
+    api.get('/reservations?status=checked_in')
+      .then(({ data }) => { setReservations(data.reservations || []); setLoading(false); })
+      .catch(() => setLoading(false));
   };
 
-  useEffect(() => { fetch(); }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const handleCheckOut = async (guestId: string) => {
+  const handleCheckOut = async (id: string) => {
     if (!confirm('Initiate checkout for this guest?')) return;
-    setCheckingOut(guestId);
+    setCheckingOut(id);
     try {
-      await api.post(`/checkin/checkout/${guestId}`);
+      await api.post(`/checkin/checkout/${id}`);
       toast.success('Guest checked out — bill locked');
-      fetch();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Checkout failed');
-    } finally {
-      setCheckingOut(null);
-    }
+      fetchData();
+    } catch(e:any) {
+      toast.error(e.response?.data?.message || 'Checkout failed');
+    } finally { setCheckingOut(null); }
   };
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <p className="font-[Cinzel] text-[#C9A84C] text-xs tracking-[0.4em] uppercase mb-1">Current Guests</p>
-        <h1 className="font-[Cinzel_Decorative] text-[#0D1B3E] text-3xl">In-House Guests</h1>
-        <GoldDivider />
-      </div>
+    <>
+      <style>{adminTableCss}</style>
+      <div style={{ padding:'2rem', maxWidth:'1280px' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'2rem' }}>
+          <PageHeader eyebrow="Current Guests" title="In-House Guests" />
+          <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:A.papyrus, padding:'0.75rem 1.25rem', border:`1px solid ${A.border}` }}>
+            <div style={{ width:'0.6rem', height:'0.6rem', borderRadius:'50%', background:'hsl(142 50% 45%)', boxShadow:'0 0 0 3px hsl(142 60% 85%)' }} />
+            <span style={{ fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>{reservations.length} Checked In</span>
+          </div>
+        </div>
 
-      <div className="bg-white border border-[#0D1B3E]/10 overflow-x-auto">
-        <table className="w-full text-sm min-w-[600px]">
-          <thead className="bg-[#0D1B3E]">
-            <tr>
-              {['Guest', 'Room', 'Check-In', 'Check-Out', 'Actions'].map((h) => (
-                <th key={h} className="text-left px-4 py-3 font-[Cinzel] text-[#C9A84C] text-[10px] tracking-widest uppercase">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#0D1B3E]/5">
-            {loading ? (
-              <tr><td colSpan={5} className="text-center py-8"><div className="w-6 h-6 border-2 border-[#C9A84C] border-t-transparent rounded-full animate-spin mx-auto" /></td></tr>
-            ) : reservations.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-8 font-[Cinzel] text-[#5A6478] text-xs">No guests currently checked in</td></tr>
-            ) : reservations.map((r: any) => (
-              <tr key={r._id} className="hover:bg-[#F5ECD7]">
-                <td className="px-4 py-3">
-                  <p className="font-[Cinzel] text-[#0D1B3E] text-xs">{r.guest?.name}</p>
-                  <p className="text-[#5A6478] text-xs">{r.guest?.phone}</p>
-                </td>
-                <td className="px-4 py-3 font-[Cinzel] text-[#0D1B3E] text-xs">{r.room?.name || r.room?.roomNumber}</td>
-                <td className="px-4 py-3 text-[#5A6478] text-xs">{new Date(r.checkInDate).toLocaleDateString()}</td>
-                <td className="px-4 py-3 text-[#5A6478] text-xs">{new Date(r.checkOutDate).toLocaleDateString()}</td>
-                <td className="px-4 py-3">
-                  <button
-                    onClick={() => handleCheckOut(r._id)}
-                    disabled={checkingOut === r._id}
-                    className="font-[Cinzel] text-[9px] tracking-wider uppercase text-orange-600 border border-orange-200 px-3 py-1.5 hover:bg-orange-50 disabled:opacity-50"
-                  >
-                    {checkingOut === r._id ? 'Processing...' : 'Check Out'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <AdminTable headers={['Guest','Contact','Room','Check-In','Check-Out','Nights','Action']} minWidth={750}>
+          {loading ? <Spinner />
+          : reservations.length === 0 ? <EmptyRow colSpan={7} message="No guests currently checked in" />
+          : reservations.map((r:any) => (
+            <AdminRow key={r._id}>
+              <AdminTd>
+                <div style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy, marginBottom:'0.15rem' }}>{r.guest?.name}</div>
+                <div style={{ fontSize:'0.7rem', color:A.muted }}>{r.guest?.email}</div>
+              </AdminTd>
+              <AdminTd style={{ fontSize:'0.75rem' }}>{r.guest?.phone}</AdminTd>
+              <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy }}>{r.room?.name || r.room?.roomNumber || '—'}</AdminTd>
+              <AdminTd>{new Date(r.checkInDate).toLocaleDateString()}</AdminTd>
+              <AdminTd>{new Date(r.checkOutDate).toLocaleDateString()}</AdminTd>
+              <AdminTd style={{ fontFamily:A.cinzel, color:A.gold }}>{r.totalNights}</AdminTd>
+              <AdminTd>
+                <button onClick={() => handleCheckOut(r._id)} disabled={checkingOut === r._id}
+                  style={{ display:'flex', alignItems:'center', gap:'0.4rem', color:'hsl(38 80% 35%)', border:'1px solid hsl(38 80% 70%)', background:'hsl(38 90% 95%)', fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.35rem 0.75rem', cursor:'pointer', opacity: checkingOut===r._id ? 0.55 : 1 }}>
+                  <LogOut size={11} strokeWidth={2} />
+                  {checkingOut === r._id ? 'Processing...' : 'Check Out'}
+                </button>
+              </AdminTd>
+            </AdminRow>
+          ))}
+        </AdminTable>
       </div>
-    </div>
+    </>
   );
 }

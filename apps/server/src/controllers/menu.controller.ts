@@ -13,9 +13,11 @@ export const menuItemValidation = [
 ];
 
 export async function listMenuItems(req: Request, res: Response): Promise<void> {
-  const { category } = req.query;
-  const filter: Record<string, unknown> = { isAvailable: true };
-  if (category) filter.category = category;
+  const { category, all } = req.query;
+  const filter: Record<string, unknown> = {};
+  // Public guest view only shows available items; admin passes ?all=true
+  if (!all) filter.isAvailable = true;
+  if (category && category !== 'all') filter.category = category;
 
   const items = await MenuItem.find(filter).sort('category name');
   res.json({ success: true, items });

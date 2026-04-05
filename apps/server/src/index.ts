@@ -24,6 +24,7 @@ import orderRoutes from './routes/order.routes';
 import spaRoutes from './routes/spa.routes';
 import billingRoutes from './routes/billing.routes';
 import paymentRoutes from './routes/payment.routes';
+import analyticsRoutes from './routes/analytics.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -50,7 +51,7 @@ app.use(morgan(process.env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 // Global rate limiter
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: 200,
+  max: process.env.NODE_ENV === 'test' ? 10000 : 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
@@ -60,7 +61,7 @@ app.use(globalLimiter);
 // Stricter auth rate limiter
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: process.env.NODE_ENV === 'test' ? 1000 : 50,
   message: { error: 'Too many auth attempts, please try again later.' },
 });
 
@@ -75,6 +76,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/spa', spaRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 

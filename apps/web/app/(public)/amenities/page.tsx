@@ -1,13 +1,23 @@
 import React from 'react';
 import Image from 'next/image';
+import { Sparkles, Waves, UtensilsCrossed, ConciergeBell, Wind, Dumbbell } from 'lucide-react';
+
+const S = {
+  gold: 'hsl(43 72% 55%)', goldLight: 'hsl(43 65% 72%)',
+  navy: 'hsl(220 55% 18%)',
+  cream: 'hsl(40 33% 96%)', papyrus: 'hsl(38 40% 92%)', muted: 'hsl(220 15% 40%)',
+  border: 'hsl(35 25% 82%)',
+  divider: 'linear-gradient(90deg, transparent, hsl(43 72% 55%), transparent)',
+  cinzel: "'Cinzel', serif", cormo: "'Cormorant Garamond', serif", raleway: "'Raleway', sans-serif",
+};
 
 const AMENITIES = [
-  { icon: '𓆉', title: "Cleopatra's Spa",  desc: 'Six ancient-inspired treatments. Milk & Honey rituals, Nile Stone therapy, couples journeys, and more.' },
-  { icon: '🏊', title: 'Infinity Pool',     desc: 'A rooftop infinity pool with panoramic city views, heated year-round and styled with mosaic hieroglyphic tiles.' },
-  { icon: '𓌀', title: 'Royal Dining',      desc: 'In-room dining and our main restaurant serving curated Egyptian cuisine around the clock.' },
-  { icon: '𓏤', title: 'Butler Service',    desc: '24/7 personal butler service for all Royal Suite guests. Every need anticipated, every request fulfilled.' },
-  { icon: '🧖', title: 'Steam & Sauna',    desc: 'Eucalyptus steam rooms and cedar saunas. The perfect prelude to your spa treatment.' },
-  { icon: '🏋️', title: 'Royal Fitness',    desc: 'State-of-the-art gym with personal trainers available on request. Open 24 hours.' },
+  { Icon: Sparkles,      title: "Cleopatra's Spa",  desc: "Six ancient-inspired treatments. Milk & Honey rituals, Nile Stone therapy, couples journeys, and more." },
+  { Icon: Waves,         title: 'Infinity Pool',     desc: 'A rooftop infinity pool with panoramic city views, heated year-round and styled with mosaic hieroglyphic tiles.' },
+  { Icon: UtensilsCrossed, title: 'Royal Dining',   desc: 'In-room dining and our main restaurant serving curated Egyptian cuisine around the clock.' },
+  { Icon: ConciergeBell, title: 'Butler Service',   desc: '24/7 personal butler service for all Royal Suite guests. Every need anticipated, every request fulfilled.' },
+  { Icon: Wind,          title: 'Steam & Sauna',    desc: 'Eucalyptus steam rooms and cedar saunas. The perfect prelude to your spa treatment.' },
+  { Icon: Dumbbell,      title: 'Royal Fitness',    desc: 'State-of-the-art gym with personal trainers available on request. Open 24 hours.' },
 ];
 
 async function getSpaServices() {
@@ -16,8 +26,7 @@ async function getSpaServices() {
       next: { revalidate: 60 },
     });
     if (!res.ok) return [];
-    const data = await res.json();
-    return data.services || [];
+    return (await res.json()).services || [];
   } catch { return []; }
 }
 
@@ -25,153 +34,105 @@ export default async function AmenitiesPage() {
   const services = await getSpaServices();
 
   return (
-    <div className="pt-20 min-h-screen bg-background">
-      {/* Header */}
-      <div className="relative bg-primary py-24 overflow-hidden">
-        <Image
-          src="/spa.jpg"
-          alt="Royal Suites Spa"
-          fill
-          className="object-cover opacity-30"
-        />
-        <div className="relative z-10 text-center px-4">
-          <p className="font-elegant text-secondary text-lg tracking-[0.3em] uppercase mb-3">Beyond the Room</p>
-          <h1 className="font-display text-4xl md:text-5xl text-primary-foreground mb-6">Amenities &amp; Spa</h1>
-          <div className="w-24 h-px bg-gradient-gold mx-auto" />
-        </div>
-      </div>
+    <>
+      <style>{`
+        .am-card{background:#fff;border:1px solid hsl(35 25% 82%);padding:1.5rem;transition:border-color 0.3s,box-shadow 0.3s;}
+        .am-card:hover{border-color:hsl(43 72% 55%/0.5);box-shadow:0 4px 16px -4px hsl(43 72% 55%/0.2);}
+        .spa-row{display:flex;align-items:center;gap:1rem;padding:1rem;background:#fff;border:1px solid hsl(35 25% 82%);transition:border-color 0.3s;}
+        .spa-row:hover{border-color:hsl(43 72% 55%/0.4);}
+        .spa-thumb{width:80px;height:80px;flex-shrink:0;overflow:hidden;position:relative;}
+        .spa-thumb img{transition:transform 0.5s ease;}
+        .spa-row:hover .spa-thumb img{transform:scale(1.1);}
+      `}</style>
 
-      {/* Hotel Amenities */}
-      <section className="py-24 bg-background">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <p className="font-elegant text-secondary text-lg tracking-[0.3em] uppercase mb-3">Experience</p>
-            <h2 className="font-display text-3xl md:text-4xl text-foreground mb-4">Hotel Facilities</h2>
-            <div className="w-24 h-px bg-gradient-gold mx-auto" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {AMENITIES.map(({ icon, title, desc }) => (
-              <div
-                key={title}
-                className="p-8 bg-card border border-border hover:border-gold/50 transition-all duration-500 hover:shadow-gold group"
-              >
-                <div className="text-3xl text-secondary mb-4 group-hover:scale-110 transition-transform duration-300">{icon}</div>
-                <h3 className="font-display text-sm tracking-wider uppercase mb-2 text-foreground">{title}</h3>
-                <p className="font-body text-muted-foreground text-sm leading-relaxed">{desc}</p>
-              </div>
-            ))}
+      <div style={{ paddingTop: '5rem', minHeight: '100vh', background: S.cream }}>
+        {/* Header */}
+        <div style={{ position: 'relative', background: S.navy, padding: '5rem 1.5rem', textAlign: 'center', overflow: 'hidden' }}>
+          <Image src="/spa.jpg" alt="" fill style={{ objectFit: 'cover', opacity: 0.25 }} />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Beyond the Room</p>
+            <h1 style={{ fontFamily: S.cinzel, fontWeight: 600, fontSize: 'clamp(2rem, 5vw, 3.5rem)', color: S.goldLight, marginBottom: '1.5rem' }}>Amenities &amp; Spa</h1>
+            <div style={{ width: '6rem', height: '1px', background: S.divider, margin: '0 auto' }} />
           </div>
         </div>
-      </section>
 
-      {/* Spa — split image + grid */}
-      <section className="py-24 bg-papyrus">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <p className="font-elegant text-secondary text-lg tracking-[0.3em] uppercase mb-3">Ancient Rituals</p>
-            <h2 className="font-display text-3xl md:text-4xl text-foreground mb-4">Cleopatra&apos;s Spa</h2>
-            <div className="w-24 h-px bg-gradient-gold mx-auto mb-6" />
-            <p className="font-elegant text-muted-foreground text-lg italic max-w-xl mx-auto">
-              Immerse yourself in healing waters surrounded by golden mosaics and ancient artistry.
-            </p>
-          </div>
-
-          <div className="grid lg:grid-cols-2 gap-12 items-center mb-16">
-            <div className="relative overflow-hidden group">
-              <Image
-                src="/spa.jpg"
-                alt="Cleopatra Spa"
-                width={900}
-                height={600}
-                className="w-full h-80 lg:h-[450px] object-cover group-hover:scale-105 transition-transform duration-700"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-primary/60 to-transparent" />
-              <div className="absolute bottom-6 left-6 right-6">
-                <h3 className="font-display text-xl text-cream mb-1">The Pharaoh&apos;s Spa</h3>
-                <p className="font-elegant text-cream-dark/80 italic text-sm">Where ancient wisdom meets modern luxury</p>
-              </div>
+        {/* Hotel Facilities */}
+        <section style={{ padding: '5rem 0', background: S.cream }}>
+          <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1.5rem' }}>
+            <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+              <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Experience</p>
+              <h2 style={{ fontFamily: S.cinzel, fontWeight: 600, fontSize: 'clamp(1.6rem, 4vw, 2.8rem)', color: S.navy, marginBottom: '1rem' }}>Hotel Facilities</h2>
+              <div style={{ width: '6rem', height: '1px', background: S.divider, margin: '0 auto' }} />
             </div>
 
-            {services.length > 0 ? (
-              <div className="grid grid-cols-1 gap-4">
-                {services.slice(0, 4).map((service: any) => (
-                  <div
-                    key={service._id}
-                    className="flex items-center gap-4 p-4 bg-card border border-border hover:border-gold/40 transition-all duration-300 group"
-                  >
-                    <div className="relative w-20 h-20 flex-shrink-0 overflow-hidden">
-                      <Image
-                        src={service.image || '/spa.jpg'}
-                        alt={service.name}
-                        fill
-                        className="object-cover group-hover:scale-110 transition-transform duration-500"
-                      />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.25rem' }}>
+              {AMENITIES.map(({ Icon, title, desc }) => (
+                <div key={title} className="am-card">
+                  <div style={{ color: S.gold, marginBottom: '0.75rem' }}><Icon size={28} strokeWidth={1.5} /></div>
+                  <h3 style={{ fontFamily: S.cinzel, fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: S.navy, marginBottom: '0.5rem' }}>{title}</h3>
+                  <p style={{ fontFamily: S.raleway, fontSize: '0.82rem', color: S.muted, lineHeight: 1.65 }}>{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Cleopatra's Spa */}
+        <section style={{ padding: '5rem 0', background: S.papyrus }}>
+          <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1.5rem' }}>
+            <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+              <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Ancient Rituals</p>
+              <h2 style={{ fontFamily: S.cinzel, fontWeight: 600, fontSize: 'clamp(1.6rem, 4vw, 2.8rem)', color: S.navy, marginBottom: '1rem' }}>Cleopatra&apos;s Spa</h2>
+              <div style={{ width: '6rem', height: '1px', background: S.divider, margin: '0 auto 1.5rem' }} />
+              <p style={{ fontFamily: S.cormo, fontStyle: 'italic', color: S.muted, fontSize: '1.1rem', maxWidth: '36rem', margin: '0 auto' }}>
+                Immerse yourself in healing waters surrounded by golden mosaics and ancient artistry.
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem', alignItems: 'start' }}>
+              {/* Spa image */}
+              <div style={{ position: 'relative', overflow: 'hidden' }}>
+                <Image src="/spa.jpg" alt="Cleopatra's Spa" width={900} height={600}
+                  style={{ width: '100%', height: '480px', objectFit: 'cover', display: 'block' }} />
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, hsl(220 55% 18% / 0.65) 0%, transparent 55%)' }} />
+                <div style={{ position: 'absolute', bottom: '1.5rem', left: '1.5rem', right: '1.5rem' }}>
+                  <h3 style={{ fontFamily: S.cinzel, color: S.cream, fontSize: '1.2rem', marginBottom: '0.35rem' }}>The Pharaoh&apos;s Spa</h3>
+                  <p style={{ fontFamily: S.cormo, fontStyle: 'italic', color: 'hsl(35 25% 88% / 0.8)', fontSize: '0.9rem' }}>Where ancient wisdom meets modern luxury</p>
+                </div>
+              </div>
+
+              {/* Service list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                {(services.length > 0 ? services : [
+                  { _id: '1', name: "Cleopatra's Milk & Honey Ritual", description: "The legendary beauty ritual of ancient Egypt. A full-body exfoliation with raw honey scrub...", duration: 90,  price: 320, image: '/spa.jpg' },
+                  { _id: '2', name: 'Nile Stone Hot Therapy',           description: 'Smooth basalt stones heated in Nile-inspired mineral water, placed along energy...', duration: 75,  price: 240, image: '/spa.jpg' },
+                  { _id: '3', name: "Pharaoh's Deep Tissue Massage",    description: 'A powerful deep-tissue massage using ancient Egyptian pressure techniques, targeting...', duration: 60,  price: 180, image: '/spa.jpg' },
+                  { _id: '4', name: 'Desert Rose Facial',               description: 'A rejuvenating facial using desert rose extract, 24K gold serum, and Egyptian frankincen...', duration: 60, price: 195, image: '/spa.jpg' },
+                  { _id: '5', name: "Couples' Golden Journey",          description: 'A shared ritual for two — golden oil massage, rose petal bath, and champagne finish.',  duration: 120, price: 520, image: '/spa.jpg' },
+                  { _id: '6', name: 'Royal Hammam Experience',          description: 'Traditional Turkish-Egyptian steam bath with kessa glove exfoliation and argan oil.',  duration: 75,  price: 210, image: '/spa.jpg' },
+                ]).map((svc: any) => (
+                  <div key={svc._id} className="spa-row">
+                    <div className="spa-thumb">
+                      <Image src={svc.image || '/spa.jpg'} alt={svc.name} fill style={{ objectFit: 'cover' }} />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-display text-sm text-foreground mb-1">{service.name}</h4>
-                      <p className="font-body text-xs text-muted-foreground line-clamp-1 mb-2">{service.description}</p>
-                      <div className="flex items-center gap-3">
-                        <span className="font-body text-xs text-muted-foreground">{service.duration} min</span>
-                        <span className="font-display text-sm text-secondary">${service.price}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <h4 style={{ fontFamily: S.cinzel, fontSize: '0.82rem', color: S.navy, marginBottom: '0.3rem' }}>{svc.name}</h4>
+                      <p style={{ fontFamily: S.raleway, fontSize: '0.75rem', color: S.muted, marginBottom: '0.4rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{svc.description}</p>
+                      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                        <span style={{ fontFamily: S.raleway, fontSize: '0.72rem', color: S.muted }}>{svc.duration} min</span>
+                        <span style={{ fontFamily: S.cinzel, fontSize: '0.88rem', color: S.gold, fontWeight: 600 }}>${svc.price}</span>
                       </div>
                     </div>
                   </div>
                 ))}
+                <p style={{ fontFamily: S.raleway, fontSize: '0.75rem', color: S.muted, textAlign: 'center', marginTop: '0.5rem' }}>
+                  Spa bookings available after check-in via your room&apos;s QR code
+                </p>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { name: 'Milk & Honey Ritual', duration: 90, price: 180 },
-                  { name: 'Nile Stone Therapy',  duration: 75, price: 150 },
-                  { name: "Cleopatra's Wrap",    duration: 60, price: 120 },
-                  { name: "Couples' Journey",    duration: 120, price: 280 },
-                ].map((s) => (
-                  <div key={s.name} className="p-5 bg-card border border-border hover:border-gold/40 transition-all duration-300 text-center">
-                    <h4 className="font-display text-xs text-foreground mb-2">{s.name}</h4>
-                    <p className="font-body text-xs text-muted-foreground mb-2">{s.duration} min</p>
-                    <p className="font-display text-sm text-secondary">${s.price}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {services.length > 4 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {services.slice(4).map((service: any) => (
-                <div
-                  key={service._id}
-                  className="bg-card border border-border overflow-hidden hover:border-gold/50 hover:shadow-gold transition-all duration-500 group"
-                >
-                  <div className="relative h-48 overflow-hidden">
-                    <Image
-                      src={service.image || '/spa.jpg'}
-                      alt={service.name}
-                      fill
-                      className="object-cover group-hover:scale-110 transition-transform duration-700"
-                    />
-                  </div>
-                  <div className="p-5">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-display text-sm text-foreground">{service.name}</h3>
-                      <span className="font-body text-xs text-secondary bg-secondary/10 px-2 py-1 capitalize">{service.category}</span>
-                    </div>
-                    <p className="font-body text-muted-foreground text-xs mb-4 line-clamp-2">{service.description}</p>
-                    <div className="flex justify-between items-center">
-                      <span className="font-body text-xs text-muted-foreground">{service.duration} min</span>
-                      <span className="font-display text-secondary">${service.price}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
             </div>
-          )}
-
-          <p className="text-center font-body text-muted-foreground text-sm mt-10">
-            Spa bookings available after check-in via your room&apos;s QR code
-          </p>
-        </div>
-      </section>
-    </div>
+          </div>
+        </section>
+      </div>
+    </>
   );
 }

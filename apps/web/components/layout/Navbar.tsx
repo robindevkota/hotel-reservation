@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { Phone } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useCartStore } from '../../store/cartStore';
 
@@ -27,12 +28,14 @@ export default function Navbar() {
 
   return (
     <nav
-      className={[
-        'fixed top-0 left-0 right-0 z-50 transition-all duration-500',
-        scrolled
-          ? 'bg-primary/95 backdrop-blur-md border-b border-gold/20 shadow-royal'
-          : 'bg-primary/80 backdrop-blur-sm border-b border-gold/10',
-      ].join(' ')}
+      style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
+        transition: 'all 0.5s ease',
+        background: scrolled ? 'hsl(220 55% 18% / 0.97)' : 'hsl(220 55% 18% / 0.85)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: scrolled ? '1px solid hsl(43 72% 55% / 0.25)' : '1px solid hsl(43 72% 55% / 0.12)',
+        boxShadow: scrolled ? '0 4px 24px -4px hsl(220 55% 8% / 0.4)' : 'none',
+      }}
     >
       <div className="container mx-auto flex items-center justify-between py-3 px-4">
         {/* Logo */}
@@ -114,7 +117,7 @@ export default function Navbar() {
                 href="tel:+12345678890"
                 style={{ fontFamily: "'Raleway', sans-serif", fontSize: '0.72rem', color: 'rgba(245, 236, 215, 0.7)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.01 2.18 2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 7.91a16 16 0 006.18 6.18l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+                <Phone size={13} strokeWidth={1.5} />
                 +1 234 567 890
               </a>
               <Link
@@ -155,7 +158,7 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       {menuOpen && (
-        <div className="lg:hidden bg-primary border-t border-gold/20 px-6 py-6 space-y-4">
+        <div className="lg:hidden px-6 py-6 space-y-4" style={{ background: 'hsl(220 55% 14%)', borderTop: '1px solid hsl(43 72% 55% / 0.2)' }}>
           {NAV_LINKS.map(({ href, label }) => (
             <Link
               key={href}
