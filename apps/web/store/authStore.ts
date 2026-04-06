@@ -2,13 +2,15 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import api from '../lib/api';
 
-export type UserRole = 'admin' | 'staff' | 'kitchen' | 'waiter';
+export type UserRole = 'super_admin' | 'admin';
+export type Department = 'spa' | 'food' | 'front_desk' | null;
 
 export interface StaffUser {
   id: string;
   name: string;
   email: string;
   role: UserRole;
+  department: Department;
 }
 
 export interface GuestUser {
@@ -30,6 +32,7 @@ interface AuthState {
   logout: () => Promise<void>;
   setUser: (user: AuthUser, token: string) => void;
   isAdmin: () => boolean;
+  isSuperAdmin: () => boolean;
   isStaff: () => boolean;
   isGuest: () => boolean;
 }
@@ -73,7 +76,8 @@ export const useAuthStore = create<AuthState>()(
         set({ user, accessToken: token });
       },
 
-      isAdmin: () => get().user?.type === 'staff' && (get().user as StaffUser & {type:'staff'})?.role === 'admin',
+      isAdmin: () => get().user?.type === 'staff' && ['super_admin', 'admin'].includes((get().user as StaffUser & {type:'staff'})?.role),
+      isSuperAdmin: () => get().user?.type === 'staff' && (get().user as StaffUser & {type:'staff'})?.role === 'super_admin',
       isStaff: () => get().user?.type === 'staff',
       isGuest: () => get().user?.type === 'guest',
     }),

@@ -5,7 +5,7 @@ import { IGuest } from '../models/Guest';
 export function signAccessToken(user: IUser): string {
   const opts: SignOptions = { expiresIn: (process.env.JWT_EXPIRES_IN || '15m') as SignOptions['expiresIn'] };
   return jwt.sign(
-    { id: user._id, role: user.role, type: 'staff' },
+    { id: user._id, role: user.role, department: user.department ?? null, type: 'staff' },
     process.env.JWT_SECRET!,
     opts
   );

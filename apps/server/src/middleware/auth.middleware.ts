@@ -1,13 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AppError } from './errorHandler';
-import User, { IUser, UserRole } from '../models/User';
+import User, { IUser, UserRole, Department } from '../models/User';
 import Guest, { IGuest } from '../models/Guest';
 
 export interface AuthRequest extends Request {
   user?: IUser;
   guest?: IGuest;
   userRole?: UserRole | 'guest';
+  userDepartment?: Department;
 }
 
 export function protect(req: AuthRequest, _res: Response, next: NextFunction): void {
@@ -43,6 +44,7 @@ export function loadStaffUser(req: AuthRequest, _res: Response, next: NextFuncti
       if (!user || !user.isActive) throw new AppError('User not found or deactivated', 401);
       req.user = user;
       req.userRole = user.role;
+      req.userDepartment = user.department ?? null;
       next();
     })
     .catch(next);

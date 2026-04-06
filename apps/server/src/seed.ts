@@ -449,16 +449,21 @@ async function seed() {
 
   console.log(`✅ ${spaServices.length} spa services seeded`);
 
-  // ─── ADMIN USER ───────────────────────────────────────────────────────
-  const existingAdmin = await User.findOne({ email: 'admin@royalsuites.com' });
-  if (!existingAdmin) {
+  // ─── DROP OLD ADMIN ───────────────────────────────────────────────────
+  const deleted = await User.deleteMany({ email: 'admin@royalsuites.com' });
+  if (deleted.deletedCount > 0) console.log('🗑️  Old admin user removed');
+
+  // ─── SUPER ADMIN (seeded once, no department) ─────────────────────────
+  const existingSuperAdmin = await User.findOne({ role: 'super_admin' });
+  if (!existingSuperAdmin) {
     await User.create({
-      name: 'Royal Admin',
-      email: 'admin@royalsuites.com',
+      name: 'Royal Super Admin',
+      email: 'superadmin@royalsuites.com',
       password: 'RoyalAdmin@123',
-      role: 'admin',
+      role: 'super_admin',
+      department: null,
     });
-    console.log('✅ Admin user created: admin@royalsuites.com / RoyalAdmin@123');
+    console.log('✅ Super admin created: superadmin@royalsuites.com / RoyalAdmin@123');
   }
 
   console.log('🏰 Seed complete!');

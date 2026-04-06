@@ -8,21 +8,24 @@ import { useEffect } from 'react';
 import {
   LayoutDashboard, CalendarCheck, BedDouble, UtensilsCrossed,
   Flower2, Users, BookOpen, Receipt, LogOut, Menu, UserCircle,
-  Package2,
+  Package2, ShieldPlus,
 } from 'lucide-react';
+import { Department } from '../../store/authStore';
 
+// departments: null = visible to everyone (super_admin sees all; admin sees only their dept)
 const NAV = [
-  { href: '/admin/dashboard',    label: 'Dashboard',     icon: LayoutDashboard,  roles: ['admin','staff'] },
-  { href: '/admin/reservations', label: 'Reservations',  icon: CalendarCheck,    roles: ['admin','staff'] },
-  { href: '/admin/rooms',        label: 'Rooms',         icon: BedDouble,        roles: ['admin'] },
-  { href: '/admin/orders',       label: 'Kitchen Board', icon: UtensilsCrossed,  roles: ['admin','staff','kitchen','waiter'] },
-  { href: '/admin/spa',          label: 'Spa Schedule',  icon: Flower2,          roles: ['admin','staff'] },
-  { href: '/admin/guests',       label: 'Guests',        icon: Users,            roles: ['admin','staff'] },
-  { href: '/admin/menu',         label: 'Menu',          icon: BookOpen,         roles: ['admin'] },
-  { href: '/admin/inventory',    label: 'Inventory',     icon: Package2,         roles: ['admin'] },
-  { href: '/admin/billing',      label: 'Billing',       icon: Receipt,          roles: ['admin','staff'] },
-  { href: '/admin/profile',      label: 'Profile',       icon: UserCircle,       roles: ['admin','staff','kitchen','waiter'] },
-];
+  { href: '/admin/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, departments: null },
+  { href: '/admin/reservations', label: 'Reservations', icon: CalendarCheck,   departments: ['front_desk'] },
+  { href: '/admin/rooms',        label: 'Rooms',        icon: BedDouble,       departments: ['front_desk'] },
+  { href: '/admin/guests',       label: 'Guests',       icon: Users,           departments: ['front_desk'] },
+  { href: '/admin/billing',      label: 'Billing',      icon: Receipt,         departments: ['front_desk'] },
+  { href: '/admin/orders',       label: 'Kitchen Board',icon: UtensilsCrossed, departments: ['food'] },
+  { href: '/admin/menu',         label: 'Menu',         icon: BookOpen,        departments: ['food'] },
+  { href: '/admin/inventory',    label: 'Inventory',    icon: Package2,        departments: ['food'] },
+  { href: '/admin/spa',          label: 'Spa Schedule', icon: Flower2,         departments: ['spa'] },
+  { href: '/admin/profile',      label: 'Profile',      icon: UserCircle,      departments: null },
+  { href: '/register',           label: 'Add Admin',    icon: ShieldPlus,      departments: ['__super_admin__'] },
+] as { href: string; label: string; icon: React.ElementType; departments: string[] | null }[];
 
 const GOLD   = 'hsl(43 72% 55%)';
 const NAVY   = 'hsl(220 55% 18%)';
@@ -34,8 +37,13 @@ const CINZEL = "'Cinzel', serif";
 function Sidebar({ collapsed }: { collapsed: boolean }) {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
-  const role = (user as any)?.role || 'admin';
-  const visible = NAV.filter(n => n.roles.includes(role));
+  const role = (user as any)?.role as string;
+  const dept = (user as any)?.department as Department | null;
+  const visible = NAV.filter(n => {
+    if (n.departments === null) return true;
+    if (n.departments.includes('__super_admin__')) return role === 'super_admin';
+    return role === 'super_admin' || (dept !== null && n.departments.includes(dept));
+  });
 
   return (
     <aside style={{

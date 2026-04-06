@@ -16,8 +16,7 @@ export const registerValidation = [
   body('name').trim().notEmpty().withMessage('Name required'),
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 8 }).withMessage('Password min 8 chars'),
-  body('role').optional().isIn(['admin', 'staff', 'kitchen', 'waiter']),
-  body('inviteCode').optional(),
+  body('department').optional().isIn(['spa', 'food', 'front_desk']).withMessage('Invalid department'),
 ];
 
 export const loginValidation = [
@@ -25,13 +24,12 @@ export const loginValidation = [
   body('password').notEmpty(),
 ];
 
-export async function register(req: Request, res: Response): Promise<void> {
-  const { name, email, password, role, inviteCode } = req.body;
+export async function register(req: AuthRequest, res: Response): Promise<void> {
+  const { name, email, password, department } = req.body;
 
-  // Only admin can create admin; require invite code for non-first-user registrations
-  const userCount = await User.countDocuments();
-  if (userCount > 0 && inviteCode !== process.env.INVITE_CODE) {
-    throw new AppError('Invalid invite code', 403);
+  // Only super_admin can create new admin accounts
+  if (!req.user || req.userRole !== 'super_admin') {
+    throw new AppError('Only super admin can create accounts', 403);
   }
 
   const exists = await User.findOne({ email });
@@ -41,17 +39,13 @@ export async function register(req: Request, res: Response): Promise<void> {
     name,
     email,
     password,
-    role: userCount === 0 ? 'admin' : (role || 'staff'),
+    role: 'admin',
+    department: department ?? null,
   });
 
-  const accessToken = signAccessToken(user);
-  const refreshToken = signRefreshToken(user);
-
-  res.cookie('refreshToken', refreshToken, COOKIE_OPTS);
   res.status(201).json({
     success: true,
-    accessToken,
-    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    user: { id: user._id, name: user.name, email: user.email, role: user.role, department: user.department },
   });
 }
 
@@ -71,7 +65,7 @@ export async function login(req: Request, res: Response): Promise<void> {
   res.json({
     success: true,
     accessToken,
-    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    user: { id: user._id, name: user.name, email: user.email, role: user.role, department: user.department },
   });
 }
 
@@ -103,6 +97,20 @@ export const changePasswordValidation = [
   body('currentPassword').notEmpty().withMessage('Current password required'),
   body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters'),
 ];
+
+export async function listAdmins(_req: AuthRequest, res: Response): Promise<void> {
+  const admins = await User.find({ role: 'admin' }).select('-password').sort({ createdAt: -1 });
+  res.json({ success: true, admins });
+}
+
+export async function toggleAdmin(req: AuthRequest, res: Response): Promise<void> {
+  const { id } = req.params;
+  const user = await User.findOne({ _id: id, role: 'admin' });
+  if (!user) throw new AppError('Admin not found', 404);
+  user.isActive = !user.isActive;
+  await user.save();
+  res.json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, department: user.department, isActive: user.isActive } });
+}
 
 export async function changePassword(req: AuthRequest, res: Response): Promise<void> {
   const { currentPassword, newPassword } = req.body;

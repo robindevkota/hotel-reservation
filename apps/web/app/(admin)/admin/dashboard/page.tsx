@@ -77,6 +77,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 interface Analytics {
+  scope: { showRooms: boolean; showFood: boolean; showSpa: boolean };
+  isSuperAdmin: boolean;
   kpis: {
     totalRooms: number; availableRooms: number; occupancyRate: number;
     checkedIn: number; pending: number; confirmed: number;
@@ -122,17 +124,19 @@ export default function AdminDashboardPage() {
   );
 
   const kpis = data?.kpis;
+  const scope = data?.scope ?? { showRooms: true, showFood: true, showSpa: true };
 
-  const statCards = [
-    { label:'Total Reservations', value: kpis?.totalReservations ?? '—', Icon: CalendarCheck, color: A.gold,  bg: A.goldDim, sub: `${kpis?.confirmed ?? 0} confirmed` },
-    { label:'Guests Checked In',  value: kpis?.checkedIn ?? '—',         Icon: UserCheck,     color: A.green, bg: 'hsl(142 60% 40% / 0.1)', sub: `${kpis?.occupancyRate ?? 0}% occupancy` },
-    { label:'Pending Orders',     value: kpis?.pendingOrders ?? '—',      Icon: ShoppingCart,  color: A.amber, bg: 'hsl(38 90% 45% / 0.1)',  sub: `${data?.orderStats.total ?? 0} total orders` },
-    { label:'Total Revenue',      value: kpis ? `$${kpis.totalRevenue.toLocaleString()}` : '—', Icon: DollarSign, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: `from paid bills` },
-    { label:'Available Rooms',    value: kpis?.availableRooms ?? '—',     Icon: BedDouble,     color: A.gold,  bg: A.goldDim, sub: `of ${kpis?.totalRooms ?? 0} total` },
-    { label:'Pending Guests',     value: kpis?.pending ?? '—',            Icon: Clock3,        color: A.amber, bg: 'hsl(38 90% 45% / 0.1)',  sub: 'awaiting check-in' },
-    { label:'Spa Bookings',       value: data?.spaStats.total ?? '—',     Icon: Users,         color: A.green, bg: 'hsl(142 60% 40% / 0.1)', sub: `${data?.spaStats.completed ?? 0} completed` },
-    { label:'Order Revenue',      value: data ? `$${data.orderStats.totalRevenue.toLocaleString()}` : '—', Icon: TrendingUp, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: 'from delivered orders' },
+  const allStatCards = [
+    { label:'Total Reservations', value: kpis?.totalReservations ?? '—', Icon: CalendarCheck, color: A.gold,  bg: A.goldDim, sub: `${kpis?.confirmed ?? 0} confirmed`, show: scope.showRooms },
+    { label:'Guests Checked In',  value: kpis?.checkedIn ?? '—',         Icon: UserCheck,     color: A.green, bg: 'hsl(142 60% 40% / 0.1)', sub: `${kpis?.occupancyRate ?? 0}% occupancy`, show: scope.showRooms },
+    { label:'Available Rooms',    value: kpis?.availableRooms ?? '—',    Icon: BedDouble,     color: A.gold,  bg: A.goldDim, sub: `of ${kpis?.totalRooms ?? 0} total`, show: scope.showRooms },
+    { label:'Pending Guests',     value: kpis?.pending ?? '—',           Icon: Clock3,        color: A.amber, bg: 'hsl(38 90% 45% / 0.1)',  sub: 'awaiting check-in', show: scope.showRooms },
+    { label:'Pending Orders',     value: kpis?.pendingOrders ?? '—',     Icon: ShoppingCart,  color: A.amber, bg: 'hsl(38 90% 45% / 0.1)',  sub: `${data?.orderStats.total ?? 0} total orders`, show: scope.showFood },
+    { label:'Order Revenue',      value: data ? `$${data.orderStats.totalRevenue.toLocaleString()}` : '—', Icon: TrendingUp, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: 'from delivered orders', show: scope.showFood },
+    { label:'Spa Bookings',       value: data?.spaStats.total ?? '—',    Icon: Users,         color: A.green, bg: 'hsl(142 60% 40% / 0.1)', sub: `${data?.spaStats.completed ?? 0} completed`, show: scope.showSpa },
+    { label:'Total Revenue',      value: kpis ? `$${kpis.totalRevenue.toLocaleString()}` : '—', Icon: DollarSign, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: 'from paid bills', show: data?.isSuperAdmin ?? true },
   ];
+  const statCards = allStatCards.filter(c => c.show);
 
   return (
     <>
@@ -177,8 +181,8 @@ export default function AdminDashboardPage() {
           ))}
         </div>
 
-        {/* Inventory Snapshot */}
-        <div style={{ marginBottom:'2.5rem' }}>
+        {/* Inventory Snapshot — food admin only */}
+        {scope.showFood && <div style={{ marginBottom:'2.5rem' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
             <p style={{ fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, margin:0 }}>Inventory Snapshot</p>
             <a href="/admin/inventory" style={{ display:'flex', alignItems:'center', gap:'0.3rem', fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.gold, textDecoration:'none' }}>
@@ -202,261 +206,281 @@ export default function AdminDashboardPage() {
               </div>
             ))}
           </div>
-        </div>
+        </div>}
 
-        {/* Charts Row 1 */}
-        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:'1.5rem', marginBottom:'1.5rem' }}>
+        {/* Charts Row 1 — rooms/reservations (front_desk + super_admin) */}
+        {scope.showRooms && (
+          <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:'1.5rem', marginBottom:'1.5rem' }}>
 
-          {/* Reservations Trend - Line Chart */}
-          <div className="chart-card">
-            <SectionTitle href="/admin/reservations">Reservations — Last 30 Days</SectionTitle>
-            {loading ? <Spinner /> : (
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={data?.charts.reservationsTrend || []} margin={{ top:5, right:10, left:-20, bottom:0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(35 25% 88%)" />
-                  <XAxis dataKey="date" tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={{ stroke:A.borderLight }} interval={4} />
-                  <YAxis tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={false} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Line
-                    type="monotone" dataKey="reservations" name="reservations"
-                    stroke={A.gold} strokeWidth={2.5} dot={false}
-                    activeDot={{ r:5, fill:A.gold, stroke:'#fff', strokeWidth:2 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-
-          {/* Reservation Status Breakdown - Pie */}
-          <div className="chart-card">
-            <SectionTitle>Status Breakdown</SectionTitle>
-            {loading ? <Spinner /> : (
-              <>
-                <ResponsiveContainer width="100%" height={160}>
-                  <PieChart>
-                    <Pie
-                      data={data?.charts.statusBreakdown || []}
-                      cx="50%" cy="50%"
-                      innerRadius={45} outerRadius={70}
-                      paddingAngle={3} dataKey="value"
-                    >
-                      {(data?.charts.statusBreakdown || []).map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v: any, n: any) => [v, n]} contentStyle={{ fontFamily:A.raleway, fontSize:'0.78rem', background:A.navy, border:`1px solid ${A.gold}`, color:'#fff', borderRadius:0 }} />
-                  </PieChart>
+            {/* Reservations Trend - Line Chart */}
+            <div className="chart-card">
+              <SectionTitle href="/admin/reservations">Reservations — Last 30 Days</SectionTitle>
+              {loading ? <Spinner /> : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={data?.charts.reservationsTrend || []} margin={{ top:5, right:10, left:-20, bottom:0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(35 25% 88%)" />
+                    <XAxis dataKey="date" tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={{ stroke:A.borderLight }} interval={4} />
+                    <YAxis tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={false} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Line
+                      type="monotone" dataKey="reservations" name="reservations"
+                      stroke={A.gold} strokeWidth={2.5} dot={false}
+                      activeDot={{ r:5, fill:A.gold, stroke:'#fff', strokeWidth:2 }}
+                    />
+                  </LineChart>
                 </ResponsiveContainer>
-                <div style={{ display:'flex', flexDirection:'column', gap:'0.4rem', marginTop:'0.5rem' }}>
-                  {(data?.charts.statusBreakdown || []).map((s, i) => (
-                    <div key={i} style={{ display:'flex', alignItems:'center', gap:'0.5rem', justifyContent:'space-between' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:'0.45rem' }}>
-                        <div style={{ width:'0.55rem', height:'0.55rem', background:s.color, flexShrink:0 }} />
-                        <span style={{ fontFamily:A.raleway, fontSize:'0.72rem', color:A.muted }}>{s.name}</span>
+              )}
+            </div>
+
+            {/* Reservation Status Breakdown - Pie */}
+            <div className="chart-card">
+              <SectionTitle>Status Breakdown</SectionTitle>
+              {loading ? <Spinner /> : (
+                <>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <PieChart>
+                      <Pie
+                        data={data?.charts.statusBreakdown || []}
+                        cx="50%" cy="50%"
+                        innerRadius={45} outerRadius={70}
+                        paddingAngle={3} dataKey="value"
+                      >
+                        {(data?.charts.statusBreakdown || []).map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: any, n: any) => [v, n]} contentStyle={{ fontFamily:A.raleway, fontSize:'0.78rem', background:A.navy, border:`1px solid ${A.gold}`, color:'#fff', borderRadius:0 }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div style={{ display:'flex', flexDirection:'column', gap:'0.4rem', marginTop:'0.5rem' }}>
+                    {(data?.charts.statusBreakdown || []).map((s, i) => (
+                      <div key={i} style={{ display:'flex', alignItems:'center', gap:'0.5rem', justifyContent:'space-between' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:'0.45rem' }}>
+                          <div style={{ width:'0.55rem', height:'0.55rem', background:s.color, flexShrink:0 }} />
+                          <span style={{ fontFamily:A.raleway, fontSize:'0.72rem', color:A.muted }}>{s.name}</span>
+                        </div>
+                        <span style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.navy, fontWeight:600 }}>{s.value}</span>
                       </div>
-                      <span style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.navy, fontWeight:600 }}>{s.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Charts Row 2 */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'1.5rem', marginBottom:'2.5rem' }}>
-
-          {/* Revenue Trend - Bar Chart */}
-          <div className="chart-card">
-            <SectionTitle>Revenue — Last 7 Days</SectionTitle>
-            {loading ? <Spinner /> : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={data?.charts.revenueTrend || []} margin={{ top:5, right:10, left:-10, bottom:0 }} barSize={24}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(35 25% 88%)" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={{ stroke:A.borderLight }} />
-                  <YAxis tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={false} tickFormatter={v => `$${v >= 1000 ? `${(v/1000).toFixed(1)}k` : v}`} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="revenue" name="revenue" fill={A.gold} radius={[2,2,0,0]}>
-                    {(data?.charts.revenueTrend || []).map((_, i) => (
-                      <Cell key={i} fill={i === (data?.charts.revenueTrend.length ?? 1) - 1 ? A.navy : A.gold} />
                     ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
+        )}
 
-          {/* Room Type Revenue - Bar Chart */}
-          <div className="chart-card">
-            <SectionTitle>Revenue by Room Type</SectionTitle>
-            {loading ? <Spinner /> : (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={data?.charts.roomTypeRevenue || []} margin={{ top:5, right:10, left:-10, bottom:0 }} barSize={28}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(35 25% 88%)" vertical={false} />
-                  <XAxis dataKey="type" tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={{ stroke:A.borderLight }} />
-                  <YAxis tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={false} tickFormatter={v => `$${v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="revenue" name="revenue" radius={[2,2,0,0]}>
-                    {['Royal','Suite','Deluxe','Standard'].map((_, i) => (
-                      <Cell key={i} fill={[A.gold, A.navy, A.green, A.blue][i % 4]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+        {/* Charts Row 2 — revenue (super_admin sees all; scoped admins see relevant subset) */}
+        {(scope.showRooms || scope.showFood || data?.isSuperAdmin) && (
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'1.5rem', marginBottom:'2.5rem' }}>
+
+            {/* Revenue Trend - super_admin or front_desk */}
+            {(data?.isSuperAdmin || scope.showRooms) && (
+              <div className="chart-card">
+                <SectionTitle>Revenue — Last 7 Days</SectionTitle>
+                {loading ? <Spinner /> : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={data?.charts.revenueTrend || []} margin={{ top:5, right:10, left:-10, bottom:0 }} barSize={24}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(35 25% 88%)" vertical={false} />
+                      <XAxis dataKey="date" tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={{ stroke:A.borderLight }} />
+                      <YAxis tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={false} tickFormatter={v => `$${v >= 1000 ? `${(v/1000).toFixed(1)}k` : v}`} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Bar dataKey="revenue" name="revenue" fill={A.gold} radius={[2,2,0,0]}>
+                        {(data?.charts.revenueTrend || []).map((_, i) => (
+                          <Cell key={i} fill={i === (data?.charts.revenueTrend.length ?? 1) - 1 ? A.navy : A.gold} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
             )}
-          </div>
 
-          {/* Revenue by Section - Pie */}
-          <div className="chart-card">
-            <SectionTitle>Revenue by Section</SectionTitle>
-            {loading ? <Spinner /> : (
-              <>
-                <ResponsiveContainer width="100%" height={150}>
-                  <PieChart>
-                    <Pie
-                      data={data?.charts.revenueBySection || []}
-                      cx="50%" cy="50%"
-                      innerRadius={40} outerRadius={65}
-                      paddingAngle={3} dataKey="revenue"
-                    >
-                      {(data?.charts.revenueBySection || []).map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
+            {/* Room Type Revenue - super_admin or front_desk */}
+            {(data?.isSuperAdmin || scope.showRooms) && (
+              <div className="chart-card">
+                <SectionTitle>Revenue by Room Type</SectionTitle>
+                {loading ? <Spinner /> : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart data={data?.charts.roomTypeRevenue || []} margin={{ top:5, right:10, left:-10, bottom:0 }} barSize={28}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(35 25% 88%)" vertical={false} />
+                      <XAxis dataKey="type" tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={{ stroke:A.borderLight }} />
+                      <YAxis tick={{ fontFamily:A.raleway, fontSize:10, fill:A.muted }} tickLine={false} axisLine={false} tickFormatter={v => `$${v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Bar dataKey="revenue" name="revenue" radius={[2,2,0,0]}>
+                        {['Royal','Suite','Deluxe','Standard'].map((_, i) => (
+                          <Cell key={i} fill={[A.gold, A.navy, A.green, A.blue][i % 4]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            )}
+
+            {/* Revenue by Section - super_admin only */}
+            {data?.isSuperAdmin && (
+              <div className="chart-card">
+                <SectionTitle>Revenue by Section</SectionTitle>
+                {loading ? <Spinner /> : (
+                  <>
+                    <ResponsiveContainer width="100%" height={150}>
+                      <PieChart>
+                        <Pie
+                          data={data?.charts.revenueBySection || []}
+                          cx="50%" cy="50%"
+                          innerRadius={40} outerRadius={65}
+                          paddingAngle={3} dataKey="revenue"
+                        >
+                          {(data?.charts.revenueBySection || []).map((entry, i) => (
+                            <Cell key={i} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(v: any) => [`$${Number(v).toLocaleString()}`, '']} contentStyle={{ fontFamily:A.raleway, fontSize:'0.78rem', background:A.navy, border:`1px solid ${A.gold}`, color:'#fff', borderRadius:0 }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div style={{ display:'flex', flexDirection:'column', gap:'0.4rem', marginTop:'0.5rem' }}>
+                      {(data?.charts.revenueBySection || []).map((s, i) => (
+                        <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:'0.45rem' }}>
+                            <div style={{ width:'0.55rem', height:'0.55rem', background:s.color, flexShrink:0 }} />
+                            <span style={{ fontFamily:A.raleway, fontSize:'0.72rem', color:A.muted }}>{s.section}</span>
+                          </div>
+                          <span style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.navy, fontWeight:600 }}>${s.revenue.toLocaleString()}</span>
+                        </div>
                       ))}
-                    </Pie>
-                    <Tooltip formatter={(v: any) => [`$${Number(v).toLocaleString()}`, '']} contentStyle={{ fontFamily:A.raleway, fontSize:'0.78rem', background:A.navy, border:`1px solid ${A.gold}`, color:'#fff', borderRadius:0 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div style={{ display:'flex', flexDirection:'column', gap:'0.4rem', marginTop:'0.5rem' }}>
-                  {(data?.charts.revenueBySection || []).map((s, i) => (
-                    <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:'0.45rem' }}>
-                        <div style={{ width:'0.55rem', height:'0.55rem', background:s.color, flexShrink:0 }} />
-                        <span style={{ fontFamily:A.raleway, fontSize:'0.72rem', color:A.muted }}>{s.section}</span>
-                      </div>
-                      <span style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.navy, fontWeight:600 }}>${s.revenue.toLocaleString()}</span>
                     </div>
-                  ))}
-                </div>
-              </>
+                  </>
+                )}
+              </div>
             )}
           </div>
-        </div>
+        )}
 
         {/* Tables Row */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'2rem' }}>
+        <div style={{ display:'grid', gridTemplateColumns: scope.showRooms && scope.showFood ? '1fr 1fr' : '1fr', gap:'2rem' }}>
 
-          {/* Recent Reservations */}
-          <div>
-            <SectionTitle href="/admin/reservations">Recent Reservations</SectionTitle>
-            <Card>
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
-                <thead>
-                  <tr style={{ background:A.navy }}>
-                    {['Guest','Room','Check In','Status'].map(h => (
-                      <th key={h} style={{ textAlign:'left', padding:'0.7rem 1rem', fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.14em', textTransform:'uppercase', color:A.gold, fontWeight:600 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr><td colSpan={4}><Spinner /></td></tr>
-                  ) : !data?.recent.reservations.length ? (
-                    <tr><td colSpan={4} style={{ textAlign:'center', padding:'2rem', fontFamily:A.cinzel, fontSize:'0.72rem', color:A.muted }}>No reservations</td></tr>
-                  ) : data.recent.reservations.map((r: any) => (
-                    <tr key={r._id} className="trow">
-                      <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}` }}>
-                        <div style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.navy }}>{r.guest?.name || '—'}</div>
-                      </td>
-                      <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}`, fontFamily:A.raleway, fontSize:'0.75rem', color:A.muted }}>{r.room?.name || r.room?.roomNumber || '—'}</td>
-                      <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}`, fontFamily:A.raleway, fontSize:'0.73rem', color:A.muted }}>
-                        {r.checkInDate ? new Date(r.checkInDate).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—'}
-                      </td>
-                      <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}` }}><StatusPill status={r.status} /></td>
+          {/* Recent Reservations — front_desk + super_admin */}
+          {scope.showRooms && (
+            <div>
+              <SectionTitle href="/admin/reservations">Recent Reservations</SectionTitle>
+              <Card>
+                <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                  <thead>
+                    <tr style={{ background:A.navy }}>
+                      {['Guest','Room','Check In','Status'].map(h => (
+                        <th key={h} style={{ textAlign:'left', padding:'0.7rem 1rem', fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.14em', textTransform:'uppercase', color:A.gold, fontWeight:600 }}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
-          </div>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr><td colSpan={4}><Spinner /></td></tr>
+                    ) : !data?.recent.reservations.length ? (
+                      <tr><td colSpan={4} style={{ textAlign:'center', padding:'2rem', fontFamily:A.cinzel, fontSize:'0.72rem', color:A.muted }}>No reservations</td></tr>
+                    ) : data.recent.reservations.map((r: any) => (
+                      <tr key={r._id} className="trow">
+                        <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}` }}>
+                          <div style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.navy }}>{r.guest?.name || '—'}</div>
+                        </td>
+                        <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}`, fontFamily:A.raleway, fontSize:'0.75rem', color:A.muted }}>{r.room?.name || r.room?.roomNumber || '—'}</td>
+                        <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}`, fontFamily:A.raleway, fontSize:'0.73rem', color:A.muted }}>
+                          {r.checkInDate ? new Date(r.checkInDate).toLocaleDateString('en-US', { month:'short', day:'numeric' }) : '—'}
+                        </td>
+                        <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}` }}><StatusPill status={r.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            </div>
+          )}
 
-          {/* Pending Orders */}
-          <div>
-            <SectionTitle href="/admin/orders">Pending Orders</SectionTitle>
-            <Card>
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
-                <thead>
-                  <tr style={{ background:A.navy }}>
-                    {['Room','Items','Total','Status'].map(h => (
-                      <th key={h} style={{ textAlign:'left', padding:'0.7rem 1rem', fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.14em', textTransform:'uppercase', color:A.gold, fontWeight:600 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr><td colSpan={4}><Spinner /></td></tr>
-                  ) : !data?.recent.orders.length ? (
-                    <tr><td colSpan={4} style={{ textAlign:'center', padding:'2rem', fontFamily:A.cinzel, fontSize:'0.72rem', color:A.muted }}>No pending orders</td></tr>
-                  ) : data.recent.orders.map((o: any) => (
-                    <tr key={o._id} className="trow">
-                      <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}`, fontFamily:A.cinzel, fontSize:'0.72rem', color:A.navy }}>
-                        Room {o.room?.roomNumber || '—'}
-                      </td>
-                      <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}`, fontFamily:A.raleway, fontSize:'0.75rem', color:A.muted }}>{o.items?.length ?? 0} item(s)</td>
-                      <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}`, fontFamily:A.cinzel, fontSize:'0.85rem', color:A.gold }}>${o.totalAmount}</td>
-                      <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}` }}><StatusPill status={o.status} /></td>
+          {/* Pending Orders — food + super_admin */}
+          {scope.showFood && (
+            <div>
+              <SectionTitle href="/admin/orders">Pending Orders</SectionTitle>
+              <Card>
+                <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                  <thead>
+                    <tr style={{ background:A.navy }}>
+                      {['Room','Items','Total','Status'].map(h => (
+                        <th key={h} style={{ textAlign:'left', padding:'0.7rem 1rem', fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.14em', textTransform:'uppercase', color:A.gold, fontWeight:600 }}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
-          </div>
+                  </thead>
+                  <tbody>
+                    {loading ? (
+                      <tr><td colSpan={4}><Spinner /></td></tr>
+                    ) : !data?.recent.orders.length ? (
+                      <tr><td colSpan={4} style={{ textAlign:'center', padding:'2rem', fontFamily:A.cinzel, fontSize:'0.72rem', color:A.muted }}>No pending orders</td></tr>
+                    ) : data.recent.orders.map((o: any) => (
+                      <tr key={o._id} className="trow">
+                        <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}`, fontFamily:A.cinzel, fontSize:'0.72rem', color:A.navy }}>
+                          Room {o.room?.roomNumber || '—'}
+                        </td>
+                        <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}`, fontFamily:A.raleway, fontSize:'0.75rem', color:A.muted }}>{o.items?.length ?? 0} item(s)</td>
+                        <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}`, fontFamily:A.cinzel, fontSize:'0.85rem', color:A.gold }}>${o.totalAmount}</td>
+                        <td style={{ padding:'0.7rem 1rem', borderBottom:`1px solid ${A.borderLight}` }}><StatusPill status={o.status} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            </div>
+          )}
 
         </div>
 
         {/* Bottom Stats */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1.5rem', marginTop:'1.5rem' }}>
+        {(scope.showFood || scope.showSpa) && (
+          <div style={{ display:'grid', gridTemplateColumns: scope.showFood && scope.showSpa ? '1fr 1fr' : '1fr', gap:'1.5rem', marginTop:'1.5rem' }}>
 
-          {/* Order Stats */}
-          <div className="chart-card">
-            <SectionTitle href="/admin/orders">Order Summary</SectionTitle>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'1rem' }}>
-              {[
-                { label:'Total', value: data?.orderStats.total ?? '—', color: A.navy },
-                { label:'Delivered', value: data?.orderStats.delivered ?? '—', color: A.green },
-                { label:'Pending', value: data?.orderStats.pending ?? '—', color: A.amber },
-                { label:'Revenue', value: data ? `$${data.orderStats.totalRevenue.toLocaleString()}` : '—', color: A.gold },
-              ].map(s => (
-                <div key={s.label} style={{ textAlign:'center', padding:'1rem', background:A.papyrus }}>
-                  <div style={{ fontFamily:A.cinzel, fontSize:'1.4rem', fontWeight:700, color:s.color, lineHeight:1, marginBottom:'0.4rem' }}>
-                    {loading ? '—' : s.value}
-                  </div>
-                  <div style={{ fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.muted }}>{s.label}</div>
+            {/* Order Stats — food + super_admin */}
+            {scope.showFood && (
+              <div className="chart-card">
+                <SectionTitle href="/admin/orders">Order Summary</SectionTitle>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'1rem' }}>
+                  {[
+                    { label:'Total',     value: data?.orderStats.total ?? '—',                                              color: A.navy },
+                    { label:'Delivered', value: data?.orderStats.delivered ?? '—',                                          color: A.green },
+                    { label:'Pending',   value: data?.orderStats.pending ?? '—',                                            color: A.amber },
+                    { label:'Revenue',   value: data ? `$${data.orderStats.totalRevenue.toLocaleString()}` : '—',           color: A.gold },
+                  ].map(s => (
+                    <div key={s.label} style={{ textAlign:'center', padding:'1rem', background:A.papyrus }}>
+                      <div style={{ fontFamily:A.cinzel, fontSize:'1.4rem', fontWeight:700, color:s.color, lineHeight:1, marginBottom:'0.4rem' }}>
+                        {loading ? '—' : s.value}
+                      </div>
+                      <div style={{ fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.muted }}>{s.label}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            )}
 
-          {/* Spa Stats */}
-          <div className="chart-card">
-            <SectionTitle href="/admin/spa">Spa Summary</SectionTitle>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'1rem' }}>
-              {[
-                { label:'Total', value: data?.spaStats.total ?? '—', color: A.navy },
-                { label:'Confirmed', value: data?.spaStats.confirmed ?? '—', color: A.blue },
-                { label:'Completed', value: data?.spaStats.completed ?? '—', color: A.green },
-                { label:'Revenue', value: data ? `$${data.spaStats.revenue.toLocaleString()}` : '—', color: A.gold },
-              ].map(s => (
-                <div key={s.label} style={{ textAlign:'center', padding:'1rem', background:A.papyrus }}>
-                  <div style={{ fontFamily:A.cinzel, fontSize:'1.4rem', fontWeight:700, color:s.color, lineHeight:1, marginBottom:'0.4rem' }}>
-                    {loading ? '—' : s.value}
-                  </div>
-                  <div style={{ fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.muted }}>{s.label}</div>
+            {/* Spa Stats — spa + super_admin */}
+            {scope.showSpa && (
+              <div className="chart-card">
+                <SectionTitle href="/admin/spa">Spa Summary</SectionTitle>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'1rem' }}>
+                  {[
+                    { label:'Total',     value: data?.spaStats.total ?? '—',                                      color: A.navy },
+                    { label:'Confirmed', value: data?.spaStats.confirmed ?? '—',                                  color: A.blue },
+                    { label:'Completed', value: data?.spaStats.completed ?? '—',                                  color: A.green },
+                    { label:'Revenue',   value: data ? `$${data.spaStats.revenue.toLocaleString()}` : '—',        color: A.gold },
+                  ].map(s => (
+                    <div key={s.label} style={{ textAlign:'center', padding:'1rem', background:A.papyrus }}>
+                      <div style={{ fontFamily:A.cinzel, fontSize:'1.4rem', fontWeight:700, color:s.color, lineHeight:1, marginBottom:'0.4rem' }}>
+                        {loading ? '—' : s.value}
+                      </div>
+                      <div style={{ fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.muted }}>{s.label}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
+            )}
 
-        </div>
+          </div>
+        )}
       </div>
     </>
   );

@@ -6,7 +6,9 @@ import SpaBooking from '../models/SpaBooking';
 import Room from '../models/Room';
 import Bill from '../models/Bill';
 
-export async function getDashboardAnalytics(_req: AuthRequest, res: Response) {
+export async function getDashboardAnalytics(req: AuthRequest, res: Response) {
+  const department = req.userDepartment ?? null;
+  const isSuperAdmin = req.userRole === 'super_admin';
   const now = new Date();
   const startOf30Days = new Date(now);
   startOf30Days.setDate(now.getDate() - 29);
@@ -15,6 +17,11 @@ export async function getDashboardAnalytics(_req: AuthRequest, res: Response) {
   const startOf7Days = new Date(now);
   startOf7Days.setDate(now.getDate() - 6);
   startOf7Days.setHours(0, 0, 0, 0);
+
+  // ── Department scope helpers ───────────────────────────────────────────────
+  const showRooms = isSuperAdmin || department === 'front_desk';
+  const showFood  = isSuperAdmin || department === 'food';
+  const showSpa   = isSuperAdmin || department === 'spa';
 
   // ── Parallel queries ──────────────────────────────────────────────────────
   const [
@@ -27,21 +34,25 @@ export async function getDashboardAnalytics(_req: AuthRequest, res: Response) {
     spaBookings,
     paidBills,
   ] = await Promise.all([
-    Room.countDocuments({}),
-    Room.countDocuments({ isAvailable: true }),
-    Reservation.find({}).lean(),
-    Reservation.find({ createdAt: { $gte: startOf30Days } })
-      .populate('room', 'name roomNumber type pricePerNight')
-      .sort({ createdAt: -1 })
-      .limit(8)
-      .lean(),
-    Order.find({}).lean(),
-    Order.find({ status: { $in: ['pending', 'accepted', 'preparing'] } })
-      .populate('room', 'roomNumber')
-      .sort({ placedAt: -1 })
-      .lean(),
-    SpaBooking.find({ createdAt: { $gte: startOf30Days } }).lean(),
-    Bill.find({ status: 'paid' }).lean(),
+    showRooms ? Room.countDocuments({}) : Promise.resolve(0),
+    showRooms ? Room.countDocuments({ isAvailable: true }) : Promise.resolve(0),
+    showRooms ? Reservation.find({}).lean() : Promise.resolve([]),
+    showRooms
+      ? Reservation.find({ createdAt: { $gte: startOf30Days } })
+          .populate('room', 'name roomNumber type pricePerNight')
+          .sort({ createdAt: -1 })
+          .limit(8)
+          .lean()
+      : Promise.resolve([]),
+    showFood ? Order.find({}).lean() : Promise.resolve([]),
+    showFood
+      ? Order.find({ status: { $in: ['pending', 'accepted', 'preparing'] } })
+          .populate('room', 'roomNumber')
+          .sort({ placedAt: -1 })
+          .lean()
+      : Promise.resolve([]),
+    showSpa ? SpaBooking.find({ createdAt: { $gte: startOf30Days } }).lean() : Promise.resolve([]),
+    (showRooms || isSuperAdmin) ? Bill.find({ status: 'paid' }).lean() : Promise.resolve([]),
   ]);
 
   // ── KPI Stats ─────────────────────────────────────────────────────────────
@@ -153,6 +164,9 @@ export async function getDashboardAnalytics(_req: AuthRequest, res: Response) {
   ].filter(s => s.revenue > 0);
 
   res.json({
+    department,
+    isSuperAdmin,
+    scope: { showRooms, showFood, showSpa },
     kpis: {
       totalRooms,
       availableRooms,
