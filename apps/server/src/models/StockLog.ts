@@ -1,6 +1,15 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type StockLogType = 'sale' | 'restock' | 'adjustment' | 'import';
+export type StockLogType =
+  | 'sale'
+  | 'restock'
+  | 'adjustment'
+  | 'import'
+  | 'staff_consumption'
+  | 'owner_consumption'
+  | 'wastage'
+  | 'complimentary'
+  | 'stocktake';
 
 export interface IStockLogLine {
   ingredient: mongoose.Types.ObjectId;
@@ -13,20 +22,28 @@ export interface IStockLog extends Document {
   type: StockLogType;
   performedBy?: mongoose.Types.ObjectId;
   recipe?: mongoose.Types.ObjectId;
-  recipeName?: string;      // snapshot
+  recipeName?: string;        // snapshot
   servingsConsumed?: number;
   lines: IStockLogLine[];
   note: string;
+  consumedBy?: string;        // name for staff_consumption / owner_consumption
+  consumptionReason?: string; // wastage: 'spillage' | 'breakage' | 'expired' | 'other'
+  guestId?: mongoose.Types.ObjectId; // complimentary — optional guest link
+  variance?: number;          // stocktake: expected − actual (negative = deficit)
   createdAt: Date;
 }
 
 const StockLogSchema = new Schema<IStockLog>(
   {
-    type:             { type: String, enum: ['sale','restock','adjustment','import'], required: true },
-    performedBy:      { type: Schema.Types.ObjectId, ref: 'User' },
-    recipe:           { type: Schema.Types.ObjectId, ref: 'Recipe' },
-    recipeName:       { type: String },
-    servingsConsumed: { type: Number },
+    type: {
+      type: String,
+      enum: ['sale','restock','adjustment','import','staff_consumption','owner_consumption','wastage','complimentary','stocktake'],
+      required: true,
+    },
+    performedBy:        { type: Schema.Types.ObjectId, ref: 'User' },
+    recipe:             { type: Schema.Types.ObjectId, ref: 'Recipe' },
+    recipeName:         { type: String },
+    servingsConsumed:   { type: Number },
     lines: [
       {
         ingredient:     { type: Schema.Types.ObjectId, ref: 'Ingredient', required: true },
@@ -35,7 +52,11 @@ const StockLogSchema = new Schema<IStockLog>(
         delta:          { type: Number, required: true },
       },
     ],
-    note: { type: String, default: '' },
+    note:               { type: String, default: '' },
+    consumedBy:         { type: String },
+    consumptionReason:  { type: String, enum: ['spillage','breakage','expired','other'] },
+    guestId:            { type: Schema.Types.ObjectId, ref: 'Guest' },
+    variance:           { type: Number },
   },
   { timestamps: true }
 );

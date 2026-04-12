@@ -43,7 +43,7 @@ test.describe('Check-in / Check-out', () => {
 
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
     await expect(page.getByText('Total Reservations')).toBeVisible();
-    await expect(page.getByText('Pending Orders')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pending Orders' })).toBeVisible();
   });
 });
 

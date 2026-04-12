@@ -1,15 +1,15 @@
 export const ADMIN_USER = {
-  name: 'Royal Admin',
-  email: 'admin@royalsuites.com',
+  name: 'Royal Super Admin',
+  email: 'superadmin@royalsuites.com',
   password: 'RoyalAdmin@123',
-  role: 'admin',
+  role: 'super_admin',
 };
 
 export const STAFF_USER = {
-  name: 'Royal Admin',
-  email: 'admin@royalsuites.com',
+  name: 'Royal Super Admin',
+  email: 'superadmin@royalsuites.com',
   password: 'RoyalAdmin@123',
-  role: 'admin',
+  role: 'super_admin',
 };
 
 export const KITCHEN_USER = {

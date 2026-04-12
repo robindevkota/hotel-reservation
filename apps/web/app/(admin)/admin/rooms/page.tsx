@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
+import QRCode from 'qrcode';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import {
@@ -114,9 +115,29 @@ export default function AdminRoomsPage() {
     await api.delete(`/rooms/${id}`); toast.success('Room deleted'); setDeleteConfirm(null); fetchRooms();
   };
 
-  const handleQR = async (id: string) => {
-    const { data } = await api.post(`/rooms/${id}/qr/refresh`);
-    toast.success('QR regenerated'); setQrModal({ url: data.qrCodeUrl });
+  const handleQR = async (room: any) => {
+    // Always fetch fresh room state to avoid stale isAvailable
+    const { data: fresh } = await api.get(`/rooms/${room._id}/qr`);
+    const freshRoom = fresh.room;
+
+    let qrToken: string;
+    if (!freshRoom.isAvailable) {
+      // Occupied — use existing token, never regenerate while guest is checked in
+      qrToken = freshRoom.qrToken;
+    } else {
+      // Available — regenerate token
+      const { data } = await api.post(`/rooms/${room._id}/qr/refresh`);
+      toast.success('QR regenerated');
+      qrToken = data.qrToken;
+    }
+
+    // Generate QR image client-side using the browser's own origin — works on any IP/network
+    const qrUrl = `${window.location.origin}/qr/${qrToken}`;
+    const qrCodeUrl = await QRCode.toDataURL(qrUrl, {
+      width: 300, margin: 2,
+      color: { dark: '#0D1B3E', light: '#F5ECD7' },
+    });
+    setQrModal({ url: qrCodeUrl });
   };
 
   const openWalkIn = () => {
@@ -277,7 +298,7 @@ export default function AdminRoomsPage() {
                       <button className="act-btn" onClick={() => openEdit(room)} style={{ color:'hsl(210 70% 35%)', borderColor:'hsl(210 70% 75%)', background:'hsl(210 80% 97%)' }}>
                         <Edit2 size={10} strokeWidth={2} /> Edit
                       </button>
-                      <button className="act-btn" onClick={() => handleQR(room._id)} style={{ color:'hsl(43 65% 35%)', borderColor:'hsl(43 65% 70%)', background:'hsl(43 80% 97%)' }}>
+                      <button className="act-btn" onClick={() => handleQR(room)} style={{ color:'hsl(43 65% 35%)', borderColor:'hsl(43 65% 70%)', background:'hsl(43 80% 97%)' }}>
                         <QrCode size={10} strokeWidth={2} /> QR
                       </button>
                       <button className="act-btn" onClick={() => setDeleteConfirm(room._id)} style={{ color:'hsl(0 60% 42%)', borderColor:'hsl(0 60% 75%)', background:'hsl(0 70% 97%)', marginLeft:'auto' }}>

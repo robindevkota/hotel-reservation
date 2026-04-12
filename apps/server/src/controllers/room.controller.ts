@@ -2,8 +2,9 @@ import { Request, Response } from 'express';
 import { body } from 'express-validator';
 import Room from '../models/Room';
 import Reservation from '../models/Reservation';
+import Guest from '../models/Guest';
 import { AppError } from '../middleware/errorHandler';
-import { generateQRToken, generateQRDataUrl } from '../utils/generateQR';
+import { generateQRToken } from '../utils/generateQR';
 
 export const roomValidation = [
   body('name').trim().notEmpty(),
@@ -41,14 +42,22 @@ export async function getRoomBySlug(req: Request, res: Response): Promise<void> 
 export async function getRoomById(req: Request, res: Response): Promise<void> {
   const room = await Room.findById(req.params.id);
   if (!room) throw new AppError('Room not found', 404);
+
+  // Correct isAvailable if an active guest exists but room wasn't marked occupied (seed bug)
+  if (room.isAvailable) {
+    const activeGuest = await Guest.findOne({ room: room._id, isActive: true });
+    if (activeGuest) {
+      room.isAvailable = false;
+      await room.save();
+    }
+  }
+
   res.json({ success: true, room });
 }
 
 export async function createRoom(req: Request, res: Response): Promise<void> {
   const token = generateQRToken();
-  const qrDataUrl = await generateQRDataUrl(token, process.env.CLIENT_URL || 'http://localhost:3000');
-
-  const room = await Room.create({ ...req.body, qrToken: token, qrCodeUrl: qrDataUrl });
+  const room = await Room.create({ ...req.body, qrToken: token });
   res.status(201).json({ success: true, room });
 }
 
@@ -164,9 +173,12 @@ export async function regenerateQR(req: Request, res: Response): Promise<void> {
   const room = await Room.findById(req.params.id);
   if (!room) throw new AppError('Room not found', 404);
 
+  // Block regeneration while a guest is checked in — their QR would stop working
+  const activeGuest = await Guest.findOne({ room: room._id, isActive: true });
+  if (activeGuest) throw new AppError('Cannot regenerate QR while a guest is checked in to this room', 400);
+
   room.qrToken = generateQRToken();
-  room.qrCodeUrl = await generateQRDataUrl(room.qrToken, process.env.CLIENT_URL || 'http://localhost:3000');
   await room.save();
 
-  res.json({ success: true, qrToken: room.qrToken, qrCodeUrl: room.qrCodeUrl });
+  res.json({ success: true, qrToken: room.qrToken });
 }

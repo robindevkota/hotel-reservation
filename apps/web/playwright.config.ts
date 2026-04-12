@@ -1,11 +1,18 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Tests always talk to localhost — the IP in .env.local is only for phone QR scanning
+process.env.NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(
+  /^http:\/\/[\d.]+:(\d+)/,
+  'http://localhost:$1'
+) ?? 'http://localhost:5000/api';
+
 export default defineConfig({
   testDir: './tests/e2e',
+  globalSetup: './tests/global-setup.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 4 : undefined,
+  workers: process.env.CI ? 4 : 2,
   reporter: [['html', { open: 'never' }], ['list']],
 
   use: {

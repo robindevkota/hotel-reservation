@@ -197,6 +197,302 @@ export async function executeSell(
   }
 }
 
+// ── Execute a consumption (staff / owner / wastage / complimentary) ──────────
+
+export async function executeConsume(opts: {
+  type: 'staff_consumption' | 'owner_consumption' | 'wastage' | 'complimentary';
+  ingredientId: string;
+  qty: number;
+  consumedBy?: string;
+  consumptionReason?: string;
+  guestId?: string;
+  note?: string;
+  userId?: string;
+}): Promise<void> {
+  const { type, ingredientId, qty, consumedBy, consumptionReason, guestId, note, userId } = opts;
+
+  const ingredient = await Ingredient.findById(ingredientId);
+  if (!ingredient) throw new AppError('Ingredient not found', 404);
+  if (!ingredient.isActive) throw new AppError('Ingredient is inactive', 400);
+  if (qty <= 0) throw new AppError('qty must be positive', 400);
+  if (qty > ingredient.stock) {
+    throw new AppError(
+      `Not enough stock. Available: ${ingredient.stock} ${ingredient.unit}, requested: ${qty}`,
+      400
+    );
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const newStock = parseFloat((ingredient.stock - qty).toFixed(4));
+    await Ingredient.findByIdAndUpdate(ingredient._id, { stock: newStock }, { session });
+
+    await StockLog.create([{
+      type,
+      performedBy: userId ? new mongoose.Types.ObjectId(userId) : undefined,
+      lines: [{ ingredient: ingredient._id, ingredientName: ingredient.name, unit: ingredient.unit, delta: -qty }],
+      consumedBy: consumedBy || undefined,
+      consumptionReason: consumptionReason || undefined,
+      guestId: guestId ? new mongoose.Types.ObjectId(guestId) : undefined,
+      note: note || `${type.replace('_', ' ')}: ${qty} ${ingredient.unit} of ${ingredient.name}${consumedBy ? ` by ${consumedBy}` : ''}`,
+    }], { session });
+
+    await session.commitTransaction();
+  } catch (err) {
+    await session.abortTransaction();
+    throw err;
+  } finally {
+    session.endSession();
+  }
+}
+
+// ── Execute a stocktake (physical count → reconcile variance) ────────────────
+
+export async function executeStocktake(
+  lines: { ingredientId: string; actualQty: number }[],
+  userId?: string
+): Promise<{ totalVariance: number; lines: { name: string; expected: number; actual: number; variance: number; unit: string }[] }> {
+  if (!lines.length) throw new AppError('At least one ingredient count required', 400);
+
+  const results: { name: string; expected: number; actual: number; variance: number; unit: string }[] = [];
+  let totalVariance = 0;
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    for (const line of lines) {
+      const ingredient = await Ingredient.findById(line.ingredientId).session(session);
+      if (!ingredient) throw new AppError(`Ingredient ${line.ingredientId} not found`, 404);
+      if (line.actualQty < 0) throw new AppError(`Actual qty cannot be negative for ${ingredient.name}`, 400);
+
+      const expected = ingredient.stock;
+      const actual = parseFloat(line.actualQty.toFixed(4));
+      const variance = parseFloat((actual - expected).toFixed(4)); // positive = surplus, negative = deficit
+
+      await Ingredient.findByIdAndUpdate(ingredient._id, { stock: actual }, { session });
+
+      await StockLog.create([{
+        type: 'stocktake',
+        performedBy: userId ? new mongoose.Types.ObjectId(userId) : undefined,
+        lines: [{ ingredient: ingredient._id, ingredientName: ingredient.name, unit: ingredient.unit, delta: variance }],
+        variance,
+        note: `Stocktake: ${ingredient.name} — expected ${expected}, actual ${actual}, variance ${variance > 0 ? '+' : ''}${variance} ${ingredient.unit}`,
+      }], { session });
+
+      results.push({ name: ingredient.name, expected, actual, variance, unit: ingredient.unit });
+      totalVariance += variance;
+    }
+
+    await session.commitTransaction();
+  } catch (err) {
+    await session.abortTransaction();
+    throw err;
+  } finally {
+    session.endSession();
+  }
+
+  return { totalVariance: parseFloat(totalVariance.toFixed(4)), lines: results };
+}
+
+// ── Variance report ───────────────────────────────────────────────────────────
+
+export async function getVarianceReport(since?: Date): Promise<{
+  ingredients: {
+    id: string; name: string; unit: string; category: string;
+    restocked: number; sold: number; consumed: number; wastage: number;
+    stocktakeVariance: number; expectedStock: number; currentStock: number;
+    shrinkage: number; shrinkagePct: number; alert: boolean;
+  }[];
+  summary: { totalRestocked: number; totalSold: number; totalConsumed: number; totalWastage: number; totalShrinkage: number };
+}> {
+  const dateFilter = since ? { createdAt: { $gte: since } } : {};
+
+  const [ingredients, logs] = await Promise.all([
+    Ingredient.find({ isActive: true }).lean(),
+    StockLog.find(dateFilter).lean(),
+  ]);
+
+  const report = ingredients.map(ing => {
+    const id = String(ing._id);
+    let restocked = 0, sold = 0, consumed = 0, wastage = 0, stocktakeVariance = 0;
+
+    for (const log of logs) {
+      for (const line of log.lines) {
+        if (String(line.ingredient) !== id) continue;
+        if (log.type === 'restock' || log.type === 'import') restocked += line.delta;
+        else if (log.type === 'sale') sold += Math.abs(line.delta);
+        else if (log.type === 'staff_consumption' || log.type === 'owner_consumption' || log.type === 'complimentary') consumed += Math.abs(line.delta);
+        else if (log.type === 'wastage') wastage += Math.abs(line.delta);
+        else if (log.type === 'stocktake') stocktakeVariance += line.delta;
+      }
+    }
+
+    // shrinkage = what's unaccounted for (not sales, not logged consumption, not wastage)
+    const accounted = sold + consumed + wastage;
+    const totalOut = restocked > 0 ? restocked : 0;
+    const shrinkage = parseFloat(Math.max(0, totalOut - accounted - ing.stock).toFixed(4));
+    const shrinkagePct = totalOut > 0 ? parseFloat(((shrinkage / totalOut) * 100).toFixed(1)) : 0;
+
+    return {
+      id, name: ing.name, unit: ing.unit, category: ing.category,
+      restocked: parseFloat(restocked.toFixed(4)),
+      sold: parseFloat(sold.toFixed(4)),
+      consumed: parseFloat(consumed.toFixed(4)),
+      wastage: parseFloat(wastage.toFixed(4)),
+      stocktakeVariance: parseFloat(stocktakeVariance.toFixed(4)),
+      expectedStock: ing.stock,
+      currentStock: ing.stock,
+      shrinkage,
+      shrinkagePct,
+      alert: shrinkagePct > 5,
+    };
+  });
+
+  const summary = {
+    totalRestocked: parseFloat(report.reduce((s, r) => s + r.restocked, 0).toFixed(4)),
+    totalSold: parseFloat(report.reduce((s, r) => s + r.sold, 0).toFixed(4)),
+    totalConsumed: parseFloat(report.reduce((s, r) => s + r.consumed, 0).toFixed(4)),
+    totalWastage: parseFloat(report.reduce((s, r) => s + r.wastage, 0).toFixed(4)),
+    totalShrinkage: parseFloat(report.reduce((s, r) => s + r.shrinkage, 0).toFixed(4)),
+  };
+
+  return { ingredients: report, summary };
+}
+
+// ── Inventory analytics ───────────────────────────────────────────────────────
+
+export async function getInventoryAnalytics(): Promise<{
+  // Stock investment summary
+  totalStockCost: number;          // what you paid for everything currently in stock
+  totalExpectedRevenue: number;    // if you sell every possible serving
+  totalExpectedProfit: number;     // revenue − cost
+  roi: number;                     // profit / cost × 100
+
+  // By section
+  bySection: {
+    section: string;
+    stockCost: number;
+    expectedRevenue: number;
+    expectedProfit: number;
+    servings: number;
+  }[];
+
+  // Top ingredients by stock value (cost × stock)
+  topIngredientsByValue: {
+    name: string; unit: string; stock: number; costPrice: number; stockValue: number; category: string;
+  }[];
+
+  // Usage breakdown from logs (all time)
+  usageBreakdown: {
+    sold: number; staffConsumed: number; ownerConsumed: number;
+    wastage: number; complimentary: number;
+  };
+
+  // Sold vs consumed trend — last 30 days, grouped by day
+  trend: { date: string; sold: number; consumed: number; wasted: number }[];
+}> {
+  const [ingredients, recipes, logs] = await Promise.all([
+    Ingredient.find({ isActive: true }).lean(),
+    Recipe.find({ isActive: true }).populate('ingredients.ingredient').lean(),
+    StockLog.find({}).lean(),
+  ]);
+
+  const ingredientMap = new Map(ingredients.map(i => [String(i._id), i]));
+
+  // ── Stock investment: cost × current stock per ingredient ──────────────────
+  const totalStockCost = parseFloat(
+    ingredients.reduce((sum, i) => sum + i.stock * i.costPrice, 0).toFixed(2)
+  );
+
+  // ── Expected revenue/profit from current stock ────────────────────────────
+  const sectionMap: Record<string, { stockCost: number; expectedRevenue: number; expectedProfit: number; servings: number }> = {};
+
+  let totalExpectedRevenue = 0;
+  let totalExpectedProfit = 0;
+
+  for (const recipe of recipes as any[]) {
+    const result = computeServings(recipe, ingredientMap as any);
+    const section = recipe.section || 'other';
+    if (!sectionMap[section]) sectionMap[section] = { stockCost: 0, expectedRevenue: 0, expectedProfit: 0, servings: 0 };
+    sectionMap[section].expectedRevenue  += result.revenueNPR;
+    sectionMap[section].expectedProfit   += result.profitNPR;
+    sectionMap[section].servings         += result.servingsPossible;
+    totalExpectedRevenue += result.revenueNPR;
+    totalExpectedProfit  += result.profitNPR;
+  }
+
+  // Distribute stock cost by section proportionally via ingredient category
+  for (const ing of ingredients) {
+    const cat = ing.category === 'kitchen' ? 'kitchen' : ing.category === 'bar' ? 'bar' : 'general';
+    if (!sectionMap[cat]) sectionMap[cat] = { stockCost: 0, expectedRevenue: 0, expectedProfit: 0, servings: 0 };
+    sectionMap[cat].stockCost += parseFloat((ing.stock * ing.costPrice).toFixed(2));
+  }
+
+  const bySection = Object.entries(sectionMap).map(([section, v]) => ({ section, ...v }));
+
+  const roi = totalStockCost > 0
+    ? parseFloat(((totalExpectedProfit / totalStockCost) * 100).toFixed(1))
+    : 0;
+
+  // ── Top ingredients by stock value ────────────────────────────────────────
+  const topIngredientsByValue = ingredients
+    .map(i => ({ name: i.name, unit: i.unit, stock: i.stock, costPrice: i.costPrice, stockValue: parseFloat((i.stock * i.costPrice).toFixed(2)), category: i.category }))
+    .sort((a, b) => b.stockValue - a.stockValue)
+    .slice(0, 10);
+
+  // ── Usage breakdown from all logs ─────────────────────────────────────────
+  const usageBreakdown = { sold: 0, staffConsumed: 0, ownerConsumed: 0, wastage: 0, complimentary: 0 };
+  for (const log of logs) {
+    const qty = log.lines.reduce((s, l) => s + Math.abs(l.delta), 0);
+    if (log.type === 'sale')              usageBreakdown.sold           += qty;
+    if (log.type === 'staff_consumption') usageBreakdown.staffConsumed  += qty;
+    if (log.type === 'owner_consumption') usageBreakdown.ownerConsumed  += qty;
+    if (log.type === 'wastage')           usageBreakdown.wastage        += qty;
+    if (log.type === 'complimentary')     usageBreakdown.complimentary  += qty;
+  }
+  usageBreakdown.sold           = parseFloat(usageBreakdown.sold.toFixed(2));
+  usageBreakdown.staffConsumed  = parseFloat(usageBreakdown.staffConsumed.toFixed(2));
+  usageBreakdown.ownerConsumed  = parseFloat(usageBreakdown.ownerConsumed.toFixed(2));
+  usageBreakdown.wastage        = parseFloat(usageBreakdown.wastage.toFixed(2));
+  usageBreakdown.complimentary  = parseFloat(usageBreakdown.complimentary.toFixed(2));
+
+  // ── Daily trend — last 30 days ────────────────────────────────────────────
+  const since30 = new Date(); since30.setDate(since30.getDate() - 29);
+  const trendMap: Record<string, { sold: number; consumed: number; wasted: number; gifted: number }> = {};
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(since30); d.setDate(since30.getDate() + i);
+    trendMap[d.toISOString().split('T')[0]] = { sold: 0, consumed: 0, wasted: 0, gifted: 0 };
+  }
+  for (const log of logs) {
+    const day = new Date(log.createdAt).toISOString().split('T')[0];
+    if (!trendMap[day]) continue;
+    const qty = log.lines.reduce((s, l) => s + Math.abs(l.delta), 0);
+    if (log.type === 'sale') trendMap[day].sold += qty;
+    else if (log.type === 'staff_consumption' || log.type === 'owner_consumption') trendMap[day].consumed += qty;
+    else if (log.type === 'wastage') trendMap[day].wasted += qty;
+    else if (log.type === 'complimentary') trendMap[day].gifted += qty;
+  }
+  const trend = Object.entries(trendMap).map(([date, v]) => ({
+    date: date.slice(5), // MM-DD
+    sold:     parseFloat(v.sold.toFixed(2)),
+    consumed: parseFloat(v.consumed.toFixed(2)),
+    wasted:   parseFloat(v.wasted.toFixed(2)),
+    gifted:   parseFloat(v.gifted.toFixed(2)),
+  }));
+
+  return {
+    totalStockCost,
+    totalExpectedRevenue: parseFloat(totalExpectedRevenue.toFixed(2)),
+    totalExpectedProfit: parseFloat(totalExpectedProfit.toFixed(2)),
+    roi,
+    bySection,
+    topIngredientsByValue,
+    usageBreakdown,
+    trend,
+  };
+}
+
 // ── Excel import ─────────────────────────────────────────────────────────────
 
 export async function parseExcelImport(

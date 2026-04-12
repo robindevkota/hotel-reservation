@@ -20,6 +20,8 @@ test.describe('Spa Slot Conflict', () => {
     }
 
     await page.goto(`/qr/${room.qrToken}`);
+    await expect(page.getByRole('button', { name: /Enter My Portal/i })).toBeVisible({ timeout: 10000 });
+    await page.getByRole('button', { name: /Enter My Portal/i }).click();
     await page.waitForURL(/\/guest\/dashboard/, { timeout: 10000 });
 
     await page.getByText(/Book Spa/i).click();

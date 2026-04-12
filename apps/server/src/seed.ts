@@ -4,8 +4,13 @@ import { connectDB } from './config/db';
 import Room from './models/Room';
 import MenuItem from './models/MenuItem';
 import SpaService from './models/SpaService';
+import SpaTherapist from './models/SpaTherapist';
+import SpaBooking from './models/SpaBooking';
+import Guest from './models/Guest';
+import Bill from './models/Bill';
+import Reservation from './models/Reservation';
 import User from './models/User';
-import { generateQRToken } from './utils/generateQR';
+import { generateQRToken, generateQRDataUrl } from './utils/generateQR';
 
 // Egyptian-themed Unsplash images (luxury hotel / Egyptian aesthetic)
 const ROOM_IMAGES = {
@@ -56,6 +61,9 @@ async function seed() {
     Room.deleteMany({}),
     MenuItem.deleteMany({}),
     SpaService.deleteMany({}),
+    SpaTherapist.deleteMany({}),
+    SpaBooking.deleteMany({}),
+    Guest.deleteMany({ email: { $in: ['amira.hassan@guest.com','omar.farouk@guest.com','layla.nour@guest.com','khaled.ali@guest.com','nadia.saleh@guest.com'] } }),
   ]);
 
   // ─── ROOMS ───────────────────────────────────────────────────────────
@@ -173,6 +181,13 @@ async function seed() {
       qrToken: generateQRToken(),
     },
   ]);
+
+  // Generate qrCodeUrl for each seeded room
+  const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+  await Promise.all(rooms.map(async (room) => {
+    const qrCodeUrl = await generateQRDataUrl(room.qrToken, clientUrl);
+    await Room.findByIdAndUpdate(room._id, { qrCodeUrl });
+  }));
 
   console.log(`✅ ${rooms.length} rooms seeded`);
 
@@ -448,6 +463,206 @@ async function seed() {
   ]);
 
   console.log(`✅ ${spaServices.length} spa services seeded`);
+
+  // ─── SPA THERAPISTS ───────────────────────────────────────────────────
+  // Map services by name for easy reference
+  const spaByName = Object.fromEntries(spaServices.map(s => [s.name, s._id]));
+
+  // Each therapist specialises in a subset of services
+  // One therapist per service so a single booking fills the slot (enables slot-conflict E2E tests).
+  // Admin can add more therapists via the UI after seed.
+  const therapists = await SpaTherapist.insertMany([
+    {
+      name: 'Nefertari Hassan',
+      specializations: [
+        spaByName["Cleopatra's Milk & Honey Ritual"],
+        spaByName['Desert Rose Facial'],
+      ],
+      breakDuration: 15,
+      isActive: true,
+    },
+    {
+      name: 'Ramses Khalil',
+      specializations: [
+        spaByName['Nile Stone Hot Therapy'],
+        spaByName["Pharaoh's Deep Tissue Massage"],
+      ],
+      breakDuration: 15,
+      isActive: true,
+    },
+    {
+      name: 'Isis Mostafa',
+      specializations: [
+        spaByName['Hydrotherapy Ritual'],
+        spaByName["Couples' Golden Journey"],
+      ],
+      breakDuration: 15,
+      isActive: true,
+    },
+  ]);
+  console.log(`✅ ${therapists.length} spa therapists seeded`);
+
+  // ─── SPA DEMO BOOKINGS ───────────────────────────────────────────────
+  // Create 5 lightweight guest stubs so the Schedule / All Bookings tabs
+  // show realistic data immediately after seed. Each guest gets a stub
+  // reservation + bill (no real payment), then spa bookings spread across
+  // today with varied statuses so every Gantt colour + live tracker is visible.
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Helpers
+  function todayISO() { return today.toISOString().split('T')[0]; }
+  function addMin(hhmm: string, mins: number) {
+    const [h, m] = hhmm.split(':').map(Number);
+    const t = h * 60 + m + mins;
+    return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+  }
+
+  const guestDefs = [
+    { name: 'Amira Hassan',  email: 'amira.hassan@guest.com',  phone: '+977-9841000001' },
+    { name: 'Omar Farouk',   email: 'omar.farouk@guest.com',   phone: '+977-9841000002' },
+    { name: 'Layla Nour',    email: 'layla.nour@guest.com',    phone: '+977-9841000003' },
+    { name: 'Khaled Ali',    email: 'khaled.ali@guest.com',    phone: '+977-9841000004' },
+    { name: 'Nadia Saleh',   email: 'nadia.saleh@guest.com',   phone: '+977-9841000005' },
+  ];
+
+  // Seed guests with stub reservations + bills
+  const seededGuests = await Promise.all(guestDefs.map(async (gd, i) => {
+    const stubRoom = rooms[i % rooms.length];
+    const res = await Reservation.create({
+      guest: { name: gd.name, email: gd.email, phone: gd.phone, idProof: '' },
+      room: stubRoom._id,
+      checkInDate: today,
+      checkOutDate: new Date(today.getTime() + 3 * 86400000),
+      numberOfGuests: 1,
+      status: 'checked_in',
+      specialRequests: '',
+      totalNights: 3,
+      roomCharges: stubRoom.pricePerNight * 3,
+    });
+    const bill = await Bill.create({
+      guest: new mongoose.Types.ObjectId(), // temp placeholder; updated below
+      reservation: res._id,
+      lineItems: [],
+      roomCharges: stubRoom.pricePerNight * 3,
+      foodCharges: 0, spaCharges: 0, otherCharges: 0,
+      totalAmount: stubRoom.pricePerNight * 3,
+      taxAmount: 0, grandTotal: stubRoom.pricePerNight * 3,
+      status: 'open',
+    });
+    const guest = await Guest.create({
+      reservation: res._id,
+      room: stubRoom._id,
+      name: gd.name,
+      email: gd.email,
+      phone: gd.phone,
+      checkInTime: today,
+      qrSessionToken: generateQRToken(),
+      qrSessionExpiry: new Date(today.getTime() + 7 * 86400000),
+      isActive: true,
+      bill: bill._id,
+    });
+    // patch bill.guest
+    await Bill.findByIdAndUpdate(bill._id, { guest: guest._id });
+    // mark room occupied so isAvailable matches the checked-in state
+    await Room.findByIdAndUpdate(stubRoom._id, { isAvailable: false });
+    return guest;
+  }));
+
+  // Map therapist by name for easy lookup
+  const tByName = Object.fromEntries(therapists.map((t: any) => [t.name, t]));
+  // Map service by name
+  const sByName = Object.fromEntries(spaServices.map((s: any) => [s.name, s]));
+
+  // Build bookings: spread across today's timeline so the Gantt looks populated
+  // Layout (therapist → service → slot → status):
+  //   Nefertari Hassan  | Cleopatra Ritual  | 09:30 completed
+  //   Nefertari Hassan  | Desert Rose Facial| 11:30 in_progress (live right now)
+  //   Nefertari Hassan  | Cleopatra Ritual  | 14:00 confirmed
+  //   Ramses Khalil     | Nile Stone Hot    | 10:00 completed
+  //   Ramses Khalil     | Deep Tissue       | 13:00 arrived
+  //   Ramses Khalil     | Nile Stone Hot    | 15:30 pending
+  //   Isis Mostafa      | Hydrotherapy      | 09:00 completed
+  //   Isis Mostafa      | Couples Golden    | 11:00 cancelled
+  //   Isis Mostafa      | Hydrotherapy      | 15:00 confirmed
+  const bookingDefs = [
+    // Nefertari Hassan — completed earlier, in_progress now, confirmed later
+    {
+      guest: seededGuests[0], therapist: tByName['Nefertari Hassan'],
+      service: sByName["Cleopatra's Milk & Honey Ritual"],
+      scheduledStart: '09:30', status: 'completed',
+      actualStart: '09:30', actualEnd: '10:30', addedToBill: true,
+    },
+    {
+      guest: seededGuests[1], therapist: tByName['Nefertari Hassan'],
+      service: sByName['Desert Rose Facial'],
+      scheduledStart: '11:30', status: 'in_progress',
+      actualStart: '11:30', actualEnd: '',
+    },
+    {
+      guest: seededGuests[2], therapist: tByName['Nefertari Hassan'],
+      service: sByName["Cleopatra's Milk & Honey Ritual"],
+      scheduledStart: '14:00', status: 'confirmed',
+    },
+
+    // Ramses Khalil — completed, arrived, pending
+    {
+      guest: seededGuests[3], therapist: tByName['Ramses Khalil'],
+      service: sByName['Nile Stone Hot Therapy'],
+      scheduledStart: '10:00', status: 'completed',
+      actualStart: '10:00', actualEnd: '11:30', addedToBill: true,
+    },
+    {
+      guest: seededGuests[4], therapist: tByName['Ramses Khalil'],
+      service: sByName["Pharaoh's Deep Tissue Massage"],
+      scheduledStart: '13:00', status: 'arrived',
+      actualStart: '13:05', actualEnd: '',
+    },
+    {
+      guest: seededGuests[0], therapist: tByName['Ramses Khalil'],
+      service: sByName['Nile Stone Hot Therapy'],
+      scheduledStart: '15:30', status: 'pending',
+    },
+
+    // Isis Mostafa — completed, cancelled, confirmed
+    {
+      guest: seededGuests[1], therapist: tByName['Isis Mostafa'],
+      service: sByName['Hydrotherapy Ritual'],
+      scheduledStart: '09:00', status: 'completed',
+      actualStart: '09:00', actualEnd: '10:00', addedToBill: true,
+    },
+    {
+      guest: seededGuests[2], therapist: tByName['Isis Mostafa'],
+      service: sByName["Couples' Golden Journey"],
+      scheduledStart: '11:00', status: 'cancelled',
+    },
+    {
+      guest: seededGuests[3], therapist: tByName['Isis Mostafa'],
+      service: sByName['Hydrotherapy Ritual'],
+      scheduledStart: '15:00', status: 'confirmed',
+    },
+  ];
+
+  const spaBookings = await SpaBooking.insertMany(
+    bookingDefs.map(def => ({
+      guest: def.guest._id,
+      service: def.service._id,
+      therapist: def.therapist._id,
+      date: today,
+      scheduledStart: def.scheduledStart,
+      scheduledEnd: addMin(def.scheduledStart, def.service.duration),
+      actualStart: (def as any).actualStart ?? '',
+      actualEnd: (def as any).actualEnd ?? '',
+      durationSnapshot: def.service.duration,
+      window: 'any',
+      status: def.status,
+      price: def.service.price,
+      addedToBill: (def as any).addedToBill ?? false,
+      isWalkIn: false,
+    }))
+  );
+  console.log(`✅ ${spaBookings.length} demo spa bookings seeded`);
 
   // ─── DROP OLD ADMIN ───────────────────────────────────────────────────
   const deleted = await User.deleteMany({ email: 'admin@royalsuites.com' });

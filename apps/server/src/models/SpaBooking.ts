@@ -1,39 +1,73 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
-export type SpaBookingStatus = 'pending' | 'confirmed' | 'completed' | 'cancelled';
+export type SpaBookingStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'arrived'
+  | 'in_progress'
+  | 'completed'
+  | 'cancelled';
+
+export type SpaWindow = 'morning' | 'afternoon' | 'evening' | 'any';
 
 export interface ISpaBooking extends Document {
   guest: mongoose.Types.ObjectId;
   service: mongoose.Types.ObjectId;
+  therapist: mongoose.Types.ObjectId | null;
   date: Date;
-  startTime: string;
-  endTime: string;
+  scheduledStart: string;   // "10:00" — what was booked
+  scheduledEnd: string;     // "11:00" — scheduledStart + durationSnapshot
+  actualStart: string;      // set when admin marks arrived/started
+  actualEnd: string;        // set when admin marks completed
+  durationSnapshot: number; // service.duration at booking time (immutable)
+  window: SpaWindow;        // guest's time preference
   status: SpaBookingStatus;
   price: number;
   therapistNote: string;
   addedToBill: boolean;
+  isWalkIn: boolean;        // true = admin booked manually
 }
 
 const SpaBookingSchema = new Schema<ISpaBooking>(
   {
-    guest: { type: Schema.Types.ObjectId, ref: 'Guest', required: true },
-    service: { type: Schema.Types.ObjectId, ref: 'SpaService', required: true },
-    date: { type: Date, required: true },
-    startTime: { type: String, required: true },
-    endTime: { type: String, required: true },
+    guest:            { type: Schema.Types.ObjectId, ref: 'Guest', required: true },
+    service:          { type: Schema.Types.ObjectId, ref: 'SpaService', required: true },
+    therapist:        { type: Schema.Types.ObjectId, ref: 'SpaTherapist', default: null },
+    date:             { type: Date, required: true },
+    scheduledStart:   { type: String, required: true },
+    scheduledEnd:     { type: String, required: true },
+    actualStart:      { type: String, default: '' },
+    actualEnd:        { type: String, default: '' },
+    durationSnapshot: { type: Number, required: true },
+    window:           { type: String, enum: ['morning','afternoon','evening','any'], default: 'any' },
     status: {
       type: String,
-      enum: ['pending', 'confirmed', 'completed', 'cancelled'],
+      enum: ['pending','confirmed','arrived','in_progress','completed','cancelled'],
       default: 'pending',
     },
-    price: { type: Number, required: true },
-    therapistNote: { type: String, default: '' },
-    addedToBill: { type: Boolean, default: false },
+    price:            { type: Number, required: true },
+    therapistNote:    { type: String, default: '' },
+    addedToBill:      { type: Boolean, default: false },
+    isWalkIn:         { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
 SpaBookingSchema.index({ guest: 1, status: 1 });
-SpaBookingSchema.index({ service: 1, date: 1, startTime: 1 });
+SpaBookingSchema.index({ therapist: 1, date: 1, status: 1 });
+SpaBookingSchema.index({ service: 1, date: 1, scheduledStart: 1 });
+
+// Prevent concurrent duplicate: one therapist cannot have two active bookings at same time
+SpaBookingSchema.index(
+  { therapist: 1, date: 1, scheduledStart: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      therapist: { $exists: true, $type: 'objectId' },
+      status: { $in: ['pending', 'confirmed', 'arrived', 'in_progress'] },
+    },
+    name: 'therapist_slot_unique_active',
+  }
+);
 
 export default mongoose.model<ISpaBooking>('SpaBooking', SpaBookingSchema);

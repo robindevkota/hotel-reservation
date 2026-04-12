@@ -6,8 +6,8 @@ test.describe('Admin Profile Page', () => {
     await loginAsStaff(page);
     await page.goto('/admin/profile');
     await expect(page.getByRole('heading', { name: 'Profile' })).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('Royal Admin')).toBeVisible();
-    await expect(page.getByText('admin')).toBeVisible();
+    await expect(page.getByText('Royal Super Admin').first()).toBeVisible();
+    await expect(page.getByText('super_admin').first()).toBeVisible();
   });
 
   test('should show change password form', async ({ page }) => {

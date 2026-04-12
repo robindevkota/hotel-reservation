@@ -1,7 +1,8 @@
-import { test, expect, Browser } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { apiLoginAsAdmin } from '../../helpers/auth.helper';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
 
 async function apiPost(endpoint: string, token: string, body: any) {
   const res = await fetch(`${API_URL}${endpoint}`, {
@@ -28,16 +29,20 @@ async function apiPatch(endpoint: string, token: string, body?: any) {
   return res.json();
 }
 
-async function createCheckedInGuest(adminToken: string, roomOverride?: any) {
-  const roomsData = await apiGet('/rooms', adminToken);
-  // Pick a random room to avoid conflicts from previous test runs
-  const room = roomOverride || roomsData.rooms[Math.floor(Math.random() * roomsData.rooms.length)];
+let _guestCallCount = 0;
 
-  // Use truly unique dates to avoid conflicts
+async function createCheckedInGuest(adminToken: string, _roomOverride?: any) {
+  _guestCallCount++;
+  const roomsData = await apiGet('/rooms', adminToken);
+  const activeRes  = await apiGet('/checkin/active', adminToken);
+  const occupiedIds = new Set((activeRes.guests ?? []).map((g: any) => String(g.room)));
+  // Pick first room that is both isAvailable AND has no active guest
+  const room = roomsData.rooms.find((r: any) => r.isAvailable === true && !occupiedIds.has(String(r._id)));
+  if (!room) throw new Error('No available rooms for check-in');
+
+  // Each call uses a unique far-future year window — no date conflicts ever
   const checkIn = new Date();
-  checkIn.setFullYear(checkIn.getFullYear() + 10);
-  checkIn.setMonth(Math.floor(Math.random() * 12));
-  checkIn.setDate(Math.floor(Math.random() * 20) + 1);
+  checkIn.setFullYear(checkIn.getFullYear() + 100 + _guestCallCount);
   const checkOut = new Date(checkIn);
   checkOut.setDate(checkOut.getDate() + 3);
 
@@ -72,58 +77,22 @@ async function createCheckedInGuest(adminToken: string, roomOverride?: any) {
   };
 }
 
-async function cleanupActiveGuests(adminToken: string) {
-  // Checkout any active guests to avoid stale data
-  try {
-    const resData = await apiGet('/reservations?status=checked_in', adminToken);
-    for (const res of resData.reservations || []) {
-      if (res.guest?._id) {
-        try {
-          await apiPost(`/checkin/checkout/${res.guest._id}`, adminToken, {});
-        } catch (e) {
-          // Ignore checkout errors
-        }
-      }
-    }
-  } catch (e) {
-    // Ignore cleanup errors
-  }
-  
-  // Also deactivate any remaining active guests directly
-  try {
-    const allReservations = await apiGet('/reservations?limit=100', adminToken);
-    for (const res of allReservations.reservations || []) {
-      if (res.status === 'checked_in' && res.guest?._id) {
-        try {
-          // Force deactivate the guest
-          await fetch(`${API_URL}/admin/guests/${res.guest._id}/deactivate`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${adminToken}` },
-          });
-        } catch (e) {
-          // Ignore
-        }
-      }
-    }
-  } catch (e) {
-    // Ignore
-  }
-}
 
-test.describe('Full Billing Integration Test', () => {
-  test('reserve → checkin → order food → book spa → verify bill total', { timeout: 60000 }, async ({ page, browser }) => {
+test.describe.serial('Full Billing Integration Test', () => {
+  test('reserve → checkin → order food → book spa → verify bill total', async ({ browser }) => {
+    test.setTimeout(60000);
     const adminToken = await apiLoginAsAdmin();
 
-    // ── Step 1: Create and check in a guest (use room 2) ──
-    const roomsData = await apiGet('/rooms', adminToken);
-    const checkin = await createCheckedInGuest(adminToken, roomsData.rooms[5]);
-    const { guestId, qrToken, bill: checkinBill } = checkin;
+    // ── Step 1: Create and check in a guest ──
+    const checkin = await createCheckedInGuest(adminToken);
+    const { qrToken, bill: checkinBill } = checkin;
 
     expect(checkinBill.lineItems.length).toBe(1);
     expect(checkinBill.lineItems[0].type).toBe('room');
 
     // ── Step 2: Guest logs in via QR and orders food ──
     // First get the guest JWT token by verifying the QR
+    const guestCtx = await browser.newContext();
     const qrVerifyData = await apiGet(`/qr/verify/${qrToken}`);
     if (!qrVerifyData.token) {
       await guestCtx.close();
@@ -133,7 +102,7 @@ test.describe('Full Billing Integration Test', () => {
     const guestToken = qrVerifyData.token;
     // Use the actual guest ID from QR verify (not the check-in response)
     const actualGuestId = qrVerifyData.guestId;
-    
+
     // Get the initial bill for this guest
     const initialBillData = await apiGet(`/billing/${actualGuestId}`, adminToken);
     const initialBill = initialBillData.bill;
@@ -142,13 +111,13 @@ test.describe('Full Billing Integration Test', () => {
     const roomCharge = initialBill.lineItems[0].amount;
     const initialLineItemCount = initialBill.lineItems.length;
     expect(roomCharge).toBeGreaterThan(0);
-
-    const guestCtx = await browser.newContext();
     const guestPage = await guestCtx.newPage();
 
     await guestPage.goto(`/qr/${qrToken}`);
-    await guestPage.waitForTimeout(3000);
-    await guestPage.waitForURL(/\/guest\/dashboard/, { timeout: 10000 });
+    // QR page shows confirm card — click "Enter My Portal" to proceed
+    await expect(guestPage.getByRole('button', { name: /Enter My Portal/i })).toBeVisible({ timeout: 10000 });
+    await guestPage.getByRole('button', { name: /Enter My Portal/i }).click();
+    await guestPage.waitForURL(/\/guest\/dashboard/, { timeout: 15000 });
 
     // Navigate to menu
     await guestPage.getByText(/Order Food/i).click();
@@ -225,14 +194,12 @@ test.describe('Full Billing Integration Test', () => {
     // ── Step 4: Admin advances order through all statuses to 'delivered' ──
     // Order must go through: pending → accepted → preparing → ready → delivering → delivered
     const orderStatuses = ['accepted', 'preparing', 'ready', 'delivering', 'delivered'];
-    let deliverSuccess = true;
     for (const status of orderStatuses) {
-      await new Promise((r) => setTimeout(r, 1000)); // Delay between transitions
+      await new Promise((r) => setTimeout(r, 1000));
       const result = await apiPatch(`/orders/${orderId}/status`, adminToken, { status });
       console.log(`Order transition to ${status}:`, JSON.stringify(result));
       if (!result.success || result.error) {
         console.log(`Order status transition FAILED: ${status}`, JSON.stringify(result));
-        deliverSuccess = false;
         break;
       }
     }
@@ -293,12 +260,11 @@ test.describe('Full Billing Integration Test', () => {
     await guestCtx.close();
   });
 
-  test('checkout locks bill and cash payment flow works', async ({ page }) => {
+  test('checkout locks bill and cash payment flow works', async () => {
     const adminToken = await apiLoginAsAdmin();
 
-    // Create and check in guest (use room 4)
-    const roomsData = await apiGet('/rooms', adminToken);
-    const checkin = await createCheckedInGuest(adminToken, roomsData.rooms[4]);
+    // Create and check in guest
+    const checkin = await createCheckedInGuest(adminToken);
     const { guestId, bill: initialBill } = checkin;
 
     expect(initialBill.status).toBe('open');

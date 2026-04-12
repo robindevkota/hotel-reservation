@@ -7,16 +7,18 @@ import { AppError } from '../middleware/errorHandler';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function checkIn(req: Request, res: Response): Promise<void> {
-  const reservation = await Reservation.findById(req.params.reservationId).populate('room');
+  const reservation = await Reservation.findById(req.params.reservationId);
   if (!reservation) throw new AppError('Reservation not found', 404);
   if (reservation.status !== 'confirmed') throw new AppError('Reservation must be confirmed before check-in', 400);
 
   const room = await Room.findById(reservation.room);
   if (!room) throw new AppError('Room not found', 404);
 
-  // Create guest session token (24h)
+  // Create guest session token — valid until end of checkout day
   const qrSessionToken = uuidv4();
-  const qrSessionExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const checkoutEnd = new Date(reservation.checkOutDate);
+  checkoutEnd.setHours(23, 59, 59, 999);
+  const qrSessionExpiry = checkoutEnd;
 
   // Create Guest
   const guest = await Guest.create({
@@ -53,7 +55,12 @@ export async function checkIn(req: Request, res: Response): Promise<void> {
   room.isAvailable = false;
   await room.save();
 
-  res.json({ success: true, guest, bill, qrToken: room.qrToken, qrCodeUrl: room.qrCodeUrl });
+  res.json({ success: true, guest, bill, qrToken: room.qrToken });
+}
+
+export async function listActiveGuests(req: Request, res: Response): Promise<void> {
+  const guests = await Guest.find({ isActive: true }).lean();
+  res.json({ success: true, guests });
 }
 
 export async function checkOut(req: Request, res: Response): Promise<void> {

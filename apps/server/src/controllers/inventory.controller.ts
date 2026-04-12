@@ -8,6 +8,10 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import {
   getInventoryStats,
   executeSell,
+  executeConsume,
+  executeStocktake,
+  getVarianceReport,
+  getInventoryAnalytics,
   parseExcelImport,
 } from '../services/inventory.service';
 
@@ -117,6 +121,44 @@ export async function sell(req: AuthRequest, res: Response): Promise<void> {
   res.json({ success: true, message: `Sold ${servings} serving(s)` });
 }
 
+// ── Consume (staff / owner / wastage / complimentary) ────────────────────────
+
+export const consumeValidation = [
+  body('type').isIn(['staff_consumption','owner_consumption','wastage','complimentary']),
+  body('ingredientId').isMongoId(),
+  body('qty').isFloat({ min: 0.001 }),
+  body('consumedBy').optional().trim(),
+  body('consumptionReason').optional().isIn(['spillage','breakage','expired','other']),
+  body('guestId').optional().isMongoId(),
+];
+
+export async function consume(req: AuthRequest, res: Response): Promise<void> {
+  const { type, ingredientId, qty, consumedBy, consumptionReason, guestId, note } = req.body;
+  await executeConsume({
+    type, ingredientId, qty: Number(qty),
+    consumedBy, consumptionReason, guestId, note,
+    userId: req.user?._id?.toString(),
+  });
+  res.json({ success: true, message: `${type.replace('_', ' ')} logged` });
+}
+
+// ── Stocktake ────────────────────────────────────────────────────────────────
+
+export async function stocktake(req: AuthRequest, res: Response): Promise<void> {
+  const { lines } = req.body;
+  if (!Array.isArray(lines) || !lines.length) throw new AppError('lines array is required', 400);
+  const result = await executeStocktake(lines, req.user?._id?.toString());
+  res.json({ success: true, ...result });
+}
+
+// ── Variance report ──────────────────────────────────────────────────────────
+
+export async function varianceReport(req: AuthRequest, res: Response): Promise<void> {
+  const since = req.query.since ? new Date(req.query.since as string) : undefined;
+  const data = await getVarianceReport(since);
+  res.json({ success: true, ...data });
+}
+
 // ── Stats ────────────────────────────────────────────────────────────────────
 
 export async function stats(_req: Request, res: Response): Promise<void> {
@@ -141,6 +183,13 @@ export async function getLogs(req: AuthRequest, res: Response): Promise<void> {
     StockLog.countDocuments(filter),
   ]);
   res.json({ success: true, logs, total, page: Number(page) });
+}
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+
+export async function analytics(_req: Request, res: Response): Promise<void> {
+  const data = await getInventoryAnalytics();
+  res.json({ success: true, ...data });
 }
 
 // ── Excel Import ─────────────────────────────────────────────────────────────

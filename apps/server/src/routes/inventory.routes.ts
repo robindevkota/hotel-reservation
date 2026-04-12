@@ -9,6 +9,7 @@ const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 router.get('/stats',                        ...requireStaff, requireAdmin, inv.stats);
+router.get('/analytics',                    ...requireStaff, requireAdmin, inv.analytics);
 
 router.get('/ingredients',                  ...requireStaff, requireAdmin, inv.listIngredients);
 router.post('/ingredients',                 ...requireStaff, requireAdmin, inv.ingredientValidation, validate, inv.createIngredient);
@@ -22,6 +23,9 @@ router.put('/recipes/:id',                  ...requireStaff, requireAdmin, inv.u
 router.delete('/recipes/:id',               ...requireStaff, requireAdmin, inv.deleteRecipe);
 
 router.post('/sell',                        ...requireStaff, requireAdmin, inv.sell);
+router.post('/consume',                     ...requireStaff, requireAdmin, inv.consumeValidation, validate, inv.consume);
+router.post('/stocktake',                   ...requireStaff, requireAdmin, inv.stocktake);
+router.get('/variance',                     ...requireStaff, requireAdmin, inv.varianceReport);
 router.get('/logs',                         ...requireStaff, requireAdmin, inv.getLogs);
 router.post('/import',                      ...requireStaff, requireAdmin, upload.single('file'), inv.importExcel);
 
