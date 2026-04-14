@@ -11,3 +11,7 @@ apps/server/seeds/
 playwright-report/
 test-results/
 *.tsbuildinfo
+
+# Graphify knowledge graph
+graphify-out/
+apps/graphify-out/
