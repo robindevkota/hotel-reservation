@@ -15,5 +15,7 @@ router.get('/me', ...requireStaff, auth.getMe);
 router.get('/admins', ...requireStaff, requireSuperAdmin, auth.listAdmins);
 router.patch('/admins/:id/toggle', ...requireStaff, requireSuperAdmin, auth.toggleAdmin);
 router.post('/change-password', ...requireStaff, auth.changePasswordValidation, validate, auth.changePassword);
+router.post('/forgot-password', auth.forgotPasswordValidation, validate, auth.forgotPassword);
+router.post('/reset-password', auth.resetPasswordValidation, validate, auth.resetPassword);
 
 export default router;

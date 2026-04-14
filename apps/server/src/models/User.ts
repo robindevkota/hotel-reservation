@@ -11,6 +11,8 @@ export interface IUser extends Document {
   role: UserRole;
   department: Department;
   isActive: boolean;
+  passwordResetToken: string;
+  passwordResetExpiry: Date;
   createdAt: Date;
   comparePassword(candidate: string): Promise<boolean>;
 }
@@ -23,6 +25,8 @@ const UserSchema = new Schema<IUser>(
     role: { type: String, enum: ['super_admin', 'admin'], default: 'admin' },
     department: { type: String, enum: ['spa', 'food', 'front_desk', null], default: null },
     isActive: { type: Boolean, default: true },
+    passwordResetToken: { type: String, select: false },
+    passwordResetExpiry: { type: Date, select: false },
   },
   { timestamps: true }
 );

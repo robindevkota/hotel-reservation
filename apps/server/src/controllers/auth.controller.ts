@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import { body } from 'express-validator';
+import crypto from 'crypto';
 import User from '../models/User';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth.middleware';
+import { sendPasswordResetEmail } from '../services/notification.service';
 
 const COOKIE_OPTS = {
   httpOnly: true,
@@ -124,4 +126,54 @@ export async function changePassword(req: AuthRequest, res: Response): Promise<v
   await user.save(); // triggers bcrypt pre-save hook
 
   res.json({ success: true, message: 'Password updated successfully' });
+}
+
+export const forgotPasswordValidation = [
+  body('email').isEmail().normalizeEmail(),
+];
+
+// Sends a password-reset link to the user's email.
+// Always returns 200 to avoid email enumeration.
+export async function forgotPassword(req: Request, res: Response): Promise<void> {
+  const { email } = req.body;
+  const user = await User.findOne({ email });
+
+  if (user) {
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    user.passwordResetToken = hashedToken;
+    user.passwordResetExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await user.save({ validateBeforeSave: false });
+
+    const resetUrl = `${process.env.CLIENT_URL}/auth/reset-password?token=${rawToken}`;
+    sendPasswordResetEmail(user.email, user.name, resetUrl).catch(console.error);
+  }
+
+  // Always respond the same way — don't reveal whether email exists
+  res.json({ success: true, message: 'If that email is registered, a reset link has been sent.' });
+}
+
+export const resetPasswordValidation = [
+  body('token').notEmpty(),
+  body('password').isLength({ min: 8 }).withMessage('Password min 8 chars'),
+];
+
+export async function resetPassword(req: Request, res: Response): Promise<void> {
+  const { token, password } = req.body;
+  const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+  const user = await User.findOne({
+    passwordResetToken: hashedToken,
+    passwordResetExpiry: { $gt: new Date() },
+  }).select('+password +passwordResetToken +passwordResetExpiry');
+
+  if (!user) throw new AppError('Reset token is invalid or has expired', 400);
+
+  user.password = password;
+  user.passwordResetToken = undefined as any;
+  user.passwordResetExpiry = undefined as any;
+  await user.save();
+
+  res.json({ success: true, message: 'Password has been reset. You can now log in.' });
 }

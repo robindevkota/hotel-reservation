@@ -7,11 +7,12 @@ import { useAuthStore } from '../../store/authStore';
 import { useCartStore } from '../../store/cartStore';
 
 const NAV_LINKS = [
-  { href: '/',           label: 'Home' },
-  { href: '/rooms',      label: 'Rooms' },
-  { href: '/amenities',  label: 'Amenities' },
-  { href: '/reserve',    label: 'Reserve' },
-  { href: '/contact',    label: 'Contact' },
+  { href: '/',                label: 'Home' },
+  { href: '/rooms',           label: 'Rooms' },
+  { href: '/amenities',       label: 'Amenities' },
+  { href: '/reserve',         label: 'Reserve' },
+  { href: '/manage-booking',  label: 'Manage Booking' },
+  { href: '/contact',         label: 'Contact' },
 ];
 
 export default function Navbar() {
@@ -30,6 +31,7 @@ export default function Navbar() {
     <nav
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
+        overflow: 'hidden',
         transition: 'all 0.5s ease',
         background: scrolled ? 'hsl(220 55% 18% / 0.97)' : 'hsl(220 55% 18% / 0.85)',
         backdropFilter: 'blur(12px)',

@@ -3,8 +3,18 @@ import { body } from 'express-validator';
 import Reservation from '../models/Reservation';
 import Room from '../models/Room';
 import { AppError } from '../middleware/errorHandler';
-import { sendReservationConfirmation } from '../services/notification.service';
+import { sendReservationConfirmation, sendCancellationConfirmation } from '../services/notification.service';
 import { AuthRequest } from '../middleware/auth.middleware';
+import stripe from '../config/stripe';
+import type { CancellationPolicy } from '../models/Reservation';
+
+// Generates a human-readable booking reference: RS-YYYYMMDD-XXXX (e.g. RS-20260413-A3F2)
+function generateBookingRef(): string {
+  const date = new Date();
+  const datePart = date.toISOString().slice(0, 10).replace(/-/g, '');
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `RS-${datePart}-${rand}`;
+}
 
 export const reservationValidation = [
   body('guest.name').trim().notEmpty(),
@@ -14,10 +24,11 @@ export const reservationValidation = [
   body('checkInDate').isISO8601(),
   body('checkOutDate').isISO8601(),
   body('numberOfGuests').isInt({ min: 1 }),
+  body('cancellationPolicy').optional().isIn(['flexible', 'non_refundable']),
 ];
 
 export async function createReservation(req: Request, res: Response): Promise<void> {
-  const { guest, room: roomId, checkInDate, checkOutDate, numberOfGuests, specialRequests } = req.body;
+  const { guest, room: roomId, checkInDate, checkOutDate, numberOfGuests, specialRequests, cancellationPolicy = 'flexible' } = req.body;
 
   const checkIn = new Date(checkInDate);
   const checkOut = new Date(checkOutDate);
@@ -39,9 +50,20 @@ export async function createReservation(req: Request, res: Response): Promise<vo
   if (conflict) throw new AppError('Room is already booked for these dates', 409);
 
   const totalNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
-  const roomCharges = totalNights * room.pricePerNight;
+
+  // Non-refundable rate: 10% discount applied at booking, charged immediately via Stripe
+  const baseCharges = totalNights * room.pricePerNight;
+  const roomCharges = cancellationPolicy === 'non_refundable'
+    ? Math.round(baseCharges * 0.9 * 100) / 100
+    : baseCharges;
+
+  // Generate unique booking reference (retry once on collision)
+  let bookingRef = generateBookingRef();
+  const existing = await Reservation.findOne({ bookingRef });
+  if (existing) bookingRef = generateBookingRef();
 
   const reservation = await Reservation.create({
+    bookingRef,
     guest,
     room: roomId,
     checkInDate: checkIn,
@@ -50,12 +72,19 @@ export async function createReservation(req: Request, res: Response): Promise<vo
     specialRequests,
     totalNights,
     roomCharges,
+    cancellationPolicy,
   });
 
   // Send confirmation email (non-blocking)
   sendReservationConfirmation(
-    guest.email, guest.name, String(reservation._id),
-    checkIn, checkOut, room.name
+    guest.email,
+    guest.name,
+    reservation.bookingRef,
+    checkIn,
+    checkOut,
+    room.name,
+    roomCharges,
+    cancellationPolicy,
   ).catch(console.error);
 
   res.status(201).json({ success: true, reservation });
@@ -91,15 +120,201 @@ export async function confirmReservation(req: Request, res: Response): Promise<v
 }
 
 export async function cancelReservation(req: AuthRequest, res: Response): Promise<void> {
-  const reservation = await Reservation.findById(req.params.id);
+  const reservation = await Reservation.findById(req.params.id).populate('room', 'name pricePerNight');
   if (!reservation) throw new AppError('Reservation not found', 404);
-  if (['checked_in', 'checked_out'].includes(reservation.status)) {
-    throw new AppError('Cannot cancel a checked-in or completed reservation', 400);
+  if (['checked_in', 'checked_out', 'no_show'].includes(reservation.status)) {
+    throw new AppError('Cannot cancel a checked-in, completed, or no-show reservation', 400);
+  }
+  if (reservation.status === 'cancelled') throw new AppError('Reservation is already cancelled', 400);
+
+  const now = new Date();
+  const hoursUntilCheckIn = (reservation.checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+  // Free-cancel deadline: 48 hours before check-in
+  const withinFreeCancelWindow = hoursUntilCheckIn >= 48;
+
+  let refundIssued = false;
+  let penaltyCharged = 0;
+
+  if (reservation.cancellationPolicy === 'non_refundable') {
+    // Non-refundable: hotel keeps 100% — no refund, no release
+    penaltyCharged = reservation.roomCharges;
+  } else {
+    // Flexible policy — uses authorize/capture/cancel model
+    if (reservation.stripePaymentIntentId) {
+      const room = reservation.room as any;
+      if (withinFreeCancelWindow) {
+        // Within 48h window → cancel the authorization (release hold, $0 charged)
+        await stripe.paymentIntents.cancel(reservation.stripePaymentIntentId);
+        refundIssued = false; // nothing was ever charged
+        penaltyCharged = 0;
+      } else {
+        // Past deadline → capture exactly 1 night from the hold
+        const oneNightCents = Math.round(room.pricePerNight * 100);
+        await stripe.paymentIntents.capture(reservation.stripePaymentIntentId, {
+          amount_to_capture: oneNightCents,
+        });
+        penaltyCharged = room.pricePerNight;
+        refundIssued = false; // 1 night captured, rest of hold released automatically by Stripe
+      }
+    }
   }
 
   reservation.status = 'cancelled';
+  reservation.cancelledAt = now;
+  reservation.penaltyCharged = penaltyCharged;
   await reservation.save();
+
+  // Send cancellation email (non-blocking)
+  sendCancellationConfirmation(
+    reservation.guest.email,
+    reservation.guest.name,
+    reservation.bookingRef,
+    reservation.cancellationPolicy,
+    refundIssued,
+    penaltyCharged,
+  ).catch(console.error);
+
+  res.json({ success: true, reservation, refundIssued, penaltyCharged });
+}
+
+// ─── Guest self-service: look up a reservation by bookingRef + email ──────────
+// Public endpoint — no auth token required.
+// Returns reservation details if bookingRef and email match.
+export async function guestLookupReservation(req: Request, res: Response): Promise<void> {
+  const { bookingRef, email } = req.body;
+  if (!bookingRef || !email) throw new AppError('bookingRef and email are required', 400);
+
+  const reservation = await Reservation.findOne({ bookingRef })
+    .populate('room', 'name type pricePerNight images');
+  if (!reservation) throw new AppError('Reservation not found', 404);
+
+  // Normalise email comparison (case-insensitive)
+  if (reservation.guest.email.toLowerCase() !== String(email).toLowerCase().trim()) {
+    throw new AppError('Reservation not found', 404); // intentionally vague
+  }
+
   res.json({ success: true, reservation });
+}
+
+// ─── Guest self-service: cancel a reservation by bookingRef + email ───────────
+// Public endpoint — no admin token required.
+// Applies the same flexible/non-refundable logic as the admin cancelReservation.
+export async function guestCancelReservation(req: Request, res: Response): Promise<void> {
+  const { bookingRef, email } = req.body;
+  if (!bookingRef || !email) throw new AppError('bookingRef and email are required', 400);
+
+  const reservation = await Reservation.findOne({ bookingRef })
+    .populate('room', 'name pricePerNight');
+  if (!reservation) throw new AppError('Reservation not found', 404);
+
+  if (reservation.guest.email.toLowerCase() !== String(email).toLowerCase().trim()) {
+    throw new AppError('Reservation not found', 404);
+  }
+
+  if (['checked_in', 'checked_out', 'no_show'].includes(reservation.status)) {
+    throw new AppError('Cannot cancel a reservation that is already checked in, completed, or marked no-show', 400);
+  }
+  if (reservation.status === 'cancelled') throw new AppError('Reservation is already cancelled', 400);
+
+  const now = new Date();
+  const hoursUntilCheckIn = (reservation.checkInDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+  const withinFreeCancelWindow = hoursUntilCheckIn >= 48;
+
+  let refundIssued = false;
+  let penaltyCharged = 0;
+
+  if (reservation.cancellationPolicy === 'non_refundable') {
+    penaltyCharged = reservation.roomCharges;
+  } else {
+    if (reservation.stripePaymentIntentId) {
+      const room = reservation.room as any;
+      if (withinFreeCancelWindow) {
+        await stripe.paymentIntents.cancel(reservation.stripePaymentIntentId);
+        penaltyCharged = 0;
+      } else {
+        const oneNightCents = Math.round(room.pricePerNight * 100);
+        await stripe.paymentIntents.capture(reservation.stripePaymentIntentId, {
+          amount_to_capture: oneNightCents,
+        });
+        penaltyCharged = room.pricePerNight;
+      }
+    }
+  }
+
+  reservation.status = 'cancelled';
+  reservation.cancelledAt = now;
+  reservation.penaltyCharged = penaltyCharged;
+  await reservation.save();
+
+  sendCancellationConfirmation(
+    reservation.guest.email,
+    reservation.guest.name,
+    reservation.bookingRef,
+    reservation.cancellationPolicy,
+    refundIssued,
+    penaltyCharged,
+  ).catch(console.error);
+
+  res.json({ success: true, reservation, refundIssued, penaltyCharged });
+}
+
+// No-show: admin marks guest as no-show on/after check-in date.
+// Flexible policy → charges 1 night if paidUpfront, otherwise captures a new charge.
+// Non-refundable → hotel already has full payment, nothing extra to charge.
+export async function markNoShow(req: Request, res: Response): Promise<void> {
+  const reservation = await Reservation.findById(req.params.id).populate('room', 'name pricePerNight');
+  if (!reservation) throw new AppError('Reservation not found', 404);
+  if (!['pending', 'confirmed'].includes(reservation.status)) {
+    throw new AppError('Can only mark pending or confirmed reservations as no-show', 400);
+  }
+
+  const now = new Date();
+  if (now < reservation.checkInDate) throw new AppError('Cannot mark no-show before check-in date', 400);
+
+  const room = reservation.room as any;
+  let penaltyCharged = 0;
+
+  if (reservation.cancellationPolicy === 'non_refundable') {
+    // Already charged in full at booking — nothing to do
+    penaltyCharged = reservation.roomCharges;
+  } else {
+    // Flexible — card was authorized (hold) at booking
+    if (reservation.stripePaymentIntentId) {
+      // Capture exactly 1 night from the held amount
+      await stripe.paymentIntents.capture(reservation.stripePaymentIntentId, {
+        amount_to_capture: Math.round(room.pricePerNight * 100),
+      });
+      penaltyCharged = room.pricePerNight;
+    } else {
+      // No card on file (e.g. walk-in) — record penalty for manual collection
+      penaltyCharged = room.pricePerNight;
+    }
+  }
+
+  reservation.status = 'no_show';
+  reservation.penaltyCharged = penaltyCharged;
+  reservation.cancelledAt = now;
+  await reservation.save();
+
+  res.json({ success: true, reservation, penaltyCharged });
+}
+
+// Returns booked date ranges for a room so the frontend can gray out unavailable dates.
+// Only confirmed + checked_in reservations block availability.
+export async function getBlockedDates(req: Request, res: Response): Promise<void> {
+  const { roomId } = req.params;
+  const reservations = await Reservation.find({
+    room: roomId,
+    status: { $in: ['confirmed', 'checked_in'] },
+    checkOutDate: { $gte: new Date() },
+  }).select('checkInDate checkOutDate');
+
+  const blocked = reservations.map(r => ({
+    checkIn: r.checkInDate,
+    checkOut: r.checkOutDate,
+  }));
+
+  res.json({ success: true, blocked });
 }
 
 // Walk-in: create reservation + confirm in one step (admin only)

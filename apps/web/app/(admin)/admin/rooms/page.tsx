@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import QRCode from 'qrcode';
 import api from '../../../../lib/api';
@@ -7,19 +7,27 @@ import toast from 'react-hot-toast';
 import {
   Plus, Edit2, Trash2, QrCode, X,
   DollarSign, Users, Building2, Hash, AlignLeft,
-  ImageIcon, ListChecks, Crown, Star, Gem, Bed,
+  ListChecks, Crown, Star, Gem, Bed,
   CheckCircle, XCircle, CalendarDays, UserPlus,
   ChevronLeft, ChevronRight, BedDouble, CalendarCheck, DoorOpen,
+  Upload, Loader2, Sparkles, Shield, Sunrise, Palmtree, Tag,
+  Maximize2,
 } from 'lucide-react';
 import { A, PageHeader } from '../../_adminStyles';
 
-const TYPE_CONFIG = [
-  { value:'standard', label:'Standard', Icon:Bed,   color:'hsl(220 15% 45%)' },
-  { value:'deluxe',   label:'Deluxe',   Icon:Star,  color:'hsl(210 70% 45%)' },
-  { value:'suite',    label:'Suite',    Icon:Gem,   color:'hsl(270 50% 48%)' },
-  { value:'royal',    label:'Royal',    Icon:Crown, color:'hsl(43 72% 55%)' },
+const ICON_OPTIONS = [
+  { value:'Bed',       label:'Bed',       Icon:Bed       },
+  { value:'BedDouble', label:'Double Bed', Icon:BedDouble },
+  { value:'Crown',     label:'Crown',      Icon:Crown     },
+  { value:'Star',      label:'Star',       Icon:Star      },
+  { value:'Gem',       label:'Gem',        Icon:Gem       },
+  { value:'Sparkles',  label:'Sparkles',   Icon:Sparkles  },
+  { value:'Shield',    label:'Shield',     Icon:Shield    },
+  { value:'Sunrise',   label:'Sunrise',    Icon:Sunrise   },
+  { value:'Palmtree',  label:'Palm Tree',  Icon:Palmtree  },
+  { value:'Building2', label:'Building',   Icon:Building2 },
 ];
-const TYPE_MAP = Object.fromEntries(TYPE_CONFIG.map(t => [t.value, t]));
+const ICON_MAP = Object.fromEntries(ICON_OPTIONS.map(i => [i.value, i]));
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; dot: string }> = {
   available:   { label: 'Available',   bg: 'hsl(142 50% 95%)', color: 'hsl(142 50% 30%)', dot: 'hsl(142 50% 42%)' },
@@ -28,7 +36,8 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string; 
   unavailable: { label: 'Unavailable', bg: 'hsl(30 15% 93%)',  color: 'hsl(30 10% 40%)',  dot: 'hsl(30 10% 55%)' },
 };
 
-const empty = { name:'', slug:'', type:'standard', pricePerNight:'', capacity:'2', description:'', floorNumber:'', roomNumber:'', amenities:'', images:'' };
+const empty = { name:'', slug:'', type:'', categorySlug:'', pricePerNight:'', capacity:'2', areaSqm:'', description:'', floorNumber:'', roomNumber:'', amenities:'', images:'' };
+const emptyCategory = { name:'', slug:'', description:'', icon:'Bed', basePrice:'' };
 const emptyWalkIn = { guestName:'', guestEmail:'', guestPhone:'', roomId:'', checkInDate:'', checkOutDate:'', numberOfGuests:'1', specialRequests:'' };
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -55,9 +64,20 @@ export default function AdminRoomsPage() {
   const [qrModal, setQrModal] = useState<any>(null);
   const [step, setStep] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Categories
+  const [categories, setCategories] = useState<any[]>([]);
+  const [catModal, setCatModal] = useState(false);
+  const [editCat, setEditCat] = useState<any>(null);
+  const [catForm, setCatForm] = useState({ ...emptyCategory });
+  const [catSaving, setCatSaving] = useState(false);
+  const [deleteCatConfirm, setDeleteCatConfirm] = useState<string | null>(null);
 
   // Availability state
-  const [view, setView] = useState<'rooms' | 'availability'>('rooms');
+  const [view, setView] = useState<'rooms' | 'availability' | 'categories'>('rooms');
   const [availDate, setAvailDate] = useState(todayStr());
   const [availability, setAvailability] = useState<any[]>([]);
   const [availLoading, setAvailLoading] = useState(false);
@@ -78,7 +98,29 @@ export default function AdminRoomsPage() {
       .then(({ data }) => setTodayAvail(data.rooms || []))
       .catch(() => {});
   };
-  useEffect(() => { fetchRooms(); fetchTodayAvail(); }, []);
+  const fetchCategories = () => {
+    api.get('/room-categories').then(({ data }) => setCategories(data.categories || [])).catch(() => {});
+  };
+  useEffect(() => { fetchRooms(); fetchTodayAvail(); fetchCategories(); }, []);
+
+  const openCreateCat = () => { setEditCat(null); setCatForm({ ...emptyCategory }); setCatModal(true); };
+  const openEditCat = (cat: any) => { setEditCat(cat); setCatForm({ name:cat.name, slug:cat.slug, description:cat.description||'', icon:cat.icon||'Bed', basePrice:String(cat.basePrice||'') }); setCatModal(true); };
+
+  const handleSaveCat = async () => {
+    if (!catForm.name || !catForm.slug) { toast.error('Name and slug required'); return; }
+    setCatSaving(true);
+    const payload = { ...catForm, basePrice: Number(catForm.basePrice) || 0 };
+    try {
+      editCat ? await api.put(`/room-categories/${editCat._id}`, payload) : await api.post('/room-categories', payload);
+      toast.success(editCat ? 'Category updated' : 'Category created');
+      setCatModal(false); fetchCategories();
+    } catch(e:any) { toast.error(e.response?.data?.message || 'Failed'); }
+    finally { setCatSaving(false); }
+  };
+
+  const handleDeleteCat = async (id: string) => {
+    await api.delete(`/room-categories/${id}`); toast.success('Category deleted'); setDeleteCatConfirm(null); fetchCategories();
+  };
 
   const fetchAvailability = (date: string) => {
     setAvailLoading(true);
@@ -92,17 +134,37 @@ export default function AdminRoomsPage() {
     if (view === 'availability') fetchAvailability(availDate);
   }, [view, availDate]);
 
-  const openCreate = () => { setEditRoom(null); setForm({ ...empty }); setStep(1); setModal(true); };
+  const openCreate = () => { setEditRoom(null); setForm({ ...empty }); setUploadedImages([]); setStep(1); setModal(true); };
   const openEdit = (room: any) => {
     setEditRoom(room);
-    setForm({ ...room, pricePerNight:String(room.pricePerNight), capacity:String(room.capacity), floorNumber:String(room.floorNumber), amenities:(room.amenities||[]).join(', '), images:(room.images||[]).join(', ') });
+    setForm({ ...room, pricePerNight:String(room.pricePerNight), capacity:String(room.capacity), floorNumber:String(room.floorNumber), areaSqm:String(room.areaSqm||''), amenities:(room.amenities||[]).join(', '), images:'', categorySlug:room.categorySlug||room.type||'' });
+    setUploadedImages(room.images || []);
     setStep(1); setModal(true);
+  };
+
+  const handleImageFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    const uploaded: string[] = [];
+    for (const file of Array.from(files)) {
+      const fd = new FormData();
+      fd.append('image', file);
+      try {
+        const { data } = await api.post('/rooms/upload-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+        uploaded.push(data.url);
+      } catch {
+        toast.error(`Failed to upload ${file.name}`);
+      }
+    }
+    setUploadedImages(prev => [...prev, ...uploaded]);
+    setUploading(false);
+    if (uploaded.length) toast.success(`${uploaded.length} image${uploaded.length > 1 ? 's' : ''} uploaded`);
   };
 
   const handleSave = async () => {
     if (!form.name || !form.slug || !form.pricePerNight) { toast.error('Fill required fields'); return; }
     setSaving(true);
-    const payload = { ...form, pricePerNight:Number(form.pricePerNight), capacity:Number(form.capacity), floorNumber:Number(form.floorNumber), amenities:form.amenities.split(',').map(s=>s.trim()).filter(Boolean), images:form.images.split(',').map(s=>s.trim()).filter(Boolean) };
+    const payload = { ...form, pricePerNight:Number(form.pricePerNight), capacity:Number(form.capacity), floorNumber:Number(form.floorNumber), areaSqm:Number(form.areaSqm)||0, type:form.categorySlug||form.type, categorySlug:form.categorySlug, amenities:form.amenities.split(',').map(s=>s.trim()).filter(Boolean), images:uploadedImages };
     try {
       editRoom ? await api.put(`/rooms/${editRoom._id}`, payload) : await api.post('/rooms', payload);
       toast.success(editRoom ? 'Room updated' : 'Room created');
@@ -238,14 +300,16 @@ export default function AdminRoomsPage() {
 
         {/* View Tabs */}
         <div style={{ display:'flex', gap:'0', marginBottom:'2rem', borderBottom:`1px solid ${A.border}` }}>
-          <button className="view-tab" onClick={() => setView('rooms')}
-            style={{ borderColor: view==='rooms' ? A.gold : 'transparent', color: view==='rooms' ? A.navy : A.muted, background: view==='rooms' ? 'hsl(43 72% 55%/0.06)' : 'transparent', borderBottom: view==='rooms' ? `2px solid ${A.gold}` : '2px solid transparent', marginBottom:'-1px' }}>
-            <Bed size={13} strokeWidth={2} /> Room Cards
-          </button>
-          <button className="view-tab" onClick={() => setView('availability')}
-            style={{ borderColor: view==='availability' ? A.gold : 'transparent', color: view==='availability' ? A.navy : A.muted, background: view==='availability' ? 'hsl(43 72% 55%/0.06)' : 'transparent', borderBottom: view==='availability' ? `2px solid ${A.gold}` : '2px solid transparent', marginBottom:'-1px' }}>
-            <CalendarDays size={13} strokeWidth={2} /> Availability
-          </button>
+          {[
+            { key:'rooms',        label:'Room Cards',  Icon:Bed          },
+            { key:'availability', label:'Availability', Icon:CalendarDays },
+            { key:'categories',   label:'Categories',   Icon:Tag          },
+          ].map(({ key, label, Icon }) => (
+            <button key={key} className="view-tab" onClick={() => { setView(key as any); setCatView(key as any); }}
+              style={{ borderColor: view===key ? A.gold : 'transparent', color: view===key ? A.navy : A.muted, background: view===key ? 'hsl(43 72% 55%/0.06)' : 'transparent', borderBottom: view===key ? `2px solid ${A.gold}` : '2px solid transparent', marginBottom:'-1px' }}>
+              <Icon size={13} strokeWidth={2} /> {label}
+            </button>
+          ))}
         </div>
 
         {/* ── ROOM CARDS VIEW ── */}
@@ -258,17 +322,18 @@ export default function AdminRoomsPage() {
           ) : (
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))', gap:'1.5rem' }}>
               {rooms.map(room => {
-                const tc = TYPE_MAP[room.type];
+                const cat = categories.find(c => c.slug === (room.categorySlug || room.type));
+                const CatIcon = cat ? (ICON_MAP[cat.icon]?.Icon || Tag) : Tag;
                 return (
                   <div key={room._id} className="rm-card">
                     {/* Image */}
                     <div style={{ position:'relative', height:'13rem', overflow:'hidden' }}>
                       <Image src={room.images?.[0] || 'https://images.unsplash.com/photo-1578683010236-d716f9a3f461?w=600'} alt={room.name} fill className="rm-img" />
                       <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top,hsl(220 55% 18%/0.7) 0%,transparent 55%)' }} />
-                      {/* Type badge */}
-                      <div style={{ position:'absolute', top:'0.75rem', left:'0.75rem', background:`${tc?.color || A.navy}e0`, backdropFilter:'blur(6px)', padding:'0.3rem 0.85rem', display:'flex', alignItems:'center', gap:'0.4rem' }}>
-                        {tc && <tc.Icon size={12} color="#fff" strokeWidth={2} />}
-                        <span style={{ fontFamily:A.cinzel, fontSize:'0.7rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'#fff', fontWeight:700 }}>{room.type}</span>
+                      {/* Category badge */}
+                      <div style={{ position:'absolute', top:'0.75rem', left:'0.75rem', background:`${A.navy}e0`, backdropFilter:'blur(6px)', padding:'0.3rem 0.85rem', display:'flex', alignItems:'center', gap:'0.4rem' }}>
+                        <CatIcon size={12} color={A.gold} strokeWidth={2} />
+                        <span style={{ fontFamily:A.cinzel, fontSize:'0.7rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'#fff', fontWeight:700 }}>{cat?.name || room.type}</span>
                       </div>
                       {/* Availability dot */}
                       <div style={{ position:'absolute', top:'0.75rem', right:'0.75rem', width:'0.6rem', height:'0.6rem', borderRadius:'50%', background: room.isAvailable ? 'hsl(142 50% 45%)' : 'hsl(0 60% 52%)', boxShadow:`0 0 0 3px ${room.isAvailable ? 'hsl(142 60% 85%)' : 'hsl(0 70% 85%)'}` }} />
@@ -279,7 +344,7 @@ export default function AdminRoomsPage() {
                       {/* Name */}
                       <div style={{ position:'absolute', bottom:'0.875rem', left:'0.875rem' }}>
                         <h3 style={{ fontFamily:A.cinzel, fontSize:'1rem', color:'rgba(245,236,215,0.95)', marginBottom:'0.2rem' }}>{room.name}</h3>
-                        <p style={{ fontFamily:A.raleway, fontSize:'0.75rem', color:'rgba(245,236,215,0.65)' }}>Room #{room.roomNumber} · Floor {room.floorNumber} · {room.capacity} guests</p>
+                        <p style={{ fontFamily:A.raleway, fontSize:'0.75rem', color:'rgba(245,236,215,0.65)' }}>Room #{room.roomNumber} · Floor {room.floorNumber} · {room.capacity} guests{room.areaSqm ? ` · ${room.areaSqm} m²` : ''}</p>
                       </div>
                     </div>
 
@@ -364,7 +429,7 @@ export default function AdminRoomsPage() {
 
                 {availability.map((room, i) => {
                   const sc = STATUS_CONFIG[room.availabilityStatus] || STATUS_CONFIG.unavailable;
-                  const tc = TYPE_MAP[room.type];
+                  const cat = categories.find(c => c.slug === (room.categorySlug || room.type));
                   const res = room.currentReservation;
                   return (
                     <div key={room._id} className="avail-row" style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 2fr 1fr', padding:'0.875rem 1.25rem', gap:'1rem', alignItems:'center', borderTop: i > 0 ? `1px solid ${A.border}` : 'none', background:'#fff' }}>
@@ -376,8 +441,8 @@ export default function AdminRoomsPage() {
 
                       {/* Type */}
                       <div style={{ display:'flex', alignItems:'center', gap:'0.4rem' }}>
-                        {tc && <tc.Icon size={13} color={tc.color} strokeWidth={1.8} />}
-                        <span style={{ fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.08em', textTransform:'uppercase', color:tc?.color || A.muted }}>{room.type}</span>
+                        {cat && (ICON_MAP[cat.icon]?.Icon) && React.createElement(ICON_MAP[cat.icon].Icon, { size:13, color:A.gold, strokeWidth:1.8 })}
+                        <span style={{ fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.08em', textTransform:'uppercase', color:A.muted }}>{cat?.name || room.type}</span>
                       </div>
 
                       {/* Floor / # */}
@@ -419,7 +484,137 @@ export default function AdminRoomsPage() {
             )}
           </div>
         )}
+
+        {/* ── CATEGORIES VIEW ── */}
+        {view === 'categories' && (
+          <div>
+            <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:'1.5rem' }}>
+              <button onClick={openCreateCat} style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.75rem 1.5rem', border:'none', cursor:'pointer', fontWeight:700 }}>
+                <Plus size={14} strokeWidth={2.5} /> Add Category
+              </button>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:'1.25rem' }}>
+              {categories.map(cat => {
+                const iconEntry = ICON_MAP[cat.icon];
+                const CatIcon = iconEntry?.Icon || Tag;
+                const roomCount = rooms.filter(r => r.categorySlug === cat.slug || r.type === cat.slug).length;
+                return (
+                  <div key={cat._id} style={{ background:'#fff', border:`1px solid ${A.border}`, padding:'1.5rem', display:'flex', flexDirection:'column', gap:'0.875rem' }}>
+                    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'1rem' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:'0.875rem' }}>
+                        <div style={{ width:'2.75rem', height:'2.75rem', background:`${A.gold}18`, border:`1px solid ${A.gold}40`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                          <CatIcon size={20} color={A.gold} strokeWidth={1.8} />
+                        </div>
+                        <div>
+                          <h3 style={{ fontFamily:A.cinzel, fontSize:'0.95rem', color:A.navy, fontWeight:600 }}>{cat.name}</h3>
+                          <p style={{ fontFamily:A.raleway, fontSize:'0.72rem', color:A.muted }}>/{cat.slug}</p>
+                        </div>
+                      </div>
+                      <div style={{ display:'flex', gap:'0.4rem', flexShrink:0 }}>
+                        <button className="act-btn" onClick={() => openEditCat(cat)} style={{ color:'hsl(210 70% 35%)', borderColor:'hsl(210 70% 75%)', background:'hsl(210 80% 97%)' }}>
+                          <Edit2 size={10} strokeWidth={2} /> Edit
+                        </button>
+                        <button className="act-btn" onClick={() => setDeleteCatConfirm(cat._id)} style={{ color:'hsl(0 60% 42%)', borderColor:'hsl(0 60% 75%)', background:'hsl(0 70% 97%)' }}>
+                          <Trash2 size={10} strokeWidth={2} />
+                        </button>
+                      </div>
+                    </div>
+                    {cat.description && <p style={{ fontFamily:A.raleway, fontSize:'0.78rem', color:A.muted, lineHeight:1.5 }}>{cat.description}</p>}
+                    <div style={{ display:'flex', gap:'1.5rem', paddingTop:'0.5rem', borderTop:`1px solid ${A.border}` }}>
+                      <div>
+                        <p style={{ fontFamily:A.cinzel, fontSize:'1.1rem', color:A.gold, fontWeight:700 }}>${cat.basePrice}</p>
+                        <p style={{ fontFamily:A.raleway, fontSize:'0.65rem', color:A.muted, textTransform:'uppercase', letterSpacing:'0.08em' }}>Base Price</p>
+                      </div>
+                      <div>
+                        <p style={{ fontFamily:A.cinzel, fontSize:'1.1rem', color:A.navy, fontWeight:700 }}>{roomCount}</p>
+                        <p style={{ fontFamily:A.raleway, fontSize:'0.65rem', color:A.muted, textTransform:'uppercase', letterSpacing:'0.08em' }}>Rooms</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ── Category Modal ── */}
+      {catModal && (
+        <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div style={{ position:'absolute', inset:0, background:'hsl(220 55% 18%/0.7)', backdropFilter:'blur(6px)' }} onClick={() => setCatModal(false)} />
+          <div style={{ position:'relative', width:'100%', maxWidth:'28rem', background:'#fff', boxShadow:'0 30px 80px hsl(220 55% 8%/0.4)' }}>
+            <div style={{ background:A.navy, padding:'1.25rem 1.75rem', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <p style={{ fontFamily:A.cormo, color:A.gold, fontSize:'0.78rem', letterSpacing:'0.25em', textTransform:'uppercase', marginBottom:'0.2rem' }}>{editCat ? 'Update' : 'New'} Category</p>
+                <h3 style={{ fontFamily:A.cinzel, fontSize:'1.1rem', color:'rgba(245,236,215,0.92)' }}>{editCat ? editCat.name : 'Add a Category'}</h3>
+              </div>
+              <button onClick={() => setCatModal(false)} style={{ background:'none', border:'none', color:'rgba(245,236,215,0.4)', cursor:'pointer', padding:'0.25rem', display:'flex' }}><X size={22} /></button>
+            </div>
+            <div style={{ padding:'1.75rem', display:'flex', flexDirection:'column', gap:'1.25rem' }}>
+              {/* Name + Slug */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'1rem' }}>
+                <div>
+                  <FieldLabel>Name *</FieldLabel>
+                  <input className="rm-input" style={inputBase} value={catForm.name} onChange={e => { const n=e.target.value; setCatForm(p=>({...p, name:n, slug:p.slug||n.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'')})); }} placeholder="e.g. Penthouse" />
+                </div>
+                <div>
+                  <FieldLabel>Slug *</FieldLabel>
+                  <input className="rm-input" style={inputBase} value={catForm.slug} onChange={e=>setCatForm(p=>({...p,slug:e.target.value}))} placeholder="penthouse" />
+                </div>
+              </div>
+              {/* Description */}
+              <div>
+                <FieldLabel>Description</FieldLabel>
+                <textarea className="rm-input" style={{...inputBase,resize:'none'}} rows={2} value={catForm.description} onChange={e=>setCatForm(p=>({...p,description:e.target.value}))} placeholder="Describe this category…" />
+              </div>
+              {/* Icon picker */}
+              <div>
+                <FieldLabel>Icon</FieldLabel>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:'0.5rem' }}>
+                  {ICON_OPTIONS.map(({ value, label, Icon: IcoComp }) => (
+                    <button key={value} type="button" onClick={() => setCatForm(p=>({...p,icon:value}))}
+                      style={{ border:`2px solid ${catForm.icon===value ? A.gold : A.border}`, background: catForm.icon===value ? `${A.gold}14` : '#fff', padding:'0.6rem 0.4rem', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:'0.3rem', transition:'all 0.15s' }}>
+                      <IcoComp size={18} color={catForm.icon===value ? A.gold : A.muted} strokeWidth={1.8} />
+                      <span style={{ fontFamily:A.raleway, fontSize:'0.58rem', color:catForm.icon===value ? A.navy : A.muted }}>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Base Price */}
+              <div style={{ maxWidth:'12rem' }}>
+                <FieldLabel>Base Price ($)</FieldLabel>
+                <div style={{ position:'relative' }}>
+                  <div style={{ position:'absolute', left:'0.75rem', top:'50%', transform:'translateY(-50%)', color:A.gold }}><DollarSign size={14} strokeWidth={1.8} /></div>
+                  <input className="rm-input" style={{...inputBase,paddingLeft:'2rem'}} type="number" value={catForm.basePrice} onChange={e=>setCatForm(p=>({...p,basePrice:e.target.value}))} placeholder="450" />
+                </div>
+              </div>
+              {/* Actions */}
+              <div style={{ display:'flex', gap:'0.875rem', marginTop:'0.25rem' }}>
+                <button onClick={() => setCatModal(false)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.875rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
+                <button onClick={handleSaveCat} disabled={catSaving} style={{ flex:2, background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.2em', textTransform:'uppercase', padding:'0.875rem', border:'none', cursor:'pointer', fontWeight:700, opacity:catSaving?0.6:1 }}>
+                  {catSaving ? 'Saving…' : editCat ? 'Save Changes' : 'Create Category'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Category Confirm ── */}
+      {deleteCatConfirm && (
+        <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div style={{ position:'absolute', inset:0, background:'hsl(220 55% 18%/0.7)', backdropFilter:'blur(6px)' }} onClick={() => setDeleteCatConfirm(null)} />
+          <div style={{ position:'relative', background:'#fff', padding:'2rem', maxWidth:'22rem', width:'100%', border:`1px solid ${A.border}`, textAlign:'center' }}>
+            <div style={{ display:'flex', justifyContent:'center', color:'hsl(0 60% 52%)', marginBottom:'1rem' }}><Trash2 size={32} strokeWidth={1.5} /></div>
+            <h3 style={{ fontFamily:A.cinzel, fontSize:'0.9rem', color:A.navy, marginBottom:'0.5rem' }}>Delete Category?</h3>
+            <p style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted, marginBottom:'1.5rem' }}>Existing rooms in this category will not be deleted but will lose their category link.</p>
+            <div style={{ display:'flex', gap:'0.75rem' }}>
+              <button onClick={() => setDeleteCatConfirm(null)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
+              <button onClick={() => handleDeleteCat(deleteCatConfirm)} style={{ flex:1, background:'hsl(0 60% 48%)', color:'#fff', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:700 }}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Walk-In Modal ── */}
       {walkInModal && (
@@ -565,18 +760,28 @@ export default function AdminRoomsPage() {
               {step === 1 && (
                 <div style={{ display:'flex', flexDirection:'column', gap:'1.25rem' }}>
 
-                  {/* Room type */}
+                  {/* Category */}
                   <div>
-                    <FieldLabel>Room Type</FieldLabel>
-                    <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'0.625rem' }}>
-                      {TYPE_CONFIG.map(({ value, label, Icon, color }) => (
-                        <button key={value} className="type-btn" onClick={() => setForm({...form, type:value})}
-                          style={{ borderColor: form.type===value ? color : A.border, background: form.type===value ? `${color}12` : '#fff' }}>
-                          <Icon size={20} color={form.type===value ? color : A.muted} strokeWidth={form.type===value ? 2 : 1.5} />
-                          <span style={{ fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.08em', textTransform:'uppercase', color: form.type===value ? color : A.muted }}>{label}</span>
-                        </button>
-                      ))}
-                    </div>
+                    <FieldLabel>Category *</FieldLabel>
+                    {categories.length === 0 ? (
+                      <p style={{ fontFamily:A.raleway, fontSize:'0.8rem', color:A.muted }}>No categories yet — create one in the Categories tab first.</p>
+                    ) : (
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))', gap:'0.625rem' }}>
+                        {categories.map(cat => {
+                          const iconEntry = ICON_MAP[cat.icon];
+                          const CatIcon = iconEntry?.Icon || Tag;
+                          const selected = form.categorySlug === cat.slug;
+                          return (
+                            <button key={cat._id} type="button" className="type-btn"
+                              onClick={() => setForm({...form, categorySlug:cat.slug, type:cat.slug})}
+                              style={{ borderColor: selected ? A.gold : A.border, background: selected ? `${A.gold}12` : '#fff' }}>
+                              <CatIcon size={20} color={selected ? A.gold : A.muted} strokeWidth={selected ? 2 : 1.5} />
+                              <span style={{ fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.08em', textTransform:'uppercase', color: selected ? A.navy : A.muted }}>{cat.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Name + Slug */}
@@ -611,8 +816,8 @@ export default function AdminRoomsPage() {
               {step === 2 && (
                 <div style={{ display:'flex', flexDirection:'column', gap:'1.25rem' }}>
 
-                  {/* Room # / Floor / Capacity */}
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'1rem' }}>
+                  {/* Room # / Floor / Capacity / Area */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:'1rem' }}>
                     <div>
                       <FieldLabel>Room #</FieldLabel>
                       <div style={{ position:'relative' }}>
@@ -632,6 +837,13 @@ export default function AdminRoomsPage() {
                       <div style={{ position:'relative' }}>
                         <div style={{ position:'absolute', left:'0.75rem', top:'50%', transform:'translateY(-50%)', color:A.gold }}><Users size={13} strokeWidth={1.8} /></div>
                         <input className="rm-input" style={{...inputBase,paddingLeft:'2rem'}} type="number" value={form.capacity} onChange={e=>setForm({...form,capacity:e.target.value})} placeholder="2" />
+                      </div>
+                    </div>
+                    <div>
+                      <FieldLabel>Area (m²)</FieldLabel>
+                      <div style={{ position:'relative' }}>
+                        <div style={{ position:'absolute', left:'0.75rem', top:'50%', transform:'translateY(-50%)', color:A.gold }}><Maximize2 size={13} strokeWidth={1.8} /></div>
+                        <input className="rm-input" style={{...inputBase,paddingLeft:'2rem'}} type="number" value={form.areaSqm} onChange={e=>setForm({...form,areaSqm:e.target.value})} placeholder="45" />
                       </div>
                     </div>
                   </div>
@@ -661,14 +873,44 @@ export default function AdminRoomsPage() {
                     )}
                   </div>
 
-                  {/* Image URLs */}
+                  {/* Image Upload */}
                   <div>
-                    <FieldLabel>Image URLs (comma separated)</FieldLabel>
-                    <div style={{ position:'relative' }}>
-                      <div style={{ position:'absolute', left:'0.75rem', top:'50%', transform:'translateY(-50%)', color:A.gold }}><ImageIcon size={13} strokeWidth={1.8} /></div>
-                      <input className="rm-input" style={{...inputBase,paddingLeft:'2rem'}} value={form.images} onChange={e=>setForm({...form,images:e.target.value})} placeholder="https://..., https://..." />
-                    </div>
+                    <FieldLabel>Room Images</FieldLabel>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      style={{ display:'none' }}
+                      onChange={e => handleImageFiles(e.target.files)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      style={{ width:'100%', padding:'0.75rem', border:`2px dashed ${A.border}`, background:'#fafafa', cursor:uploading?'not-allowed':'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.5rem', color:A.muted, fontFamily:A.raleway, fontSize:'0.82rem', opacity:uploading?0.6:1 }}
+                    >
+                      {uploading ? <Loader2 size={15} style={{ animation:'spin 1s linear infinite' }} /> : <Upload size={15} color={A.gold} />}
+                      {uploading ? 'Uploading…' : 'Click to upload images'}
+                    </button>
+                    {uploadedImages.length > 0 && (
+                      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(80px, 1fr))', gap:'0.5rem', marginTop:'0.75rem' }}>
+                        {uploadedImages.map((url, i) => (
+                          <div key={i} style={{ position:'relative', aspectRatio:'1', border:`1px solid ${A.border}`, overflow:'hidden' }}>
+                            <Image src={url} alt={`room-${i+1}`} fill style={{ objectFit:'cover' }} />
+                            <button
+                              type="button"
+                              onClick={() => setUploadedImages(prev => prev.filter((_,j) => j !== i))}
+                              style={{ position:'absolute', top:'2px', right:'2px', background:'hsl(0 60% 48%)', border:'none', borderRadius:'50%', width:'18px', height:'18px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}
+                            >
+                              <X size={10} color="#fff" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
+                  <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
 
                   {/* Actions */}
                   <div style={{ display:'flex', gap:'0.875rem', marginTop:'0.5rem' }}>

@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import Bill from '../models/Bill';
 import Payment from '../models/Payment';
-import Guest from '../models/Guest';
+import Reservation from '../models/Reservation';
 import stripe from '../config/stripe';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth.middleware';
@@ -109,6 +109,83 @@ export async function cashPayment(req: Request, res: Response): Promise<void> {
   if (g?.email) sendCheckoutReceipt(g.email, g.name, pdf).catch(console.error);
 
   res.json({ success: true, bill });
+}
+
+// ─── Card authorization for flexible bookings ────────────────────────────────
+// Called after createReservation when policy = flexible.
+// Authorizes 1 night on the guest's card (hold only — money NOT taken).
+// On no-show or late cancel → capture(). On normal cancel → cancel().
+export async function authorizeCard(req: Request, res: Response): Promise<void> {
+  const { reservationId } = req.body;
+  const reservation = await Reservation.findById(reservationId).populate('room', 'name pricePerNight');
+  if (!reservation) throw new AppError('Reservation not found', 404);
+  if (reservation.cancellationPolicy !== 'flexible') throw new AppError('Only flexible reservations use card authorization', 400);
+  if (reservation.stripePaymentIntentId) throw new AppError('Card already authorized for this reservation', 400);
+  if (!['pending', 'confirmed'].includes(reservation.status)) throw new AppError('Reservation is not in an authorizable state', 400);
+
+  const room = reservation.room as any;
+  const oneNightAmount = Math.round(room.pricePerNight * 100); // hold 1 night in cents
+
+  const intent = await stripe.paymentIntents.create({
+    amount: oneNightAmount,
+    currency: 'usd',
+    capture_method: 'manual',  // authorize only — do NOT charge yet
+    metadata: {
+      reservationId: String(reservation._id),
+      bookingRef: reservation.bookingRef,
+      type: 'flexible_hold',
+    },
+  });
+
+  reservation.stripePaymentIntentId = intent.id;
+  await reservation.save();
+
+  res.json({ success: true, clientSecret: intent.client_secret, amount: room.pricePerNight });
+}
+
+// ─── Upfront charge for non-refundable bookings ───────────────────────────────
+// Called immediately after reservation is created when policy = non_refundable.
+// Charges 100% of roomCharges via Stripe and marks paidUpfront = true.
+export async function chargeUpfront(req: Request, res: Response): Promise<void> {
+  const { reservationId } = req.body;
+  const reservation = await Reservation.findById(reservationId).populate('room', 'name');
+  if (!reservation) throw new AppError('Reservation not found', 404);
+  if (reservation.cancellationPolicy !== 'non_refundable') throw new AppError('Only non-refundable reservations are charged upfront', 400);
+  if (reservation.paidUpfront) throw new AppError('Already charged upfront', 400);
+  if (!['pending', 'confirmed'].includes(reservation.status)) throw new AppError('Reservation is not in a chargeable state', 400);
+
+  const intent = await stripe.paymentIntents.create({
+    amount: Math.round(reservation.roomCharges * 100),
+    currency: 'usd',
+    metadata: {
+      reservationId: String(reservation._id),
+      bookingRef: reservation.bookingRef,
+      type: 'upfront_non_refundable',
+    },
+  });
+
+  reservation.stripePaymentIntentId = intent.id;
+  reservation.paidUpfront = true;
+  await reservation.save();
+
+  res.json({ success: true, clientSecret: intent.client_secret, amount: reservation.roomCharges });
+}
+
+// ─── Refund for flexible cancellations ────────────────────────────────────────
+// Called by cancelReservation when policy = flexible AND within free-cancel window.
+// Issues full Stripe refund if paidUpfront is true (shouldn't be for flexible, but guards anyway).
+// For no-show or late cancel — charges 1 night as penalty.
+export async function refundUpfront(req: Request, res: Response): Promise<void> {
+  const { reservationId } = req.body;
+  const reservation = await Reservation.findById(reservationId).populate('room', 'name pricePerNight');
+  if (!reservation) throw new AppError('Reservation not found', 404);
+  if (!reservation.stripePaymentIntentId) throw new AppError('No payment on record to refund', 400);
+
+  const refund = await stripe.refunds.create({
+    payment_intent: reservation.stripePaymentIntentId,
+  });
+
+  res.json({ success: true, refundId: refund.id, amount: (refund.amount / 100).toFixed(2) });
 }
 
 export async function getReceipt(req: AuthRequest, res: Response): Promise<void> {

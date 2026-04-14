@@ -26,6 +26,7 @@ import billingRoutes from './routes/billing.routes';
 import paymentRoutes from './routes/payment.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import inventoryRoutes from './routes/inventory.routes';
+import categoryRoutes from './routes/category.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -37,7 +38,7 @@ initSocket(server);
 app.use(helmet());
 const allowedOrigins = process.env.NODE_ENV === 'production'
   ? [process.env.CLIENT_URL || 'http://localhost:3000']
-  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', 'http://192.168.18.156:3000', 'http://192.168.18.156:3001', process.env.CLIENT_URL].filter(Boolean) as string[];
+  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', process.env.CLIENT_URL].filter(Boolean) as string[];
 
 app.use(cors({
   origin: (origin, cb) => {
@@ -88,6 +89,7 @@ app.use('/api/billing', billingRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/room-categories', categoryRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 

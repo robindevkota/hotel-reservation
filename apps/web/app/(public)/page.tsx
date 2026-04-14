@@ -14,17 +14,41 @@ const S = {
   cinzel: "'Cinzel', serif", cormo: "'Cormorant Garamond', serif", raleway: "'Raleway', sans-serif",
 };
 
-const ROOMS = [
-  { name: 'Pharaoh Suite',  price: '$450', image: '/room-pharaoh.jpg', guests: 4, size: '95 m²',  features: ['King Bed', 'Private Terrace', 'Jacuzzi', 'Living Area'], description: "The crown jewel — a palatial suite with hieroglyphic murals, gold-leaf furnishings, and a private terrace overlooking the gardens.", slug: 'pharaoh-suite' },
-  { name: 'Royal Chamber',  price: '$320', image: '/room-royal.jpg',   guests: 2, size: '65 m²',  features: ['King Bed', 'City View', 'Mini Bar', 'Sitting Area'],     description: "Opulent quarters adorned with navy and gold, featuring handcrafted Egyptian-inspired décor and premium amenities.",            slug: 'royal-chamber' },
-  { name: 'Deluxe Tomb',    price: '$220', image: '/room-deluxe.jpg',  guests: 2, size: '45 m²',  features: ['Twin Beds', 'Garden View', 'Work Desk', 'Rain Shower'],  description: "Elegantly appointed twin rooms inspired by the artistry of ancient tombs — a cozy sanctuary with authentic charm.",          slug: 'deluxe-tomb' },
-];
+async function getFeaturedRooms() {
+  try {
+    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+    const [roomsRes, catsRes] = await Promise.all([
+      fetch(`${base}/rooms`, { next: { revalidate: 60 } }),
+      fetch(`${base}/room-categories`, { next: { revalidate: 60 } }),
+    ]);
+    if (!roomsRes.ok) return [];
+    const rooms: any[] = (await roomsRes.json()).rooms || [];
+    const categories: any[] = catsRes.ok ? ((await catsRes.json()).categories || []) : [];
 
-export default function HomePage() {
+    // Pick the cheapest available room per category, in category order
+    const seen = new Set<string>();
+    const featured: any[] = [];
+    for (const cat of categories) {
+      const match = rooms
+        .filter(r => (r.categorySlug || r.type) === cat.slug)
+        .sort((a, b) => a.pricePerNight - b.pricePerNight)[0];
+      if (match && !seen.has(match._id)) {
+        seen.add(match._id);
+        featured.push({ ...match, _categoryName: cat.name, _categoryIcon: cat.icon });
+      }
+    }
+    return featured;
+  } catch {
+    return [];
+  }
+}
+
+export default async function HomePage() {
+  const rooms = await getFeaturedRooms();
   return (
     <>
       <style>{`
-        .room-card{background:#fff;border:1px solid hsl(35 25% 82%);overflow:hidden;transition:all 0.5s ease;box-shadow:0 8px 32px -8px hsl(220 55% 18%/0.12);}
+        .room-card{background:#fff;border:1px solid hsl(35 25% 82%);overflow:hidden;transition:all 0.5s ease;box-shadow:0 8px 32px -8px hsl(220 55% 18%/0.12);width:calc(33.333% - 1.34rem);min-width:280px;}
         .room-card:hover{border-color:hsl(43 72% 55%/0.5);box-shadow:0 4px 20px -4px hsl(43 72% 55%/0.3);}
         .room-card:hover .room-img{transform:scale(1.08);}
         .room-img{transition:transform 0.7s ease;width:100%;height:100%;object-fit:cover;display:block;}
@@ -79,13 +103,18 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem' }}>
-            {ROOMS.map((room) => (
-              <div key={room.name} className="room-card">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyContent: 'center' }}>
+            {rooms.map((room: any) => (
+              <div key={room._id || room.name} className="room-card">
                 <div style={{ position: 'relative', overflow: 'hidden', height: '16rem' }}>
-                  <Image src={room.image} alt={room.name} fill className="room-img" />
+                  <Image src={room.images?.[0] || '/room-deluxe.jpg'} alt={room.name} fill className="room-img" />
+                  {room._categoryName && (
+                    <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: S.gradGold, color: S.navy, fontFamily: S.cinzel, fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.3rem 0.75rem', fontWeight: 700 }}>
+                      {room._categoryName}
+                    </div>
+                  )}
                   <div style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'hsl(220 55% 18% / 0.9)', color: 'hsl(43 72% 65%)', fontFamily: S.cinzel, fontSize: '0.85rem', padding: '0.4rem 1rem' }}>
-                    {room.price}<span style={{ fontSize: '0.7rem', color: 'hsl(35 25% 88% / 0.7)' }}> / night</span>
+                    From ${room.pricePerNight}<span style={{ fontSize: '0.7rem', color: 'hsl(35 25% 88% / 0.7)' }}> / night</span>
                   </div>
                 </div>
                 <div style={{ padding: '1.5rem' }}>
@@ -94,15 +123,17 @@ export default function HomePage() {
                   <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.875rem', fontSize: '0.75rem', color: S.muted }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway }}>
                       <Users size={13} color={S.gold} />
-                      {room.guests} Guests
+                      {room.capacity} Guests
                     </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway }}>
-                      <Maximize2 size={13} color={S.gold} />
-                      {room.size}
-                    </span>
+                    {room.areaSqm > 0 && (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway }}>
+                        <Maximize2 size={13} color={S.gold} />
+                        {room.areaSqm} m²
+                      </span>
+                    )}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1.25rem' }}>
-                    {room.features.map(f => (
+                    {(room.amenities || []).slice(0, 4).map((f: string) => (
                       <span key={f} style={{ fontFamily: S.raleway, fontSize: '0.68rem', background: S.papyrus, color: S.muted, padding: '0.2rem 0.6rem', border: '1px solid hsl(35 25% 82%)' }}>{f}</span>
                     ))}
                   </div>

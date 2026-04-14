@@ -2,6 +2,7 @@ import 'dotenv/config';
 import mongoose from 'mongoose';
 import { connectDB } from './config/db';
 import Room from './models/Room';
+import RoomCategory from './models/RoomCategory';
 import MenuItem from './models/MenuItem';
 import SpaService from './models/SpaService';
 import SpaTherapist from './models/SpaTherapist';
@@ -59,6 +60,7 @@ async function seed() {
   // Clear existing data
   await Promise.all([
     Room.deleteMany({}),
+    RoomCategory.deleteMany({}),
     MenuItem.deleteMany({}),
     SpaService.deleteMany({}),
     SpaTherapist.deleteMany({}),
@@ -66,119 +68,97 @@ async function seed() {
     Guest.deleteMany({ email: { $in: ['amira.hassan@guest.com','omar.farouk@guest.com','layla.nour@guest.com','khaled.ali@guest.com','nadia.saleh@guest.com'] } }),
   ]);
 
+  // ─── ROOM CATEGORIES ─────────────────────────────────────────────────
+  const categories = await RoomCategory.insertMany([
+    { name: 'Standard',    slug: 'standard',    icon: 'Bed',       basePrice: 200,  description: 'Comfortable rooms with all essential amenities for a pleasant stay.' },
+    { name: 'Deluxe',      slug: 'deluxe',      icon: 'Star',      basePrice: 360,  description: 'Spacious rooms with premium furnishings and enhanced amenities.' },
+    { name: 'Suite',       slug: 'suite',       icon: 'Gem',       basePrice: 580,  description: 'Luxurious suites with separate living areas and panoramic views.' },
+    { name: 'Royal',       slug: 'royal',       icon: 'Crown',     basePrice: 950,  description: 'The pinnacle of Egyptian luxury — lavish chambers fit for a pharaoh.' },
+    { name: 'Penthouse',   slug: 'penthouse',   icon: 'Sparkles',  basePrice: 1500, description: 'Exclusive top-floor retreats with private terraces and butler service.' },
+  ]);
+  console.log(`✅ ${categories.length} room categories seeded`);
+
   // ─── ROOMS ───────────────────────────────────────────────────────────
   const rooms = await Room.insertMany([
     {
       name: "Pharaoh's Royal Chamber",
       slug: 'pharaohs-royal-chamber',
-      type: 'royal',
-      pricePerNight: 1200,
-      capacity: 2,
-      floorNumber: 8,
-      roomNumber: '801',
+      type: 'royal', categorySlug: 'royal',
+      pricePerNight: 1200, areaSqm: 120,
+      capacity: 2, floorNumber: 8, roomNumber: '801',
       description: 'The crown jewel of Royal Suites. A 120 sqm masterpiece adorned with hand-painted hieroglyphics, a private pool terrace with panoramic Nile views, and 24K gold-leaf accents throughout. Your throne awaits.',
       amenities: ['Private Pool', 'King Bed', 'Butler Service', '24K Gold Fixtures', 'Private Terrace', 'Jacuzzi', 'Fireplace', 'Walk-in Wardrobe', 'Nespresso Machine', '75" Smart TV'],
-      images: ROOM_IMAGES.royal,
-      isAvailable: true,
-      qrToken: generateQRToken(),
+      images: ROOM_IMAGES.royal, isAvailable: true, qrToken: generateQRToken(),
     },
     {
       name: "Cleopatra's Suite",
       slug: 'cleopatras-suite',
-      type: 'royal',
-      pricePerNight: 950,
-      capacity: 2,
-      floorNumber: 7,
-      roomNumber: '701',
+      type: 'royal', categorySlug: 'royal',
+      pricePerNight: 950, areaSqm: 95,
+      capacity: 2, floorNumber: 7, roomNumber: '701',
       description: 'Inspired by Egypt\'s most legendary queen. Draped in lapis lazuli blues and ivory, with a sunken bath of rose petals, private lounge, and breathtaking city views. Fit for a goddess.',
       amenities: ['Sunken Bath', 'King Bed', 'Private Lounge', 'City View', 'Champagne Welcome', 'Walk-in Closet', 'Marble Bathroom', 'Espresso Machine'],
-      images: ROOM_IMAGES.royal,
-      isAvailable: true,
-      qrToken: generateQRToken(),
+      images: ROOM_IMAGES.royal, isAvailable: true, qrToken: generateQRToken(),
     },
     {
       name: 'Nile Deluxe Suite',
       slug: 'nile-deluxe-suite',
-      type: 'suite',
-      pricePerNight: 650,
-      capacity: 3,
-      floorNumber: 6,
-      roomNumber: '601',
+      type: 'suite', categorySlug: 'suite',
+      pricePerNight: 650, areaSqm: 75,
+      capacity: 3, floorNumber: 6, roomNumber: '601',
       description: 'Sweeping river views from a luxury suite with separate living area, Egyptian cotton linens, and a deep-soaking tub. The Nile flows at your feet.',
       amenities: ['River View', 'King Bed', 'Living Area', 'Soaking Tub', 'Rain Shower', 'Minibar', 'Nespresso Machine', '65" Smart TV'],
-      images: ROOM_IMAGES.suite,
-      isAvailable: true,
-      qrToken: generateQRToken(),
+      images: ROOM_IMAGES.suite, isAvailable: true, qrToken: generateQRToken(),
     },
     {
       name: 'Osiris Suite',
       slug: 'osiris-suite',
-      type: 'suite',
-      pricePerNight: 580,
-      capacity: 2,
-      floorNumber: 6,
-      roomNumber: '602',
+      type: 'suite', categorySlug: 'suite',
+      pricePerNight: 580, areaSqm: 68,
+      capacity: 2, floorNumber: 6, roomNumber: '602',
       description: 'Named after the god of rebirth, this suite offers a sanctuary of peace and luxury. Dark wood paneling, gold accents, and a terrace overlooking ancient rooftops.',
       amenities: ['Terrace', 'King Bed', 'Living Room', 'Rain Shower', 'Minibar', 'Smart TV', 'Egyptian Cotton Robes'],
-      images: ROOM_IMAGES.suite,
-      isAvailable: true,
-      qrToken: generateQRToken(),
+      images: ROOM_IMAGES.suite, isAvailable: true, qrToken: generateQRToken(),
     },
     {
       name: 'Anubis Deluxe Room',
       slug: 'anubis-deluxe-room',
-      type: 'deluxe',
-      pricePerNight: 380,
-      capacity: 2,
-      floorNumber: 4,
-      roomNumber: '401',
+      type: 'deluxe', categorySlug: 'deluxe',
+      pricePerNight: 380, areaSqm: 48,
+      capacity: 2, floorNumber: 4, roomNumber: '401',
       description: 'Guardian of luxury. A spacious deluxe room with hand-carved furnishings, premium amenities, and warm gold lighting that evokes the glow of desert sunsets.',
       amenities: ['Queen Bed', 'Rain Shower', 'City View', 'Minibar', 'Smart TV', 'Work Desk', 'Premium Toiletries'],
-      images: ROOM_IMAGES.deluxe,
-      isAvailable: true,
-      qrToken: generateQRToken(),
+      images: ROOM_IMAGES.deluxe, isAvailable: true, qrToken: generateQRToken(),
     },
     {
       name: 'Horus Deluxe Room',
       slug: 'horus-deluxe-room',
-      type: 'deluxe',
-      pricePerNight: 360,
-      capacity: 2,
-      floorNumber: 4,
-      roomNumber: '402',
+      type: 'deluxe', categorySlug: 'deluxe',
+      pricePerNight: 360, areaSqm: 45,
+      capacity: 2, floorNumber: 4, roomNumber: '402',
       description: 'The all-seeing eye watches over your comfort. Floor-to-ceiling windows, plush bedding, and an en-suite marble bathroom make this room a refuge of elegance.',
       amenities: ['Queen Bed', 'Marble Bathroom', 'Floor-to-Ceiling Windows', 'Minibar', 'Smart TV', 'Safe', 'Hair Dryer'],
-      images: ROOM_IMAGES.deluxe,
-      isAvailable: true,
-      qrToken: generateQRToken(),
+      images: ROOM_IMAGES.deluxe, isAvailable: true, qrToken: generateQRToken(),
     },
     {
       name: 'Isis Standard Room',
       slug: 'isis-standard-room',
-      type: 'standard',
-      pricePerNight: 220,
-      capacity: 2,
-      floorNumber: 2,
-      roomNumber: '201',
+      type: 'standard', categorySlug: 'standard',
+      pricePerNight: 220, areaSqm: 32,
+      capacity: 2, floorNumber: 2, roomNumber: '201',
       description: 'Blessed by the goddess of home and hearth. A beautifully appointed standard room with all the comforts you need for a perfect stay.',
       amenities: ['Double Bed', 'En-Suite Bathroom', 'Smart TV', 'Work Desk', 'Air Conditioning', 'Wi-Fi'],
-      images: ROOM_IMAGES.standard,
-      isAvailable: true,
-      qrToken: generateQRToken(),
+      images: ROOM_IMAGES.standard, isAvailable: true, qrToken: generateQRToken(),
     },
     {
       name: 'Ra Standard Room',
       slug: 'ra-standard-room',
-      type: 'standard',
-      pricePerNight: 200,
-      capacity: 2,
-      floorNumber: 2,
-      roomNumber: '202',
+      type: 'standard', categorySlug: 'standard',
+      pricePerNight: 200, areaSqm: 30,
+      capacity: 2, floorNumber: 2, roomNumber: '202',
       description: 'Rise with Ra in this sunlit standard room. Bright, comfortable, and perfectly equipped for the modern traveler seeking the warmth of Egyptian hospitality.',
       amenities: ['Double Bed', 'En-Suite Bathroom', 'Smart TV', 'Air Conditioning', 'Wi-Fi', 'Daily Housekeeping'],
-      images: ROOM_IMAGES.standard,
-      isAvailable: true,
-      qrToken: generateQRToken(),
+      images: ROOM_IMAGES.standard, isAvailable: true, qrToken: generateQRToken(),
     },
   ]);
 
@@ -679,6 +659,20 @@ async function seed() {
       department: null,
     });
     console.log('✅ Super admin created: superadmin@royalsuites.com / RoyalAdmin@123');
+  }
+
+  // ─── DEPARTMENT STAFF (seeded once each) ─────────────────────────────
+  const deptUsers = [
+    { name: 'Food & Bar Manager',   email: 'food@royalsuites.com',       password: 'Food@1234',      department: 'food' },
+    { name: 'Spa Manager',          email: 'spa@royalsuites.com',         password: 'Spa@12345',      department: 'spa' },
+    { name: 'Front Desk Manager',   email: 'frontdesk@royalsuites.com',   password: 'FrontDesk@123',  department: 'front_desk' },
+  ];
+  for (const u of deptUsers) {
+    const exists = await User.findOne({ email: u.email });
+    if (!exists) {
+      await User.create({ ...u, role: 'admin' });
+      console.log(`✅ ${u.department} user created: ${u.email} / ${u.password}`);
+    }
   }
 
   console.log('🏰 Seed complete!');

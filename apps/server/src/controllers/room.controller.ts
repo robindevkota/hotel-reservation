@@ -5,16 +5,18 @@ import Reservation from '../models/Reservation';
 import Guest from '../models/Guest';
 import { AppError } from '../middleware/errorHandler';
 import { generateQRToken } from '../utils/generateQR';
+import cloudinary from '../config/cloudinary';
 
 export const roomValidation = [
   body('name').trim().notEmpty(),
   body('slug').trim().notEmpty().isSlug(),
-  body('type').isIn(['standard', 'deluxe', 'suite', 'royal']),
+  body('type').trim().notEmpty(),
   body('pricePerNight').isFloat({ min: 0 }),
   body('capacity').isInt({ min: 1 }),
   body('description').trim().notEmpty(),
   body('floorNumber').isInt({ min: 1 }),
   body('roomNumber').trim().notEmpty(),
+  body('areaSqm').optional().isFloat({ min: 0 }),
 ];
 
 export async function listRooms(req: Request, res: Response): Promise<void> {
@@ -167,6 +169,19 @@ export async function getRoomCalendar(req: Request, res: Response): Promise<void
   ]);
 
   res.json({ success: true, rooms, reservations, startDate: start, endDate: end });
+}
+
+export async function uploadRoomImage(req: Request, res: Response): Promise<void> {
+  if (!req.file) throw new AppError('No file provided', 400);
+
+  const result = await new Promise<{ secure_url: string }>((resolve, reject) => {
+    cloudinary.uploader.upload_stream(
+      { resource_type: 'image', folder: 'rooms' },
+      (err, data) => err ? reject(err) : resolve(data as { secure_url: string })
+    ).end(req.file!.buffer);
+  });
+
+  res.json({ success: true, url: result.secure_url });
 }
 
 export async function regenerateQR(req: Request, res: Response): Promise<void> {
