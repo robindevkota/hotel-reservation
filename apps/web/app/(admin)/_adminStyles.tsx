@@ -2,7 +2,7 @@
 import React from 'react';
 
 export const A = {
-  gold:'hsl(43 72% 55%)', goldLight:'hsl(43 65% 72%)',
+  gold:'hsl(43 72% 55%)', goldLight:'hsl(43 65% 72%)', goldDim:'hsl(43 72% 55% / 0.15)',
   navy:'hsl(220 55% 18%)', navyMid:'hsl(220 45% 24%)',
   cream:'hsl(40 33% 96%)', papyrus:'hsl(38 40% 92%)', muted:'hsl(220 15% 40%)',
   border:'hsl(35 25% 82%)',
