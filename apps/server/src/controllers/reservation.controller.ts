@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { body } from 'express-validator';
+import crypto from 'crypto';
 import Reservation from '../models/Reservation';
 import Room from '../models/Room';
 import { AppError } from '../middleware/errorHandler';
@@ -9,10 +10,11 @@ import stripe from '../config/stripe';
 import type { CancellationPolicy } from '../models/Reservation';
 
 // Generates a human-readable booking reference: RS-YYYYMMDD-XXXX (e.g. RS-20260413-A3F2)
+// Uses crypto.randomBytes for unpredictability — Math.random is not cryptographically secure.
 function generateBookingRef(): string {
   const date = new Date();
   const datePart = date.toISOString().slice(0, 10).replace(/-/g, '');
-  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const rand = crypto.randomBytes(3).toString('hex').slice(0, 4).toUpperCase();
   return `RS-${datePart}-${rand}`;
 }
 
