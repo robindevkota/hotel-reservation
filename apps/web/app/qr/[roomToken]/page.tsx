@@ -41,7 +41,7 @@ export default function QRLandingPage() {
   const handleConfirm = () => {
     if (!session) return;
     setStatus('entering');
-    loginAsGuest(session.token, session.guestId, session.roomId, session.roomName);
+    loginAsGuest(session.token, session.guestId, session.roomId, session.roomName, session.roomNumber, session.guestName);
     setTimeout(() => router.replace('/guest/dashboard'), 1200);
   };
 

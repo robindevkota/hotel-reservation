@@ -84,7 +84,8 @@ export default function GuestDashboardPage() {
           <span style={{ color: GOLD, fontSize: '1rem' }}>𓂀</span>
           <div style={{ flex: 1, height: '1px', background: `linear-gradient(to left, transparent, ${GOLD}50)` }} />
         </div>
-        <p style={{ fontFamily: CINZEL, color: 'hsl(40 30% 85% / 0.55)', fontSize: '0.68rem', letterSpacing: '0.25em', textTransform: 'uppercase' }}>{g.roomName}</p>
+        <p style={{ fontFamily: CINZEL_DEC, color: 'hsl(40 30% 94%)', fontSize: '1rem', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>{g.name}</p>
+        <p style={{ fontFamily: CINZEL, color: 'hsl(40 30% 85% / 0.55)', fontSize: '0.68rem', letterSpacing: '0.25em', textTransform: 'uppercase' }}>{g.roomName}{g.roomNumber ? ` · Room ${g.roomNumber}` : ''}</p>
       </div>
 
       <div style={{ padding: '1.5rem', maxWidth: '28rem', margin: '0 auto' }}>
