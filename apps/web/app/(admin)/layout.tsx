@@ -1,15 +1,179 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '../../store/authStore';
-import { useEffect } from 'react';
 import {
   LayoutDashboard, CalendarCheck, BedDouble, UtensilsCrossed,
   Flower2, Users, BookOpen, Receipt, LogOut, Menu, UserCircle,
-  Package2, ShieldPlus,
+  Package2, ShieldPlus, Bell, X, ChevronRight,
 } from 'lucide-react';
+import { getSocket, connectSocket } from '../../lib/socket';
+import type { Order } from '../../store/orderStore';
+
+function playOrderAlert() {
+  try {
+    const ctx = new AudioContext();
+    [0, 0.18].forEach((delay) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.4, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.25);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.25);
+    });
+  } catch {}
+}
+
+function OrderAlertModal({ user }: { user: any }) {
+  const [queue, setQueue] = useState<Order[]>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket();
+    connectSocket();
+
+    const onConnect = () => { socket.emit('join:kitchen'); };
+    if (socket.connected) {
+      socket.emit('join:kitchen');
+    } else {
+      socket.on('connect', onConnect);
+    }
+
+    const onNewOrder = (order: Order) => {
+      console.log('[Layout] order:new received', order);
+      playOrderAlert();
+      setQueue((q) => q.some((o) => o._id === order._id) ? q : [...q, order]);
+    };
+
+    socket.on('order:new', onNewOrder);
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('order:new', onNewOrder);
+    };
+  }, [user]);
+
+  const current = queue[0];
+
+  useEffect(() => {
+    if (!current) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
+      setQueue((q) => q.slice(1));
+    }, 10000);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [current?._id]);
+
+  if (!current) return null;
+
+  const remaining = queue.length - 1;
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 999,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(13,27,62,0.55)', backdropFilter: 'blur(3px)',
+    }}>
+      <div style={{
+        background: '#fff', width: '100%', maxWidth: '420px',
+        border: '1px solid hsl(43 72% 55% / 0.35)',
+        boxShadow: '0 20px 60px hsl(220 55% 10% / 0.35)',
+        overflow: 'hidden',
+      }}>
+        {/* Header */}
+        <div style={{
+          background: 'hsl(220 55% 18%)', padding: '1rem 1.25rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <Bell size={16} color="hsl(43 72% 55%)" strokeWidth={2} />
+            <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.7rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'hsl(43 72% 55%)' }}>
+              New Order Received
+            </span>
+          </div>
+          {remaining > 0 && (
+            <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.6rem', color: 'rgba(245,236,215,0.6)', letterSpacing: '0.1em' }}>
+              +{remaining} more in queue
+            </span>
+          )}
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '1.25rem' }}>
+          <div style={{ marginBottom: '1rem', paddingBottom: '0.875rem', borderBottom: '1px solid hsl(35 25% 88%)' }}>
+            <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1.05rem', fontWeight: 700, color: 'hsl(220 55% 18%)', marginBottom: '0.2rem' }}>
+              Room Order
+            </p>
+            <p style={{ fontFamily: "'Cinzel',serif", fontSize: '0.6rem', letterSpacing: '0.12em', color: 'hsl(220 15% 50%)', textTransform: 'uppercase' }}>
+              {new Date(current.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1rem' }}>
+            {current.items.map((item, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '0.92rem', color: 'hsl(220 55% 18%)' }}>
+                  {item.quantity}× {item.menuItem?.name}
+                </span>
+                <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.68rem', color: 'hsl(220 15% 50%)' }}>
+                  ${(item.quantity * item.unitPrice).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {current.notes && (
+            <div style={{ background: 'hsl(43 72% 55% / 0.08)', border: '1px solid hsl(43 72% 55% / 0.2)', padding: '0.6rem 0.75rem', marginBottom: '1rem' }}>
+              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '0.88rem', color: 'hsl(220 55% 18%)', fontStyle: 'italic' }}>
+                Note: {current.notes}
+              </p>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '0.75rem', borderTop: '1px solid hsl(35 25% 88%)' }}>
+            <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.65rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'hsl(220 15% 50%)' }}>Total</span>
+            <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.85rem', fontWeight: 700, color: 'hsl(220 55% 18%)' }}>${current.totalAmount.toFixed(2)}</span>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '0.875rem 1.25rem', borderTop: '1px solid hsl(35 25% 88%)', display: 'flex', gap: '0.75rem' }}>
+          <button
+            onClick={() => setQueue((q) => q.slice(1))}
+            style={{
+              flex: 1, padding: '0.65rem', border: '1px solid hsl(35 25% 82%)',
+              background: 'transparent', cursor: 'pointer',
+              fontFamily: "'Cinzel',serif", fontSize: '0.62rem', letterSpacing: '0.12em',
+              textTransform: 'uppercase', color: 'hsl(220 15% 45%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+            }}
+          >
+            <X size={12} /> Dismiss
+          </button>
+          {remaining > 0 && (
+            <button
+              onClick={() => setQueue((q) => q.slice(1))}
+              style={{
+                flex: 1, padding: '0.65rem', border: 'none',
+                background: 'hsl(220 55% 18%)', cursor: 'pointer',
+                fontFamily: "'Cinzel',serif", fontSize: '0.62rem', letterSpacing: '0.12em',
+                textTransform: 'uppercase', color: 'hsl(43 72% 55%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+              }}
+            >
+              Next <ChevronRight size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 import { Department } from '../../store/authStore';
 
 // departments: null = visible to everyone (super_admin sees all; admin sees only their dept)
@@ -210,6 +374,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div style={{ minHeight: '100vh', background: 'hsl(38 40% 92%)' }}>
+      {(user as any).department === 'food' && <OrderAlertModal user={user} />}
       <Sidebar collapsed={collapsed} />
       <div style={{ marginLeft: sidebarW, minHeight: '100vh', transition: 'margin-left 0.25s ease', display: 'flex', flexDirection: 'column' }}>
         <Topbar collapsed={collapsed} setCollapsed={setCollapsed} />

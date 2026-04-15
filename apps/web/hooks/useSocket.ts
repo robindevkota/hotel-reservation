@@ -23,22 +23,6 @@ export function useGuestSocket(guestId: string | undefined) {
   }, [guestId, updateOrderStatus]);
 }
 
-function playOrderAlert() {
-  try {
-    const ctx = new AudioContext();
-    [0, 0.18].forEach((delay) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 880;
-      gain.gain.setValueAtTime(0.4, ctx.currentTime + delay);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.25);
-      osc.start(ctx.currentTime + delay);
-      osc.stop(ctx.currentTime + delay + 0.25);
-    });
-  } catch {}
-}
 
 export function useKitchenSocket() {
   const { addOrder, updateOrderStatus } = useOrderStore();
@@ -47,20 +31,26 @@ export function useKitchenSocket() {
     const socket = getSocket();
     connectSocket();
 
-    socket.emit('join:kitchen');
-    socket.emit('join:admin');
+    const onConnect = () => {
+      socket.emit('join:kitchen');
+      socket.emit('join:admin');
+    };
+    if (socket.connected) {
+      onConnect();
+    } else {
+      socket.on('connect', onConnect);
+    }
 
-    socket.on('order:new', (order) => {
-      addOrder(order);
-      playOrderAlert();
-    });
-    socket.on('order:status-update', ({ orderId, status }: { orderId: string; status: string }) => {
-      updateOrderStatus(orderId, status);
-    });
+    const onNewOrder = (order: any) => addOrder(order);
+    const onStatusUpdate = ({ orderId, status }: { orderId: string; status: string }) => updateOrderStatus(orderId, status);
+
+    socket.on('order:new', onNewOrder);
+    socket.on('order:status-update', onStatusUpdate);
 
     return () => {
-      socket.off('order:new');
-      socket.off('order:status-update');
+      socket.off('connect', onConnect);
+      socket.off('order:new', onNewOrder);
+      socket.off('order:status-update', onStatusUpdate);
     };
   }, [addOrder, updateOrderStatus]);
 }

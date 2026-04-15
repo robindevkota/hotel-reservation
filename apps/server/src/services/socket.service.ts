@@ -4,9 +4,18 @@ import { Server, Socket } from 'socket.io';
 let io: Server;
 
 export function initSocket(server: HTTPServer): void {
+  const allowedOrigins = process.env.NODE_ENV === 'production'
+    ? [
+        process.env.CLIENT_URL || 'http://localhost:3000',
+        'https://royalsuitesnp.com',
+        'https://www.royalsuitesnp.com',
+        'https://hotel-reservation-web-eight.vercel.app',
+      ].filter(Boolean) as string[]
+    : true; // allow all in development
+
   io = new Server(server, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:3000',
+      origin: allowedOrigins,
       credentials: true,
     },
   });

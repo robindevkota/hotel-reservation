@@ -132,7 +132,7 @@ export default function AdminDashboardPage() {
     { label:'Available Rooms',    value: kpis?.availableRooms ?? '—',    Icon: BedDouble,     color: A.gold,  bg: A.goldDim, sub: `of ${kpis?.totalRooms ?? 0} total`, show: scope.showRooms },
     { label:'Pending Guests',     value: kpis?.pending ?? '—',           Icon: Clock3,        color: A.amber, bg: 'hsl(38 90% 45% / 0.1)',  sub: 'awaiting check-in', show: scope.showRooms },
     { label:'Pending Orders',     value: kpis?.pendingOrders ?? '—',     Icon: ShoppingCart,  color: A.amber, bg: 'hsl(38 90% 45% / 0.1)',  sub: `${data?.orderStats.total ?? 0} total orders`, show: scope.showFood },
-    { label:'Order Revenue',      value: data ? `$${data.orderStats.totalRevenue.toLocaleString()}` : '—', Icon: TrendingUp, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: 'from delivered orders', show: scope.showFood },
+    { label:'Order Revenue',      value: data ? `$${data.orderStats.totalRevenue.toLocaleString()}` : '—', Icon: TrendingUp, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: 'from delivered orders', show: (data?.isSuperAdmin ?? false) && scope.showFood },
     { label:'Spa Bookings',       value: data?.spaStats.total ?? '—',    Icon: Users,         color: A.green, bg: 'hsl(142 60% 40% / 0.1)', sub: `${data?.spaStats.completed ?? 0} completed`, show: scope.showSpa },
     { label:'Total Revenue',      value: kpis ? `$${kpis.totalRevenue.toLocaleString()}` : '—', Icon: DollarSign, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: 'from paid bills', show: data?.isSuperAdmin ?? true },
   ];
@@ -273,8 +273,8 @@ export default function AdminDashboardPage() {
         {(scope.showRooms || scope.showFood || data?.isSuperAdmin) && (
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'1.5rem', marginBottom:'2.5rem' }}>
 
-            {/* Revenue Trend - super_admin or front_desk */}
-            {(data?.isSuperAdmin || scope.showRooms) && (
+            {/* Revenue Trend - super_admin only */}
+            {data?.isSuperAdmin && (
               <div className="chart-card">
                 <SectionTitle>Revenue — Last 7 Days</SectionTitle>
                 {loading ? <Spinner /> : (
@@ -295,8 +295,8 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
-            {/* Room Type Revenue - super_admin or front_desk */}
-            {(data?.isSuperAdmin || scope.showRooms) && (
+            {/* Room Type Revenue - super_admin only */}
+            {data?.isSuperAdmin && (
               <div className="chart-card">
                 <SectionTitle>Revenue by Room Type</SectionTitle>
                 {loading ? <Spinner /> : (
@@ -441,11 +441,11 @@ export default function AdminDashboardPage() {
                 <SectionTitle href="/admin/orders">Order Summary</SectionTitle>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'1rem' }}>
                   {[
-                    { label:'Total',     value: data?.orderStats.total ?? '—',                                              color: A.navy },
-                    { label:'Delivered', value: data?.orderStats.delivered ?? '—',                                          color: A.green },
-                    { label:'Pending',   value: data?.orderStats.pending ?? '—',                                            color: A.amber },
-                    { label:'Revenue',   value: data ? `$${data.orderStats.totalRevenue.toLocaleString()}` : '—',           color: A.gold },
-                  ].map(s => (
+                    { label:'Total',     value: data?.orderStats.total ?? '—',                                              color: A.navy,  show: true },
+                    { label:'Delivered', value: data?.orderStats.delivered ?? '—',                                          color: A.green, show: true },
+                    { label:'Pending',   value: data?.orderStats.pending ?? '—',                                            color: A.amber, show: true },
+                    { label:'Revenue',   value: data ? `$${data.orderStats.totalRevenue.toLocaleString()}` : '—',           color: A.gold,  show: data?.isSuperAdmin ?? false },
+                  ].filter(s => s.show).map(s => (
                     <div key={s.label} style={{ textAlign:'center', padding:'1rem', background:A.papyrus }}>
                       <div style={{ fontFamily:A.cinzel, fontSize:'1.4rem', fontWeight:700, color:s.color, lineHeight:1, marginBottom:'0.4rem' }}>
                         {loading ? '—' : s.value}
@@ -463,11 +463,11 @@ export default function AdminDashboardPage() {
                 <SectionTitle href="/admin/spa">Spa Summary</SectionTitle>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'1rem' }}>
                   {[
-                    { label:'Total',     value: data?.spaStats.total ?? '—',                                      color: A.navy },
-                    { label:'Confirmed', value: data?.spaStats.confirmed ?? '—',                                  color: A.blue },
-                    { label:'Completed', value: data?.spaStats.completed ?? '—',                                  color: A.green },
-                    { label:'Revenue',   value: data ? `$${data.spaStats.revenue.toLocaleString()}` : '—',        color: A.gold },
-                  ].map(s => (
+                    { label:'Total',     value: data?.spaStats.total ?? '—',                                      color: A.navy,  show: true },
+                    { label:'Confirmed', value: data?.spaStats.confirmed ?? '—',                                  color: A.blue,  show: true },
+                    { label:'Completed', value: data?.spaStats.completed ?? '—',                                  color: A.green, show: true },
+                    { label:'Revenue',   value: data ? `$${data.spaStats.revenue.toLocaleString()}` : '—',        color: A.gold,  show: data?.isSuperAdmin ?? false },
+                  ].filter(s => s.show).map(s => (
                     <div key={s.label} style={{ textAlign:'center', padding:'1rem', background:A.papyrus }}>
                       <div style={{ fontFamily:A.cinzel, fontSize:'1.4rem', fontWeight:700, color:s.color, lineHeight:1, marginBottom:'0.4rem' }}>
                         {loading ? '—' : s.value}
