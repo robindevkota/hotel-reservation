@@ -305,7 +305,7 @@ export default function AdminRoomsPage() {
             { key:'availability', label:'Availability', Icon:CalendarDays },
             { key:'categories',   label:'Categories',   Icon:Tag          },
           ].map(({ key, label, Icon }) => (
-            <button key={key} className="view-tab" onClick={() => { setView(key as any); setCatView(key as any); }}
+            <button key={key} className="view-tab" onClick={() => { setView(key as any); }}
               style={{ borderColor: view===key ? A.gold : 'transparent', color: view===key ? A.navy : A.muted, background: view===key ? 'hsl(43 72% 55%/0.06)' : 'transparent', borderBottom: view===key ? `2px solid ${A.gold}` : '2px solid transparent', marginBottom:'-1px' }}>
               <Icon size={13} strokeWidth={2} /> {label}
             </button>
