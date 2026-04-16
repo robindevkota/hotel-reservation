@@ -48,10 +48,12 @@ export default async function HomePage() {
   return (
     <>
       <style>{`
-        .room-card{background:#fff;border:1px solid hsl(35 25% 82%);overflow:hidden;transition:all 0.5s ease;box-shadow:0 8px 32px -8px hsl(220 55% 18%/0.12);width:calc(33.333% - 1.34rem);min-width:280px;}
+        .room-card{background:#fff;border:1px solid hsl(35 25% 82%);overflow:hidden;transition:all 0.5s ease;box-shadow:0 8px 32px -8px hsl(220 55% 18%/0.12);}
         .room-card:hover{border-color:hsl(43 72% 55%/0.5);box-shadow:0 4px 20px -4px hsl(43 72% 55%/0.3);}
         .room-card:hover .room-img{transform:scale(1.08);}
         .room-img{transition:transform 0.7s ease;width:100%;height:100%;object-fit:cover;display:block;}
+        .rooms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:2rem;}
+        @media(max-width:640px){.rooms-grid{grid-template-columns:1fr;}}
       `}</style>
 
       {/* ── Hero ── */}
@@ -103,7 +105,7 @@ export default async function HomePage() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyContent: 'center' }}>
+          <div className="rooms-grid">
             {rooms.map((room: any) => (
               <div key={room._id || room.name} className="room-card">
                 <div style={{ position: 'relative', overflow: 'hidden', height: '16rem' }}>

@@ -38,11 +38,15 @@ export default async function AmenitiesPage() {
       <style>{`
         .am-card{background:#fff;border:1px solid hsl(35 25% 82%);padding:1.5rem;transition:border-color 0.3s,box-shadow 0.3s;}
         .am-card:hover{border-color:hsl(43 72% 55%/0.5);box-shadow:0 4px 16px -4px hsl(43 72% 55%/0.2);}
-        .spa-row{display:flex;align-items:center;gap:1rem;padding:1rem;background:#fff;border:1px solid hsl(35 25% 82%);transition:border-color 0.3s;}
+        .spa-row{display:flex;align-items:center;gap:1rem;padding:1rem;background:#fff;border:1px solid hsl(35 25% 82%);transition:border-color 0.3s;overflow:hidden;min-width:0;}
         .spa-row:hover{border-color:hsl(43 72% 55%/0.4);}
-        .spa-thumb{width:80px;height:80px;flex-shrink:0;overflow:hidden;position:relative;}
+        .spa-thumb{width:72px;height:72px;flex-shrink:0;overflow:hidden;position:relative;}
         .spa-thumb img{transition:transform 0.5s ease;}
         .spa-row:hover .spa-thumb img{transform:scale(1.1);}
+        .spa-name{font-size:0.82rem;color:hsl(220 55% 18%);margin-bottom:0.3rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .spa-desc{font-size:0.75rem;color:hsl(220 15% 40%);margin-bottom:0.4rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;}
+        .spa-grid{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;align-items:start;}
+        @media(max-width:768px){.spa-grid{grid-template-columns:1fr;}}
       `}</style>
 
       <div style={{ paddingTop: '5rem', minHeight: '100vh', background: S.cream }}>
@@ -89,7 +93,7 @@ export default async function AmenitiesPage() {
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2.5rem', alignItems: 'start' }}>
+            <div className="spa-grid">
               {/* Spa image */}
               <div style={{ position: 'relative', overflow: 'hidden' }}>
                 <Image src="/spa.jpg" alt="Cleopatra's Spa" width={900} height={600}
@@ -115,9 +119,9 @@ export default async function AmenitiesPage() {
                     <div className="spa-thumb">
                       <Image src={svc.image || '/spa.jpg'} alt={svc.name} fill style={{ objectFit: 'cover' }} />
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <h4 style={{ fontFamily: S.cinzel, fontSize: '0.82rem', color: S.navy, marginBottom: '0.3rem' }}>{svc.name}</h4>
-                      <p style={{ fontFamily: S.raleway, fontSize: '0.75rem', color: S.muted, marginBottom: '0.4rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{svc.description}</p>
+                    <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                      <h4 className="spa-name" style={{ fontFamily: S.cinzel }}>{svc.name}</h4>
+                      <p className="spa-desc" style={{ fontFamily: S.raleway }}>{svc.description}</p>
                       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                         <span style={{ fontFamily: S.raleway, fontSize: '0.72rem', color: S.muted }}>{svc.duration} min</span>
                         <span style={{ fontFamily: S.cinzel, fontSize: '0.88rem', color: S.gold, fontWeight: 600 }}>${svc.price}</span>

@@ -31,7 +31,6 @@ export default function Navbar() {
     <nav
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
-        overflow: 'hidden',
         transition: 'all 0.5s ease',
         background: scrolled ? 'hsl(220 55% 18% / 0.97)' : 'hsl(220 55% 18% / 0.85)',
         backdropFilter: 'blur(12px)',
@@ -145,61 +144,112 @@ export default function Navbar() {
 
         {/* Mobile toggle */}
         <button
-          className="lg:hidden text-cream-dark p-2"
+          className="lg:hidden p-2"
+          style={{ color: 'hsl(35 25% 88%)', background: 'none', border: 'none', cursor: 'pointer' }}
           onClick={() => setMenuOpen(!menuOpen)}
           aria-label="Toggle menu"
           aria-expanded={menuOpen}
         >
-          <div className="w-6 flex flex-col gap-1.5">
-            <span className={`h-px bg-current transition-all duration-300 ${menuOpen ? 'rotate-45 translate-y-2.5' : ''}`} />
-            <span className={`h-px bg-current transition-all duration-300 ${menuOpen ? 'opacity-0 scale-x-0' : ''}`} />
-            <span className={`h-px bg-current transition-all duration-300 ${menuOpen ? '-rotate-45 -translate-y-2.5' : ''}`} />
+          <div style={{ width: '1.5rem', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            <span style={{ display: 'block', height: '1px', background: 'hsl(35 25% 88%)', transition: 'all 0.3s', transform: menuOpen ? 'rotate(45deg) translateY(6px)' : 'none' }} />
+            <span style={{ display: 'block', height: '1px', background: 'hsl(35 25% 88%)', transition: 'all 0.3s', opacity: menuOpen ? 0 : 1 }} />
+            <span style={{ display: 'block', height: '1px', background: 'hsl(35 25% 88%)', transition: 'all 0.3s', transform: menuOpen ? 'rotate(-45deg) translateY(-6px)' : 'none' }} />
           </div>
         </button>
       </div>
 
       {/* Mobile menu */}
       {menuOpen && (
-        <div className="lg:hidden px-6 py-6 space-y-4" style={{ background: 'hsl(220 55% 14%)', borderTop: '1px solid hsl(43 72% 55% / 0.2)' }}>
+        <div style={{ background: 'hsl(220 55% 14%)', borderTop: '1px solid hsl(43 72% 55% / 0.2)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0' }}>
           {NAV_LINKS.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
               onClick={() => setMenuOpen(false)}
-              className="block font-display text-sm tracking-widest uppercase text-cream-dark hover:text-gold transition-colors py-2 border-b border-gold/10"
+              style={{
+                display: 'block',
+                fontFamily: "'Cinzel', serif",
+                fontSize: '0.75rem',
+                letterSpacing: '0.2em',
+                textTransform: 'uppercase',
+                color: 'hsl(35 25% 88%)',
+                padding: '0.75rem 0',
+                borderBottom: '1px solid hsl(43 72% 55% / 0.12)',
+              }}
             >
               {label}
             </Link>
           ))}
           {!user ? (
-            <div className="flex flex-col gap-3 pt-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingTop: '1rem' }}>
               <Link
                 href="/login"
                 onClick={() => setMenuOpen(false)}
-                className="block text-center font-display text-sm tracking-widest uppercase text-cream-dark border border-gold/40 py-3 hover:border-gold transition-colors"
+                style={{
+                  display: 'block',
+                  textAlign: 'center',
+                  fontFamily: "'Cinzel', serif",
+                  fontSize: '0.75rem',
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: 'hsl(35 25% 88%)',
+                  border: '1px solid hsl(43 72% 55% / 0.4)',
+                  padding: '0.75rem',
+                }}
               >
                 Login
               </Link>
               <Link
                 href="/reserve"
                 onClick={() => setMenuOpen(false)}
-                className="block text-center bg-gradient-gold text-primary font-display text-sm tracking-widest uppercase py-3"
+                style={{
+                  display: 'block',
+                  textAlign: 'center',
+                  fontFamily: "'Cinzel', serif",
+                  fontSize: '0.75rem',
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                  background: 'linear-gradient(135deg, hsl(43 72% 55%), hsl(43 65% 72%))',
+                  color: 'hsl(220 55% 18%)',
+                  padding: '0.75rem',
+                }}
               >
                 Reserve Now
               </Link>
             </div>
           ) : (
-            <div className="pt-2 flex flex-col gap-3">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0', paddingTop: '0.5rem' }}>
               <Link
                 href={user.type === 'staff' ? '/admin/dashboard' : '/guest/dashboard'}
                 onClick={() => setMenuOpen(false)}
-                className="block font-display text-sm tracking-widest uppercase text-cream-dark hover:text-gold transition-colors py-2"
+                style={{
+                  display: 'block',
+                  fontFamily: "'Cinzel', serif",
+                  fontSize: '0.75rem',
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: 'hsl(35 25% 88%)',
+                  padding: '0.75rem 0',
+                  borderBottom: '1px solid hsl(43 72% 55% / 0.12)',
+                }}
               >
                 Dashboard
               </Link>
               <button
                 onClick={() => { logout(); setMenuOpen(false); }}
-                className="text-left font-display text-sm tracking-widest uppercase text-cream-dark/60 hover:text-gold transition-colors py-2"
+                style={{
+                  textAlign: 'left',
+                  fontFamily: "'Cinzel', serif",
+                  fontSize: '0.75rem',
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color: 'hsl(35 25% 88% / 0.5)',
+                  padding: '0.75rem 0',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
               >
                 Sign Out
               </button>

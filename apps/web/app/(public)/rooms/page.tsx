@@ -64,6 +64,9 @@ export default function RoomsPage() {
         .price-slider::-webkit-slider-thumb:hover{background:hsl(43 65% 72%);}
         .slider-wrap{overflow:hidden;padding:8px 0;}
         .cat-tabs::-webkit-scrollbar{display:none;}
+        .price-filter-row{display:flex;justify-content:center;align-items:center;gap:1.25rem;padding:0.875rem 0 1rem;flex-wrap:wrap;}
+        .slider-container{display:flex;align-items:center;gap:0.5rem;width:16rem;max-width:calc(100vw - 12rem);}
+        @media(max-width:600px){.price-filter-row{gap:0.75rem;}.slider-container{width:100%;max-width:100%;min-width:0;}}
       `}</style>
 
       <div style={{ paddingTop: '5rem', minHeight: '100vh', background: S.cream }}>
@@ -98,10 +101,10 @@ export default function RoomsPage() {
             </div>
 
             {/* Price range — centred */}
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1.25rem', padding: '0.875rem 0 1rem' }}>
+            <div className="price-filter-row">
               <span style={{ fontFamily: S.cinzel, fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: S.muted, flexShrink: 0 }}>Price / Night</span>
               <span style={{ fontFamily: S.raleway, fontSize: '0.78rem', color: S.gold, fontWeight: 600, flexShrink: 0, minWidth: '2.5rem' }}>${priceMin}</span>
-              <div className="slider-wrap" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '16rem' }}>
+              <div className="slider-wrap slider-container">
                 <input type="range" className="price-slider" min={0} max={priceMaxBound} value={priceMin}
                   onChange={e => setPriceMin(Math.min(Number(e.target.value), priceMax - 10))} />
                 <input type="range" className="price-slider" min={0} max={priceMaxBound} value={priceMax}
