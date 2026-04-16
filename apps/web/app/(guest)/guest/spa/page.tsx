@@ -4,6 +4,8 @@ import Image from 'next/image';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import { Clock, Sparkles, X, CalendarDays, CheckCircle2, XCircle, Hourglass, Sun, Sunset, Moon, ChevronRight } from 'lucide-react';
+import { useActiveOffer } from '../../../../hooks/useActiveOffer';
+import OfferBanner from '../../../../components/ui/OfferBanner';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const GOLD   = 'hsl(43 72% 55%)';
@@ -142,6 +144,10 @@ export default function SpaPage() {
 
   const windowInfo = WINDOWS.find(w => w.key === pickedWindow);
 
+  const { offer } = useActiveOffer();
+  const spaMultiplier = offer?.spaDiscount ? (1 - offer.spaDiscount / 100) : 1;
+  const spaPrice = (p: number) => Math.round(p * spaMultiplier * 100) / 100;
+
   return (
     <>
       <style>{`
@@ -153,6 +159,7 @@ export default function SpaPage() {
       `}</style>
 
       <div style={{ background: CREAM, minHeight: '100vh', paddingBottom: '5rem' }}>
+        <OfferBanner filter="spa" />
 
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <div style={{ background: NAVY, padding: '2rem 1.5rem 1.75rem', textAlign: 'center' }}>
@@ -183,7 +190,10 @@ export default function SpaPage() {
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.35rem' }}>
                       <h3 style={{ fontFamily: CINZEL, color: NAVY, fontSize: '0.85rem', letterSpacing: '0.05em', fontWeight: 600, lineHeight: 1.3 }}>{service.name}</h3>
-                      <span style={{ fontFamily: CINZEL, color: GOLD, fontSize: '1rem', fontWeight: 700, flexShrink: 0 }}>NPR {service.price}</span>
+                      <span style={{ fontFamily: CINZEL, color: GOLD, fontSize: '1rem', fontWeight: 700, flexShrink: 0 }}>
+                        NPR {spaPrice(service.price)}
+                        {spaMultiplier < 1 && <span style={{ fontSize: '0.68rem', color: MUTED, textDecoration: 'line-through', marginLeft: '0.3rem' }}>NPR {service.price}</span>}
+                      </span>
                     </div>
                     <p style={{ fontFamily: RALEWAY, color: MUTED, fontSize: '0.75rem', lineHeight: 1.5, marginBottom: '0.5rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{service.description}</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: MUTED }}>
@@ -269,7 +279,10 @@ export default function SpaPage() {
                     <span style={{ fontFamily: CINZEL, fontSize: '0.6rem', letterSpacing: '0.08em' }}>{selected.duration} min · {selected.category}</span>
                   </div>
                 </div>
-                <span style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '1.3rem', fontWeight: 700, flexShrink: 0, marginLeft: '1rem' }}>NPR {selected.price}</span>
+                <span style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '1.3rem', fontWeight: 700, flexShrink: 0, marginLeft: '1rem' }}>
+                  NPR {spaPrice(selected.price)}
+                  {spaMultiplier < 1 && <span style={{ fontSize: '0.8rem', color: MUTED, textDecoration: 'line-through', marginLeft: '0.4rem' }}>NPR {selected.price}</span>}
+                </span>
               </div>
 
               {/* Step progress pills */}
@@ -427,7 +440,7 @@ export default function SpaPage() {
                       ['Time of Day', windowInfo ? `${windowInfo.label} (${windowInfo.hours})` : '—'],
                       ['Your Preference', pickedSlot || 'Earliest available'],
                       ['Duration', `${selected.duration} min`],
-                      ['Price', `NPR ${selected.price}`],
+                      ['Price', spaMultiplier < 1 ? `NPR ${spaPrice(selected.price)} (was NPR ${selected.price})` : `NPR ${selected.price}`],
                     ].map(([k, v]) => (
                       <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingBottom: '0.6rem', marginBottom: '0.6rem', borderBottom: `1px solid ${BORDER}` }}>
                         <span style={{ fontFamily: CINZEL, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: MUTED }}>{k}</span>
@@ -444,7 +457,7 @@ export default function SpaPage() {
                     style={{ width: '100%', background: `linear-gradient(135deg, ${GOLD}, hsl(43 65% 68%))`, color: NAVY, fontFamily: CINZEL, fontSize: '0.68rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '1rem', border: 'none', cursor: 'pointer', fontWeight: 700, opacity: loading ? 0.7 : 1, transition: 'opacity 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                     {loading
                       ? <><div style={{ width: '1rem', height: '1rem', border: `2px solid ${NAVY}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} /> Confirming…</>
-                      : <><Sparkles size={13} /> Confirm · NPR {selected.price}</>
+                      : <><Sparkles size={13} /> Confirm · NPR {spaPrice(selected.price)}</>
                     }
                   </button>
                   <button onClick={() => setStep('slots')}

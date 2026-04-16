@@ -7,7 +7,7 @@ import { useAuthStore } from '../../store/authStore';
 import {
   LayoutDashboard, CalendarCheck, BedDouble, UtensilsCrossed,
   Flower2, Users, BookOpen, Receipt, LogOut, Menu, UserCircle,
-  Package2, ShieldPlus, Bell, X, ChevronRight,
+  Package2, ShieldPlus, Bell, X, ChevronRight, Tag,
 } from 'lucide-react';
 import { getSocket, connectSocket } from '../../lib/socket';
 import type { Order } from '../../store/orderStore';
@@ -187,6 +187,7 @@ const NAV = [
   { href: '/admin/menu',         label: 'Menu',         icon: BookOpen,        departments: ['food'] },
   { href: '/admin/inventory',    label: 'Inventory',    icon: Package2,        departments: ['food'] },
   { href: '/admin/spa',          label: 'Spa Schedule', icon: Flower2,         departments: ['spa'] },
+  { href: '/admin/offers',        label: 'Offers',       icon: Tag,             departments: ['__super_admin__'] },
   { href: '/admin/profile',      label: 'Profile',      icon: UserCircle,      departments: null },
   { href: '/register',           label: 'Add Admin',    icon: ShieldPlus,      departments: ['__super_admin__'] },
 ] as { href: string; label: string; icon: React.ElementType; departments: string[] | null }[];

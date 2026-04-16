@@ -1,7 +1,8 @@
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Users, Maximize2 } from 'lucide-react';
+import FeaturedRoomsClient from '../../components/ui/FeaturedRoomsClient';
+import OfferBanner from '../../components/ui/OfferBanner';
 
 const S = {
   gold: 'hsl(43 72% 55%)', goldLight: 'hsl(43 65% 72%)', goldDark: 'hsl(43 75% 40%)',
@@ -93,6 +94,7 @@ export default async function HomePage() {
         </div>
       </section>
 
+      <OfferBanner />
       {/* ── Featured Rooms ── */}
       <section style={{ padding: '6rem 0', background: S.cream }}>
         <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1.5rem' }}>
@@ -105,47 +107,7 @@ export default async function HomePage() {
             </p>
           </div>
 
-          <div className="rooms-grid">
-            {rooms.map((room: any) => (
-              <div key={room._id || room.name} className="room-card">
-                <div style={{ position: 'relative', overflow: 'hidden', height: '16rem' }}>
-                  <Image src={room.images?.[0] || '/room-deluxe.jpg'} alt={room.name} fill className="room-img" />
-                  {room._categoryName && (
-                    <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: S.gradGold, color: S.navy, fontFamily: S.cinzel, fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.3rem 0.75rem', fontWeight: 700 }}>
-                      {room._categoryName}
-                    </div>
-                  )}
-                  <div style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'hsl(220 55% 18% / 0.9)', color: 'hsl(43 72% 65%)', fontFamily: S.cinzel, fontSize: '0.85rem', padding: '0.4rem 1rem' }}>
-                    From ${room.pricePerNight}<span style={{ fontSize: '0.7rem', color: 'hsl(35 25% 88% / 0.7)' }}> / night</span>
-                  </div>
-                </div>
-                <div style={{ padding: '1.5rem' }}>
-                  <h3 style={{ fontFamily: S.cinzel, fontWeight: 600, fontSize: '1.1rem', color: S.navy, marginBottom: '0.6rem' }}>{room.name}</h3>
-                  <p style={{ fontFamily: S.raleway, color: S.muted, fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '1rem' }}>{room.description}</p>
-                  <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.875rem', fontSize: '0.75rem', color: S.muted }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway }}>
-                      <Users size={13} color={S.gold} />
-                      {room.capacity} Guests
-                    </span>
-                    {room.areaSqm > 0 && (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway }}>
-                        <Maximize2 size={13} color={S.gold} />
-                        {room.areaSqm} m²
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1.25rem' }}>
-                    {(room.amenities || []).slice(0, 4).map((f: string) => (
-                      <span key={f} style={{ fontFamily: S.raleway, fontSize: '0.68rem', background: S.papyrus, color: S.muted, padding: '0.2rem 0.6rem', border: '1px solid hsl(35 25% 82%)' }}>{f}</span>
-                    ))}
-                  </div>
-                  <Link href={`/rooms/${room.slug}`} style={{ display: 'block', textAlign: 'center', background: S.gradNavy, color: 'hsl(43 72% 65%)', fontFamily: S.cinzel, fontSize: '0.68rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '0.875rem' }}>
-                    View Room →
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
+          <FeaturedRoomsClient rooms={rooms} />
 
           <div style={{ textAlign: 'center', marginTop: '3rem' }}>
             <Link href="/rooms" style={{ display: 'inline-block', border: `1px solid ${S.gold}`, color: S.gold, fontFamily: S.cinzel, fontSize: '0.72rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '0.875rem 2.5rem' }}>View All Rooms</Link>

@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Users, ArrowRight, Maximize2 } from 'lucide-react';
+import { useActiveOffer } from '../../../hooks/useActiveOffer';
+import OfferBanner from '../../../components/ui/OfferBanner';
 
 const S = {
   gold: 'hsl(43 72% 55%)', goldLight: 'hsl(43 65% 72%)',
@@ -19,6 +21,10 @@ export default function RoomsPage() {
   const [rooms, setRooms] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const { offer } = useActiveOffer();
+  const mult = offer?.roomDiscount ? (1 - offer.roomDiscount / 100) : 1;
+  const disc = (p: number) => Math.round(p * mult * 100) / 100;
 
   const [activeCat, setActiveCat] = useState('all');
   const [priceMin, setPriceMin] = useState(0);
@@ -69,9 +75,9 @@ export default function RoomsPage() {
         @media(max-width:600px){.price-filter-row{gap:0.75rem;}.slider-container{width:100%;max-width:100%;min-width:0;}}
       `}</style>
 
-      <div style={{ paddingTop: '5rem', minHeight: '100vh', background: S.cream }}>
+      <div style={{ minHeight: '100vh', background: S.cream }}>
         {/* Header */}
-        <div style={{ background: S.navy, padding: '5rem 1.5rem', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ background: S.navy, padding: '10rem 1.5rem 5rem', textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
           <Image src="/hero-bg.jpg" alt="" fill style={{ objectFit: 'cover', opacity: 0.18 }} />
           <div style={{ position: 'relative', zIndex: 1 }}>
             <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Our Collection</p>
@@ -82,6 +88,8 @@ export default function RoomsPage() {
             </p>
           </div>
         </div>
+
+        <OfferBanner filter="room" />
 
         {/* Filters */}
         <div style={{ background: '#fff', borderBottom: 'none', position: 'sticky', top: '4rem', zIndex: 20, boxShadow: '0 1px 0 0 transparent' }}>
@@ -150,8 +158,16 @@ export default function RoomsPage() {
                           {cat?.name || room.type}
                         </div>
                         {/* Price badge */}
-                        <div style={{ position: 'absolute', top: '0.875rem', right: '0.875rem', background: 'hsl(220 55% 18% / 0.92)', color: 'hsl(43 72% 65%)', fontFamily: S.cinzel, fontSize: '0.82rem', padding: '0.35rem 0.875rem', letterSpacing: '0.05em' }}>
-                          ${room.pricePerNight}<span style={{ fontSize: '0.65rem', color: 'hsl(35 25% 88% / 0.6)' }}> / night</span>
+                        <div style={{ position: 'absolute', top: '0.875rem', right: '0.875rem', background: 'hsl(220 55% 18% / 0.92)', fontFamily: S.cinzel, fontSize: '0.82rem', padding: '0.35rem 0.875rem', letterSpacing: '0.05em', textAlign: 'right' }}>
+                          {mult < 1 ? (
+                            <span style={{ display: 'flex', alignItems: 'baseline', gap: '0.3rem', flexWrap: 'nowrap' }}>
+                              <span style={{ color: S.goldLight, fontWeight: 700, fontSize: '0.9rem' }}>${disc(room.pricePerNight)}</span>
+                              <span style={{ fontSize: '0.68rem', color: 'hsl(35 25% 88% / 0.75)', textDecoration: 'line-through' }}>${room.pricePerNight}</span>
+                              <span style={{ fontSize: '0.6rem', color: 'hsl(35 25% 88% / 0.65)' }}>/nt</span>
+                            </span>
+                          ) : (
+                            <><span style={{ color: 'hsl(43 72% 65%)' }}>${room.pricePerNight}</span><span style={{ fontSize: '0.65rem', color: 'hsl(35 25% 88% / 0.6)' }}> /nt</span></>
+                          )}
                         </div>
                         {!room.isAvailable && (
                           <div style={{ position: 'absolute', inset: 0, background: 'hsl(220 55% 18% / 0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

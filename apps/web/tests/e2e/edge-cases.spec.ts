@@ -474,6 +474,53 @@ test.describe('B. Order Guards', () => {
     expect(cancel.order.status).toBe('cancelled');
   });
 
+  test('B-10 cancelled pending order does NOT add to bill', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token, 9);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+    const menu = await get('/menu', g.guestToken);
+    const item = menu.items?.[0];
+    if (!item) { test.skip(true, 'No menu items'); return; }
+
+    const billBefore = (await get(`/billing/${g.guestId}`, token)).bill;
+    const foodBefore = billBefore.foodCharges ?? 0;
+    const linesBefore = (billBefore.lineItems ?? []).filter((l: any) => l.type === 'food_order').length;
+
+    const order = await post('/orders', { items: [{ menuItem: item._id, quantity: 1 }] }, g.guestToken);
+    expect(order.success).toBe(true);
+
+    await patch(`/orders/${order.order._id}/cancel`, { reason: 'Guest request' }, token);
+
+    const billAfter = (await get(`/billing/${g.guestId}`, token)).bill;
+    expect(billAfter.foodCharges).toBe(foodBefore);
+    expect(billAfter.lineItems.filter((l: any) => l.type === 'food_order').length).toBe(linesBefore);
+  });
+
+  test('B-11 kitchen full status progression: pending→accepted→preparing→ready→delivering→delivered adds to bill once', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token, 10);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+    const menu = await get('/menu', g.guestToken);
+    const item = menu.items?.[0];
+    if (!item) { test.skip(true, 'No menu items'); return; }
+
+    const order = await post('/orders', { items: [{ menuItem: item._id, quantity: 1 }] }, g.guestToken);
+    expect(order.success).toBe(true);
+    expect(order.order.status).toBe('pending');
+
+    const steps = ['accepted', 'preparing', 'ready', 'delivering', 'delivered'] as const;
+    for (const status of steps) {
+      const r = await patch(`/orders/${order.order._id}/status`, { status }, token);
+      expect(r.success).toBe(true);
+      expect(r.order.status).toBe(status);
+    }
+
+    const bill = (await get(`/billing/${g.guestId}`, token)).bill;
+    const foodLines = bill.lineItems.filter((l: any) => l.type === 'food_order');
+    expect(foodLines).toHaveLength(1);
+    expect(bill.foodCharges).toBe(item.price);
+  });
+
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -602,6 +649,61 @@ test.describe('C. Spa Guards', () => {
     const myBookings = await get('/spa/bookings/my', g.guestToken);
     expect(myBookings.success).toBe(true);
     expect(myBookings.bookings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('C-08 cancelled spa booking does NOT add charge to bill', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token, 6);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+    const services = (await get('/spa/services')).services ?? [];
+    if (!services.length) { test.skip(true, 'No spa services'); return; }
+    const s = services[0];
+
+    const billBefore = (await get(`/billing/${g.guestId}`, token)).bill;
+    const spaChargesBefore = billBefore.spaCharges ?? 0;
+    const spaLinesBefore = (billBefore.lineItems ?? []).filter((l: any) => l.type === 'spa').length;
+
+    let bookingId: string | null = null;
+    for (let i = 0; i < 5; i++) {
+      const r = await post('/spa/book', { service: s._id, date: daysFromNow(320 + i), startTime: '09:00' }, g.guestToken);
+      if (r.success) { bookingId = r.booking._id; break; }
+    }
+    if (!bookingId) { test.skip(true, 'Could not book spa slot'); return; }
+
+    // Cancel the booking before it reaches completed
+    const cancel = await patch(`/spa/bookings/${bookingId}/status`, { status: 'cancelled' }, token);
+    expect(cancel.success).toBe(true);
+    expect(cancel.booking.status).toBe('cancelled');
+
+    const billAfter = (await get(`/billing/${g.guestId}`, token)).bill;
+    expect(billAfter.spaCharges).toBe(spaChargesBefore);
+    expect(billAfter.lineItems.filter((l: any) => l.type === 'spa').length).toBe(spaLinesBefore);
+  });
+
+  test('C-09 spa cancel after confirmed (mid-flow) does NOT add charge to bill', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token, 7);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+    const services = (await get('/spa/services')).services ?? [];
+    if (!services.length) { test.skip(true, 'No spa services'); return; }
+    const s = services[0];
+
+    let bookingId: string | null = null;
+    for (let i = 0; i < 5; i++) {
+      const r = await post('/spa/book', { service: s._id, date: daysFromNow(330 + i), startTime: '09:00' }, g.guestToken);
+      if (r.success) { bookingId = r.booking._id; break; }
+    }
+    if (!bookingId) { test.skip(true, 'Could not book spa slot'); return; }
+
+    // Advance to confirmed, then cancel
+    await patch(`/spa/bookings/${bookingId}/status`, { status: 'confirmed' }, token);
+    const cancel = await patch(`/spa/bookings/${bookingId}/status`, { status: 'cancelled' }, token);
+    expect(cancel.success).toBe(true);
+    expect(cancel.booking.status).toBe('cancelled');
+
+    const bill = (await get(`/billing/${g.guestId}`, token)).bill;
+    expect(bill.spaCharges ?? 0).toBe(0);
+    expect(bill.lineItems.filter((l: any) => l.type === 'spa').length).toBe(0);
   });
 
 });

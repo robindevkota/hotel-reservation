@@ -6,6 +6,8 @@ import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import { PartyPopper, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
+import { useActiveOffer } from '../../../hooks/useActiveOffer';
+import OfferBanner from '../../../components/ui/OfferBanner';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
@@ -158,6 +160,7 @@ function StripeCardForm({
 function ReserveContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { offer } = useActiveOffer();
   const [step, setStep] = useState<Step>(1);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
@@ -196,10 +199,11 @@ function ReserveContent() {
     ? Math.max(0, Math.ceil((new Date(form.checkOutDate).getTime() - new Date(form.checkInDate).getTime()) / 86400000))
     : 0;
 
+  const offerRoomMultiplier = offer?.roomDiscount ? (1 - offer.roomDiscount / 100) : 1;
   const baseTotal = selectedRoom ? nights * selectedRoom.pricePerNight : 0;
-  const totalCost = policy === 'non_refundable'
-    ? Math.round(baseTotal * 0.9 * 100) / 100
-    : baseTotal;
+  // Apply non-refundable discount first, then offer discount on top (mirrors server logic)
+  const afterPolicy = policy === 'non_refundable' ? Math.round(baseTotal * 0.9 * 100) / 100 : baseTotal;
+  const totalCost = Math.round(afterPolicy * offerRoomMultiplier * 100) / 100;
   const savings = baseTotal - totalCost;
 
   // Step 3 → submit reservation
@@ -241,9 +245,9 @@ function ReserveContent() {
     <>
       <style dangerouslySetInnerHTML={{ __html: `.res-input:focus{border-color:hsl(43 72% 55%)!important;}.room-sel{background:#fff;border:2px solid hsl(35 25% 82%);overflow:hidden;cursor:pointer;transition:border-color 0.3s,box-shadow 0.3s;text-align:left;}.room-sel:hover{border-color:hsl(43 72% 55%/0.5);}.room-sel.active{border-color:hsl(43 72% 55%);box-shadow:0 0 0 3px hsl(43 72% 55%/0.15);}.room-sel-img{transition:transform 0.7s ease;}.room-sel:hover .room-sel-img{transform:scale(1.05);}.res-btn-primary{background:linear-gradient(135deg,hsl(43 72% 55%),hsl(43 65% 72%));color:hsl(220 55% 18%);font-family:'Cinzel',serif;font-size:0.72rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.875rem 2.5rem;border:none;cursor:pointer;font-weight:600;transition:opacity 0.2s;}.res-btn-primary:hover{opacity:0.88;}.res-btn-primary:disabled{opacity:0.5;cursor:not-allowed;}.res-btn-secondary{background:transparent;color:hsl(220 15% 40%);font-family:'Cinzel',serif;font-size:0.72rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.875rem 2rem;border:1px solid hsl(35 25% 82%);cursor:pointer;transition:border-color 0.2s,color 0.2s;}.res-btn-secondary:hover{border-color:hsl(43 72% 55%/0.4);color:hsl(220 55% 18%);}.res-btn-secondary:disabled{opacity:0.4;cursor:not-allowed;}.policy-card{border:2px solid hsl(35 25% 82%);background:#fff;cursor:pointer;transition:border-color 0.25s,box-shadow 0.25s;padding:1.75rem;position:relative;}.policy-card:hover{border-color:hsl(43 72% 55%/0.5);}.policy-card.selected{border-color:hsl(43 72% 55%);box-shadow:0 0 0 3px hsl(43 72% 55%/0.12);}.policy-radio{width:1.125rem;height:1.125rem;border-radius:50%;border:2px solid hsl(35 25% 82%);display:inline-flex;align-items:center;justify-content:center;transition:border-color 0.2s;flex-shrink:0;}.policy-card.selected .policy-radio{border-color:hsl(43 72% 55%);}.policy-radio-inner{width:0.55rem;height:0.55rem;border-radius:50%;background:hsl(43 72% 55%);opacity:0;}.policy-card.selected .policy-radio-inner{opacity:1;}.discount-badge{background:linear-gradient(135deg,hsl(43 72% 55%),hsl(43 65% 72%));color:hsl(220 55% 18%);font-family:'Cinzel',serif;font-size:0.6rem;letter-spacing:0.12em;padding:0.25rem 0.625rem;font-weight:700;position:absolute;top:1rem;right:1rem;}@media(max-width:640px){.policy-grid{grid-template-columns:1fr!important;}}` }} />
 
-      <div style={{ paddingTop: '5rem', minHeight: '100vh', background: S.cream }}>
+      <div style={{ minHeight: '100vh', background: S.cream }}>
         {/* Header */}
-        <div style={{ position: 'relative', background: S.navy, padding: '4rem 1.5rem', textAlign: 'center', overflow: 'hidden' }}>
+        <div style={{ position: 'relative', background: S.navy, padding: '9rem 1.5rem 4rem', textAlign: 'center', overflow: 'hidden' }}>
           <Image src="/hero-bg.jpg" alt="" fill sizes="100vw" style={{ objectFit: 'cover', opacity: 0.15 }} />
           <div style={{ position: 'relative', zIndex: 1 }}>
             <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Begin Your Stay</p>
@@ -288,6 +292,8 @@ function ReserveContent() {
             </div>
           </div>
         </div>
+
+        <OfferBanner filter="room" />
 
         <div style={{ maxWidth: '52rem', margin: '0 auto', padding: '3rem 1.5rem' }}>
 
@@ -351,7 +357,11 @@ function ReserveContent() {
                             <p style={{ fontFamily: S.cinzel, fontSize: '0.78rem', color: S.navy, marginBottom: '0.35rem' }}>{room.name}</p>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontFamily: S.raleway, fontSize: '0.7rem', color: S.muted, textTransform: 'capitalize' }}>{room.type}</span>
-                              <span style={{ fontFamily: S.cinzel, fontSize: '0.85rem', color: S.gold }}>${room.pricePerNight}<span style={{ fontSize: '0.65rem', color: S.muted }}>/night</span></span>
+                              <span style={{ fontFamily: S.cinzel, fontSize: '0.85rem', color: S.gold }}>
+                                ${Math.round(room.pricePerNight * offerRoomMultiplier * 100) / 100}
+                                {offerRoomMultiplier < 1 && <span style={{ fontSize: '0.6rem', color: S.muted, textDecoration: 'line-through', marginLeft: '0.3rem' }}>${room.pricePerNight}</span>}
+                                <span style={{ fontSize: '0.65rem', color: S.muted }}>/night</span>
+                              </span>
                             </div>
                           </div>
                         </button>
@@ -408,9 +418,12 @@ function ReserveContent() {
                     <div className="policy-radio"><div className="policy-radio-inner" /></div>
                     <div>
                       <p style={{ fontFamily: S.cinzel, fontSize: '0.82rem', color: S.navy, letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Flexible Rate</p>
-                      <p style={{ fontFamily: S.cinzel, fontSize: '1.4rem', color: S.gold, fontWeight: 600, lineHeight: 1 }}>
-                        ${selectedRoom!.pricePerNight}<span style={{ fontSize: '0.7rem', color: S.muted, fontWeight: 400 }}>/night</span>
-                      </p>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+                        <p style={{ fontFamily: S.cinzel, fontSize: '1.4rem', color: S.gold, fontWeight: 600, lineHeight: 1 }}>
+                          ${Math.round(selectedRoom!.pricePerNight * offerRoomMultiplier * 100) / 100}<span style={{ fontSize: '0.7rem', color: S.muted, fontWeight: 400 }}>/night</span>
+                        </p>
+                        {offerRoomMultiplier < 1 && <span style={{ fontFamily: S.raleway, fontSize: '0.72rem', color: S.muted, textDecoration: 'line-through' }}>${selectedRoom!.pricePerNight}</span>}
+                      </div>
                     </div>
                   </div>
                   <div style={{ width: '100%', height: '1px', background: S.divider, marginBottom: '1rem' }} />
@@ -444,7 +457,7 @@ function ReserveContent() {
                       <p style={{ fontFamily: S.cinzel, fontSize: '0.82rem', color: S.navy, letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Non-Refundable</p>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
                         <p style={{ fontFamily: S.cinzel, fontSize: '1.4rem', color: S.gold, fontWeight: 600, lineHeight: 1 }}>
-                          ${Math.round(selectedRoom!.pricePerNight * 0.9)}<span style={{ fontSize: '0.7rem', color: S.muted, fontWeight: 400 }}>/night</span>
+                          ${Math.round(selectedRoom!.pricePerNight * 0.9 * offerRoomMultiplier * 100) / 100}<span style={{ fontSize: '0.7rem', color: S.muted, fontWeight: 400 }}>/night</span>
                         </p>
                         <p style={{ fontFamily: S.raleway, fontSize: '0.72rem', color: S.muted, textDecoration: 'line-through' }}>${selectedRoom!.pricePerNight}</p>
                       </div>

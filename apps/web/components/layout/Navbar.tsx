@@ -32,9 +32,9 @@ export default function Navbar() {
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
         transition: 'all 0.5s ease',
-        background: scrolled ? 'hsl(220 55% 18% / 0.97)' : 'hsl(220 55% 18% / 0.85)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: scrolled ? '1px solid hsl(43 72% 55% / 0.25)' : '1px solid hsl(43 72% 55% / 0.12)',
+        background: 'hsl(220 55% 18%)',
+        backdropFilter: 'none',
+        borderBottom: '1px solid hsl(43 72% 55% / 0.2)',
         boxShadow: scrolled ? '0 4px 24px -4px hsl(220 55% 8% / 0.4)' : 'none',
       }}
     >

@@ -49,9 +49,9 @@ export default async function AmenitiesPage() {
         @media(max-width:768px){.spa-grid{grid-template-columns:1fr;}}
       `}</style>
 
-      <div style={{ paddingTop: '5rem', minHeight: '100vh', background: S.cream }}>
+      <div style={{ minHeight: '100vh', background: S.cream }}>
         {/* Header */}
-        <div style={{ position: 'relative', background: S.navy, padding: '5rem 1.5rem', textAlign: 'center', overflow: 'hidden' }}>
+        <div style={{ position: 'relative', background: S.navy, padding: '10rem 1.5rem 5rem', textAlign: 'center', overflow: 'hidden' }}>
           <Image src="/spa.jpg" alt="" fill style={{ objectFit: 'cover', opacity: 0.25 }} />
           <div style={{ position: 'relative', zIndex: 1 }}>
             <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Beyond the Room</p>

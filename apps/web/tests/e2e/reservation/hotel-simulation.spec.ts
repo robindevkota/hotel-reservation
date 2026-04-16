@@ -814,33 +814,32 @@ test.describe('Phase 3 — Week 3: Ramp to Full Occupancy', () => {
   });
 
   test('SIM-20 Fully occupied — all booking attempts rejected', async () => {
+    if (BULK.length === 0) { test.skip(true, 'No bulk guests — SIM-17/19 skipped'); return; }
+
     // Availability API returns empty
     const { data: freeD } = await get('/rooms?available=true', ADMIN);
     expect((freeD.rooms ?? []).length).toBe(0);
 
-    // Try to book a room using a date that overlaps with the filled SIM-19 range.
-    // SIM-19 fills rooms with simDate(15+i)–simDate(18+i), so simDate(15)–simDate(18)
-    // is guaranteed to conflict with the first filled room.
-    const { data: allRoomsD } = await get('/rooms', ADMIN);
-    const anyRoom = (allRoomsD.rooms ?? [])[0];
-    if (!anyRoom) return;
+    // Use the first BULK guest's room — it has a real checked_in reservation.
+    // Dates simDate(10)–simDate(13) overlap with SIM-17 guests (booked simDate(10+i)–simDate(13+i)).
+    const bulkRoom = BULK[0];
 
     const { status } = await post('/reservations', {
       guest: { name: 'Refused Guest', email: 'refused@nile.eg', phone: '+20000000001' },
-      room: anyRoom._id,
-      checkInDate: simDate(15),
-      checkOutDate: simDate(18),
+      room: bulkRoom.roomId,
+      checkInDate: simDate(10),
+      checkOutDate: simDate(13),
       numberOfGuests: 1,
     });
-    // Expect 409 conflict or validation error
+    // Expect 409 conflict (date overlap) or 400 (room unavailable)
     expect([400, 409]).toContain(status);
 
-    // Walk-in also rejected
+    // Walk-in also rejected — same room, overlapping dates
     const { status: wiStatus } = await post('/reservations/walk-in', {
       guest: { name: 'Refused Walkin', email: 'refused2@nile.eg', phone: '+20000000002' },
-      room: anyRoom._id,
-      checkInDate: simDate(15),
-      checkOutDate: simDate(18),
+      room: bulkRoom.roomId,
+      checkInDate: simDate(10),
+      checkOutDate: simDate(13),
       numberOfGuests: 1,
     }, ADMIN);
     expect([400, 409]).toContain(wiStatus);

@@ -3,6 +3,7 @@ import { body } from 'express-validator';
 import crypto from 'crypto';
 import Reservation from '../models/Reservation';
 import Room from '../models/Room';
+import Offer from '../models/Offer';
 import { AppError } from '../middleware/errorHandler';
 import { sendReservationConfirmation, sendCancellationConfirmation } from '../services/notification.service';
 import { AuthRequest } from '../middleware/auth.middleware';
@@ -53,11 +54,17 @@ export async function createReservation(req: Request, res: Response): Promise<vo
 
   const totalNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
 
-  // Non-refundable rate: 10% discount applied at booking, charged immediately via Stripe
+  // Check for an active promotional offer with a room discount
+  const now = new Date();
+  const activeOffer = await Offer.findOne({ isActive: true, startDate: { $lte: now }, endDate: { $gte: now } });
+  const offerMultiplier = activeOffer?.roomDiscount ? (1 - activeOffer.roomDiscount / 100) : 1;
+
+  // Apply non-refundable 10% discount first, then offer discount on top
   const baseCharges = totalNights * room.pricePerNight;
-  const roomCharges = cancellationPolicy === 'non_refundable'
+  const afterPolicy = cancellationPolicy === 'non_refundable'
     ? Math.round(baseCharges * 0.9 * 100) / 100
     : baseCharges;
+  const roomCharges = Math.round(afterPolicy * offerMultiplier * 100) / 100;
 
   // Generate unique booking reference (retry once on collision)
   let bookingRef = generateBookingRef();

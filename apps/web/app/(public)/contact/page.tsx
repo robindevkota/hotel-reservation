@@ -58,10 +58,10 @@ export default function ContactPage() {
         .info-card:hover{border-color:hsl(43 72% 55%/0.4);box-shadow:0 4px 16px -4px hsl(43 72% 55%/0.15);}
       `}</style>
 
-      <div style={{ paddingTop: '5rem', minHeight: '100vh', background: S.cream }}>
+      <div style={{ minHeight: '100vh', background: S.cream }}>
 
         {/* Header */}
-        <div style={{ position: 'relative', background: S.navy, padding: '5rem 1.5rem', textAlign: 'center', overflow: 'hidden' }}>
+        <div style={{ position: 'relative', background: S.navy, padding: '10rem 1.5rem 5rem', textAlign: 'center', overflow: 'hidden' }}>
           <Image src="/hero-bg.jpg" alt="" fill style={{ objectFit: 'cover', opacity: 0.2 }} />
           <div style={{ position: 'relative', zIndex: 1 }}>
             <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Reach Us</p>

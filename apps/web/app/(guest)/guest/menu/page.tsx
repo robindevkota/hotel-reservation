@@ -6,6 +6,8 @@ import { useCart } from '../../../../hooks/useCart';
 import { useCartStore } from '../../../../store/cartStore';
 import toast from 'react-hot-toast';
 import { ShoppingBag, Clock, Leaf, Plus, Minus, X, ChevronRight } from 'lucide-react';
+import { useActiveOffer } from '../../../../hooks/useActiveOffer';
+import OfferBanner from '../../../../components/ui/OfferBanner';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const GOLD   = 'hsl(43 72% 55%)';
@@ -29,6 +31,9 @@ export default function MenuPage() {
   const [placing, setPlacing]         = useState(false);
   const { addItem, items: cartItems, removeItem, updateQty, total } = useCartStore();
   const { placeOrder } = useCart();
+  const { offer } = useActiveOffer();
+  const foodMultiplier = offer?.foodDiscount ? (1 - offer.foodDiscount / 100) : 1;
+  const discountedPrice = (p: number) => Math.round(p * foodMultiplier * 100) / 100;
 
   useEffect(() => {
     api.get('/menu').then(({ data }) => { setItems(data.items); setLoading(false); });
@@ -57,6 +62,7 @@ export default function MenuPage() {
       `}</style>
 
       <div style={{ background: CREAM, minHeight: '100vh', paddingBottom: '7rem' }}>
+        <OfferBanner filter="food" />
 
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div style={{ background: NAVY, padding: '2rem 1.5rem 1.75rem', textAlign: 'center' }}>
@@ -110,7 +116,10 @@ export default function MenuPage() {
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.35rem' }}>
                           <h3 style={{ fontFamily: CINZEL, color: NAVY, fontSize: '0.82rem', letterSpacing: '0.05em', fontWeight: 600, lineHeight: 1.3 }}>{item.name}</h3>
-                          <span style={{ fontFamily: CINZEL, color: GOLD, fontSize: '0.95rem', fontWeight: 700, flexShrink: 0 }}>${item.price}</span>
+                          <span style={{ fontFamily: CINZEL, color: GOLD, fontSize: '0.95rem', fontWeight: 700, flexShrink: 0 }}>
+                            ${discountedPrice(item.price)}
+                            {foodMultiplier < 1 && <span style={{ fontSize: '0.68rem', color: MUTED, textDecoration: 'line-through', marginLeft: '0.3rem' }}>${item.price}</span>}
+                          </span>
                         </div>
                         <p style={{ fontFamily: RALEWAY, color: MUTED, fontSize: '0.75rem', lineHeight: 1.5, marginBottom: '0.35rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: MUTED }}>
@@ -132,10 +141,10 @@ export default function MenuPage() {
                               style={{ width: '1.75rem', height: '1.75rem', border: `1px solid ${GOLD}`, color: GOLD, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.18s' }}>
                               <Plus size={11} strokeWidth={2.5} />
                             </button>
-                            <span style={{ fontFamily: CINZEL, color: GOLD, fontSize: '0.78rem', fontWeight: 600, marginLeft: '0.25rem' }}>${(item.price * inCart.quantity).toFixed(2)}</span>
+                            <span style={{ fontFamily: CINZEL, color: GOLD, fontSize: '0.78rem', fontWeight: 600, marginLeft: '0.25rem' }}>${(discountedPrice(item.price) * inCart.quantity).toFixed(2)}</span>
                           </div>
                         ) : (
-                          <button className="add-btn" onClick={() => { addItem({ menuItemId: item._id, name: item.name, price: item.price, image: item.image }); toast.success(`${item.name} added`); }}
+                          <button className="add-btn" onClick={() => { addItem({ menuItemId: item._id, name: item.name, price: discountedPrice(item.price), image: item.image }); toast.success(`${item.name} added`); }}
                             style={{ fontFamily: CINZEL, fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: GOLD, border: `1px solid ${GOLD}60`, background: 'transparent', padding: '0.4rem 1rem', cursor: 'pointer', transition: 'all 0.18s', display: 'flex', alignItems: 'center', gap: '0.35rem', fontWeight: 600 }}>
                             <Plus size={11} strokeWidth={2.5} /> Add to Order
                           </button>
@@ -197,7 +206,8 @@ export default function MenuPage() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontFamily: CINZEL, color: GOLD, fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.3rem' }}>${(item.price * item.quantity).toFixed(2)}</p>
+                    <p style={{ fontFamily: CINZEL, color: GOLD, fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.3rem' }}>${(item.price * item.quantity).toFixed(2)}
+                    </p>
                     <button onClick={() => removeItem(item.menuItemId)} style={{ fontFamily: CINZEL, fontSize: '0.58rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: MUTED, background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
                   </div>
                 </div>

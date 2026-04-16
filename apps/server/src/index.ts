@@ -27,6 +27,7 @@ import paymentRoutes from './routes/payment.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import inventoryRoutes from './routes/inventory.routes';
 import categoryRoutes from './routes/category.routes';
+import offerRoutes from './routes/offer.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -95,6 +96,7 @@ app.use('/api/payment', paymentRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/room-categories', categoryRoutes);
+app.use('/api/offers', offerRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 

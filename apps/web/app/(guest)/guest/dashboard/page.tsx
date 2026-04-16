@@ -181,7 +181,7 @@ export default function GuestDashboardPage() {
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      {b.service?.price && <p style={{ fontFamily: CINZEL_DEC, color: GOLD, fontSize: '0.9rem' }}>NPR {b.service.price}</p>}
+                      {b.price != null && <p style={{ fontFamily: CINZEL_DEC, color: GOLD, fontSize: '0.9rem' }}>NPR {b.price}</p>}
                       <p style={{ fontFamily: CINZEL, fontSize: '0.52rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: meta.color }}>{b.status}</p>
                     </div>
                   </div>

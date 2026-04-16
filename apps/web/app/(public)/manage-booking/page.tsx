@@ -108,10 +108,10 @@ function ManageBookingContent() {
     <>
       <style dangerouslySetInnerHTML={{ __html: `.mgmt-input:focus{border-color:hsl(43 72% 55%)!important;}.mgmt-btn-primary{background:linear-gradient(135deg,hsl(43 72% 55%),hsl(43 65% 72%));color:hsl(220 55% 18%);font-family:'Cinzel',serif;font-size:0.72rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.875rem 2.5rem;border:none;cursor:pointer;font-weight:600;transition:opacity 0.2s;}.mgmt-btn-primary:hover{opacity:0.88;}.mgmt-btn-primary:disabled{opacity:0.5;cursor:not-allowed;}.mgmt-btn-danger{background:#dc2626;color:#fff;font-family:'Cinzel',serif;font-size:0.72rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.875rem 2.5rem;border:none;cursor:pointer;font-weight:600;transition:opacity 0.2s;}.mgmt-btn-danger:hover{opacity:0.88;}.mgmt-btn-danger:disabled{opacity:0.5;cursor:not-allowed;}.mgmt-btn-secondary{background:transparent;color:hsl(220 15% 40%);font-family:'Cinzel',serif;font-size:0.72rem;letter-spacing:0.2em;text-transform:uppercase;padding:0.875rem 2rem;border:1px solid hsl(35 25% 82%);cursor:pointer;transition:border-color 0.2s,color 0.2s;}.mgmt-btn-secondary:hover{border-color:hsl(43 72% 55%/0.4);color:hsl(220 55% 18%);}` }} />
 
-      <div style={{ paddingTop: '5rem', minHeight: '100vh', background: S.cream }}>
+      <div style={{ minHeight: '100vh', background: S.cream }}>
 
         {/* Header */}
-        <div style={{ position: 'relative', background: S.navy, padding: '4rem 1.5rem', textAlign: 'center', overflow: 'hidden' }}>
+        <div style={{ position: 'relative', background: S.navy, padding: '9rem 1.5rem 4rem', textAlign: 'center', overflow: 'hidden' }}>
           <Image src="/hero-bg.jpg" alt="" fill sizes="100vw" style={{ objectFit: 'cover', opacity: 0.15 }} />
           <div style={{ position: 'relative', zIndex: 1 }}>
             <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Self Service</p>

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { body } from 'express-validator';
 import Order from '../models/Order';
 import MenuItem from '../models/MenuItem';
+import Offer from '../models/Offer';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { addLineItem } from '../services/billing.service';
@@ -17,15 +18,21 @@ export async function placeOrder(req: AuthRequest, res: Response): Promise<void>
   const guest = req.guest!;
   const { items, notes } = req.body;
 
+  // Check for an active offer with a food discount
+  const now = new Date();
+  const activeOffer = await Offer.findOne({ isActive: true, startDate: { $lte: now }, endDate: { $gte: now } });
+  const foodDiscountMultiplier = activeOffer?.foodDiscount ? (1 - activeOffer.foodDiscount / 100) : 1;
+
   // Validate items and calculate total
   const enrichedItems = await Promise.all(
     items.map(async (item: { menuItem: string; quantity: number; specialInstructions?: string }) => {
       const menuItem = await MenuItem.findById(item.menuItem);
       if (!menuItem || !menuItem.isAvailable) throw new AppError(`Menu item not available`, 400);
+      const unitPrice = Math.round(menuItem.price * foodDiscountMultiplier * 100) / 100;
       return {
         menuItem: menuItem._id,
         quantity: item.quantity,
-        unitPrice: menuItem.price,
+        unitPrice,
         specialInstructions: item.specialInstructions || '',
       };
     })

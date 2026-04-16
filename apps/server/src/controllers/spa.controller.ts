@@ -3,6 +3,7 @@ import { body } from 'express-validator';
 import SpaService from '../models/SpaService';
 import SpaTherapist from '../models/SpaTherapist';
 import SpaBooking from '../models/SpaBooking';
+import Offer from '../models/Offer';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { addLineItem } from '../services/billing.service';
@@ -171,6 +172,13 @@ export async function bookSpa(req: AuthRequest, res: Response): Promise<void> {
 
   const scheduledEnd = addMinutes(slot.startTime, service.duration);
 
+  // Apply active offer spa discount if present
+  const now = new Date();
+  const activeOffer = await Offer.findOne({ isActive: true, startDate: { $lte: now }, endDate: { $gte: now } });
+  const spaPrice = activeOffer?.spaDiscount
+    ? Math.round(service.price * (1 - activeOffer.spaDiscount / 100) * 100) / 100
+    : service.price;
+
   let booking;
   try {
     booking = await SpaBooking.create({
@@ -182,7 +190,7 @@ export async function bookSpa(req: AuthRequest, res: Response): Promise<void> {
       scheduledEnd,
       durationSnapshot: service.duration,
       window,
-      price:            service.price,
+      price:            spaPrice,
     });
   } catch (err: any) {
     if (err.code === 11000) throw new AppError('This slot was just taken — please try again', 409);

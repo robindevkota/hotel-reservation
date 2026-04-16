@@ -2,7 +2,8 @@ import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CheckCircle2, ConciergeBell } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
+import RoomBookingCard from '../../../../components/ui/RoomBookingCard';
 
 const S = {
   gold: 'hsl(43 72% 55%)', goldLight: 'hsl(43 65% 72%)',
@@ -37,7 +38,7 @@ export default async function RoomDetailPage({ params }: { params: { slug: strin
 
   return (
     <>
-      <style>{`
+      <style suppressHydrationWarning>{`
         .gal-img{transition:transform 0.7s ease;}
         .gal-wrap:hover .gal-img{transform:scale(1.08);}
         .amenity-item{display:flex;align-items:center;gap:0.625rem;padding:0.625rem 0.75rem;background:#fff;border:1px solid hsl(35 25% 82%);font-family:'Raleway',sans-serif;font-size:0.8rem;color:hsl(220 15% 40%);}
@@ -47,10 +48,10 @@ export default async function RoomDetailPage({ params }: { params: { slug: strin
         .back-link:hover{color:hsl(43 72% 55%);}
       `}</style>
 
-      <div style={{ paddingTop: '5rem', minHeight: '100vh', background: S.cream }}>
+      <div style={{ minHeight: '100vh', background: S.navy }}>
 
         {/* ── Hero ── */}
-        <div style={{ position: 'relative', height: '70vh', minHeight: '480px', overflow: 'hidden', background: S.navy }}>
+        <div style={{ position: 'relative', height: '70vh', minHeight: '480px', overflow: 'hidden', background: S.navy, marginTop: 0 }}>
           <Image src={heroImg} alt={room.name} fill style={{ objectFit: 'cover', opacity: 0.75 }} priority />
           {/* layered overlay */}
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, hsl(220 55% 18%) 0%, hsl(220 55% 18% / 0.55) 40%, transparent 75%)' }} />
@@ -108,65 +109,7 @@ export default async function RoomDetailPage({ params }: { params: { slug: strin
             </div>
 
             {/* ── Right: booking card ── */}
-            <div style={{ position: 'sticky', top: '6rem' }}>
-              <div style={{ background: S.navy, border: `1px solid hsl(43 72% 55% / 0.2)`, overflow: 'hidden' }}>
-                {/* Price header */}
-                <div style={{ padding: '2rem 2rem 1.5rem', borderBottom: `1px solid hsl(43 72% 55% / 0.15)`, textAlign: 'center' }}>
-                  <div style={{ fontFamily: S.cinzel, fontSize: '2.5rem', fontWeight: 700, color: S.gold, lineHeight: 1 }}>
-                    ${room.pricePerNight}
-                  </div>
-                  <div style={{ fontFamily: S.raleway, fontSize: '0.75rem', color: 'rgba(245,236,215,0.45)', marginTop: '0.25rem', letterSpacing: '0.08em' }}>per night</div>
-                  <div style={{ width: '4rem', height: '1px', background: S.divider, margin: '1.25rem auto 0' }} />
-                </div>
-
-                {/* Details */}
-                <div style={{ padding: '1.5rem 2rem' }}>
-                  {[
-                    ['Capacity', `${room.capacity} Guests`],
-                    ['Room No.', `#${room.roomNumber}`],
-                    ['Floor',    `${room.floorNumber}`],
-                    ['Type',     typeLabel],
-                  ].map(([k, v]) => (
-                    <div key={String(k)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem 0', borderBottom: '1px solid hsl(43 72% 55% / 0.1)' }}>
-                      <span style={{ fontFamily: S.cinzel, fontSize: '0.63rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(245,236,215,0.4)' }}>{k}</span>
-                      <span style={{ fontFamily: S.raleway, fontSize: '0.85rem', color: 'rgba(245,236,215,0.85)', fontWeight: 500 }}>{v}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* CTA */}
-                <div style={{ padding: '1.25rem 1.5rem 1.75rem' }}>
-                  {room.isAvailable ? (
-                    <Link
-                      href={`/reserve?room=${room._id}&roomName=${encodeURIComponent(room.name)}&price=${room.pricePerNight}`}
-                      className="res-cta"
-                    >
-                      Reserve This Room
-                    </Link>
-                  ) : (
-                    <div style={{ display: 'block', textAlign: 'center', border: '1px solid rgba(245,236,215,0.15)', color: 'rgba(245,236,215,0.3)', fontFamily: S.cinzel, fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '1rem', cursor: 'not-allowed' }}>
-                      Currently Unavailable
-                    </div>
-                  )}
-                  <Link href="/rooms" className="back-link">← All Rooms</Link>
-                </div>
-              </div>
-
-              {/* Trust strip */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '1rem' }}>
-                {[
-                  { Icon: CheckCircle2, title: 'Free Cancellation', sub: '24h before check-in' },
-                  { Icon: ConciergeBell, title: 'Butler Service',   sub: 'Available 24/7' },
-                ].map(({ Icon, title, sub }) => (
-                  <div key={title} style={{ background: '#fff', border: `1px solid ${S.border}`, padding: '0.875rem', textAlign: 'center' }}>
-                    <div style={{ display: 'flex', justifyContent: 'center', color: S.gold, marginBottom: '0.3rem' }}><Icon size={20} strokeWidth={1.5} /></div>
-                    <div style={{ fontFamily: S.cinzel, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: S.navy, marginBottom: '0.2rem' }}>{title}</div>
-                    <div style={{ fontFamily: S.raleway, fontSize: '0.65rem', color: S.muted }}>{sub}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
+            <RoomBookingCard room={room} typeLabel={typeLabel} />
           </div>
         </div>
       </div>
