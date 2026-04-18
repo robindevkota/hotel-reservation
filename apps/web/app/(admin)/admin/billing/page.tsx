@@ -13,10 +13,24 @@ export default function AdminBillingPage() {
   const [chargeForm, setChargeForm] = useState({ description: '', amount: '' });
   const [paying, setPaying] = useState(false);
 
-  const fetchData = () => {
-    api.get('/reservations?status=checked_in')
-      .then(({ data }) => { setReservations(data.reservations || []); setLoading(false); })
-      .catch(() => setLoading(false));
+  const fetchData = async () => {
+    try {
+      const [inHouse, checkedOut] = await Promise.all([
+        api.get('/reservations?status=checked_in&limit=200'),
+        api.get('/reservations?status=checked_out&limit=200'),
+      ]);
+      const all = [
+        ...(inHouse.data.reservations || []),
+        ...(checkedOut.data.reservations || []),
+      ];
+      // Sort: checked_in first (open bills), then checked_out (awaiting payment)
+      all.sort((a, b) => {
+        if (a.status === b.status) return 0;
+        return a.status === 'checked_in' ? -1 : 1;
+      });
+      setReservations(all);
+    } catch { /* non-fatal */ }
+    finally { setLoading(false); }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -69,9 +83,9 @@ export default function AdminBillingPage() {
       <div style={{ padding: '2rem', maxWidth: '1280px' }}>
         <PageHeader eyebrow="Billing" title="Guest Bills" />
 
-        <AdminTable headers={['Guest','Room','Check-Out','Status','Actions']} minWidth={600}>
+        <AdminTable headers={['Guest','Room','Check-Out','Stay Status','Actions']} minWidth={620}>
           {loading ? <Spinner />
-          : reservations.length === 0 ? <EmptyRow colSpan={5} message="No checked-in guests" />
+          : reservations.length === 0 ? <EmptyRow colSpan={5} message="No bills found" />
           : reservations.map((r:any) => (
             <AdminRow key={r._id}>
               <AdminTd>
@@ -110,17 +124,43 @@ export default function AdminBillingPage() {
                 <StatusPill status={selectedBill.status} />
               </div>
 
-              {/* Line items */}
-              <div style={{ background:A.papyrus, border:`1px solid ${A.border}`, marginBottom:'1.25rem' }}>
-                {selectedBill.lineItems?.map((item:any, i:number) => (
-                  <div key={i} className="line-item" style={{ display:'flex', justifyContent:'space-between', padding:'0.75rem 1rem', borderBottom:`1px solid ${A.border}` }}>
-                    <div>
-                      <div style={{ fontFamily:A.raleway, fontSize:'0.8rem', color:A.navy }}>{item.description}</div>
-                      <div style={{ fontFamily:A.raleway, fontSize:'0.68rem', color:A.muted, textTransform:'capitalize' }}>{item.type.replace('_',' ')}</div>
-                    </div>
-                    <span style={{ fontFamily:A.cinzel, fontSize:'0.85rem', color:A.navy, whiteSpace:'nowrap', marginLeft:'1rem' }}>${item.amount.toFixed(2)}</span>
+              {/* Pre-paid room section (non-refundable guests only) */}
+              {selectedBill.prepaidAmount > 0 && (
+                <div style={{ background:'hsl(142 50% 97%)', border:`1px solid hsl(142 50% 80%)`, marginBottom:'1rem', overflow:'hidden' }}>
+                  <div style={{ background:'hsl(142 45% 30%)', padding:'0.5rem 1rem', display:'flex', alignItems:'center', gap:'0.5rem' }}>
+                    <span style={{ fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.15em', textTransform:'uppercase', color:'#fff' }}>✓ Settled at Booking</span>
                   </div>
-                ))}
+                  {selectedBill.lineItems?.filter((i:any) => i.type === 'room').map((item:any, idx:number) => (
+                    <div key={idx} style={{ display:'flex', justifyContent:'space-between', padding:'0.75rem 1rem' }}>
+                      <div>
+                        <div style={{ fontFamily:A.raleway, fontSize:'0.8rem', color:'hsl(142 40% 30%)' }}>{item.description}</div>
+                        <div style={{ fontFamily:A.raleway, fontSize:'0.68rem', color:'hsl(142 30% 50%)' }}>Non-refundable — paid at booking</div>
+                      </div>
+                      <span style={{ fontFamily:A.cinzel, fontSize:'0.85rem', color:'hsl(142 40% 30%)', whiteSpace:'nowrap', marginLeft:'1rem' }}>${item.amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* In-stay charges (food / spa / other — always due at checkout) */}
+              <div style={{ background:A.papyrus, border:`1px solid ${A.border}`, marginBottom:'1.25rem' }}>
+                {selectedBill.prepaidAmount > 0 && (
+                  <div style={{ background:A.navy, padding:'0.5rem 1rem' }}>
+                    <span style={{ fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.gold }}>Charges Due at Checkout</span>
+                  </div>
+                )}
+                {selectedBill.lineItems?.filter((i:any) => selectedBill.prepaidAmount > 0 ? i.type !== 'room' : true).length === 0
+                  ? <div style={{ padding:'0.75rem 1rem', fontFamily:A.cinzel, fontSize:'0.7rem', color:A.muted }}>No additional charges</div>
+                  : selectedBill.lineItems?.filter((i:any) => selectedBill.prepaidAmount > 0 ? i.type !== 'room' : true).map((item:any, i:number, arr:any[]) => (
+                    <div key={i} className="line-item" style={{ display:'flex', justifyContent:'space-between', padding:'0.75rem 1rem', borderBottom: i < arr.length - 1 ? `1px solid ${A.border}` : 'none' }}>
+                      <div>
+                        <div style={{ fontFamily:A.raleway, fontSize:'0.8rem', color:A.navy }}>{item.description}</div>
+                        <div style={{ fontFamily:A.raleway, fontSize:'0.68rem', color:A.muted, textTransform:'capitalize' }}>{item.type.replace('_',' ')}</div>
+                      </div>
+                      <span style={{ fontFamily:A.cinzel, fontSize:'0.85rem', color:A.navy, whiteSpace:'nowrap', marginLeft:'1rem' }}>${item.amount.toFixed(2)}</span>
+                    </div>
+                  ))
+                }
               </div>
 
               {/* Totals */}
@@ -135,7 +175,9 @@ export default function AdminBillingPage() {
                   </div>
                 ))}
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'0.75rem', paddingTop:'0.75rem', borderTop:`1px solid ${A.border}` }}>
-                  <span style={{ fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>Grand Total</span>
+                  <span style={{ fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>
+                    {selectedBill.prepaidAmount > 0 ? 'Amount Due' : 'Grand Total'}
+                  </span>
                   <span style={{ fontFamily:A.cinzel, fontSize:'1.5rem', fontWeight:700, color:A.gold }}>${selectedBill.grandTotal?.toFixed(2)}</span>
                 </div>
               </div>
@@ -145,7 +187,21 @@ export default function AdminBillingPage() {
                 <div style={{ borderTop:`1px solid ${A.border}`, paddingTop:'1.25rem', marginBottom:'1.25rem' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.875rem' }}>
                     <Plus size={13} color={A.gold} strokeWidth={2} />
-                    <span style={{ fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>Add Manual Charge</span>
+                    <span style={{ fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>Add Charge to Bill</span>
+                  </div>
+                  {/* Quick-fill presets */}
+                  <div style={{ display:'flex', gap:'0.4rem', flexWrap:'wrap', marginBottom:'0.625rem' }}>
+                    {[
+                      { label: 'Restaurant Dining', desc: 'Restaurant dining charge' },
+                      { label: 'Minibar', desc: 'Minibar consumption' },
+                      { label: 'Laundry', desc: 'Laundry service' },
+                      { label: 'Other', desc: '' },
+                    ].map(({ label, desc }) => (
+                      <button key={label} onClick={() => setChargeForm(f => ({ ...f, description: desc }))}
+                        style={{ fontFamily:A.cinzel, fontSize:'0.55rem', letterSpacing:'0.08em', textTransform:'uppercase', padding:'0.25rem 0.6rem', border:`1px solid ${A.border}`, background: chargeForm.description === desc && desc ? `${A.gold}18` : A.papyrus, color:A.navy, cursor:'pointer' }}>
+                        {label}
+                      </button>
+                    ))}
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:'0.625rem' }}>
                     <input className="bill-input" style={inputStyle} placeholder="Description" value={chargeForm.description} onChange={e => setChargeForm({...chargeForm, description:e.target.value})} />

@@ -145,7 +145,7 @@ export default function OrdersPage() {
                           <div style={{ textAlign: 'right' }}>
                             <p style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '1rem' }}>NPR {order.totalAmount}</p>
                             <span style={{ fontFamily: CINZEL, fontSize: '0.55rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: meta.color, background: meta.bg, padding: '0.15rem 0.5rem', display: 'inline-block', marginTop: '0.2rem' }}>
-                              {order.status.replace('_', ' ')}
+                              {order.status === 'pending' ? 'Placed' : order.status.replace('_', ' ')}
                             </span>
                           </div>
                         </div>
@@ -207,7 +207,7 @@ export default function OrdersPage() {
                         <div style={{ textAlign: 'right' }}>
                           <p style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '0.9rem' }}>NPR {order.totalAmount}</p>
                           <p style={{ fontFamily: CINZEL, fontSize: '0.55rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: delivered ? 'hsl(142 60% 38%)' : 'hsl(0 65% 52%)' }}>
-                            {order.status}
+                            {order.status === 'pending' ? 'Placed' : order.status.replace('_', ' ')}
                           </p>
                         </div>
                       </div>

@@ -58,6 +58,89 @@ export async function placeOrder(req: AuthRequest, res: Response): Promise<void>
   res.status(201).json({ success: true, order: populated });
 }
 
+export async function adminPlaceOrder(req: AuthRequest, res: Response): Promise<void> {
+  const { guestId, walkInCustomerId, items, notes, orderPaymentMethod = 'room_bill' } = req.body;
+
+  if (!['room_bill', 'cash'].includes(orderPaymentMethod)) {
+    throw new AppError('orderPaymentMethod must be room_bill or cash', 400);
+  }
+  if (!guestId && !walkInCustomerId) {
+    throw new AppError('Provide either guestId (hotel guest) or walkInCustomerId (walk-in)', 400);
+  }
+  if (!items || items.length === 0) {
+    throw new AppError('items must be a non-empty array', 400);
+  }
+
+  let guestDoc: any = null;
+  let walkInDoc: any = null;
+
+  if (walkInCustomerId) {
+    // Walk-in: always cash
+    const WalkInModel = (await import('../models/WalkInCustomer')).default;
+    walkInDoc = await WalkInModel.findById(walkInCustomerId);
+    if (!walkInDoc) throw new AppError('Walk-in customer not found', 404);
+    if (walkInDoc.type !== 'dine_in') throw new AppError('Walk-in customer type must be dine_in for orders', 400);
+  } else {
+    const GuestModel = (await import('../models/Guest')).default;
+    guestDoc = await GuestModel.findById(guestId).populate('room');
+    if (!guestDoc || !guestDoc.isActive) throw new AppError('No active guest found with that ID', 404);
+    // room_bill only valid for hotel guests
+    if (orderPaymentMethod === 'room_bill' && !guestDoc.bill) {
+      throw new AppError('Guest has no open bill', 400);
+    }
+  }
+
+  const now = new Date();
+  const activeOffer = await Offer.findOne({ isActive: true, startDate: { $lte: now }, endDate: { $gte: now } });
+  const foodDiscountMultiplier = activeOffer?.foodDiscount ? (1 - activeOffer.foodDiscount / 100) : 1;
+
+  const enrichedItems = await Promise.all(
+    items.map(async (item: { menuItem: string; quantity: number; specialInstructions?: string }) => {
+      const menuItem = await MenuItem.findById(item.menuItem);
+      if (!menuItem || !menuItem.isAvailable) throw new AppError(`Menu item not available`, 400);
+      const unitPrice = Math.round(menuItem.price * foodDiscountMultiplier * 100) / 100;
+      return {
+        menuItem: menuItem._id,
+        quantity: item.quantity,
+        unitPrice,
+        specialInstructions: item.specialInstructions || '',
+      };
+    })
+  );
+
+  const totalAmount = enrichedItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
+
+  const orderData: Record<string, any> = {
+    items: enrichedItems,
+    totalAmount,
+    notes,
+    isAdminOrder: true,
+    orderPaymentMethod: walkInCustomerId ? 'cash' : orderPaymentMethod,
+  };
+
+  if (walkInDoc) {
+    orderData.walkInCustomer = walkInDoc._id;
+    orderData.addedToBill = true; // cash — no bill to add to
+  } else {
+    orderData.guest = guestDoc._id;
+    orderData.room  = guestDoc.room;
+  }
+
+  const order = await Order.create(orderData);
+
+  const populatePaths: any[] = [{ path: 'items.menuItem', select: 'name image' }];
+  if (guestDoc) {
+    populatePaths.push({ path: 'room', select: 'roomNumber name' });
+    populatePaths.push({ path: 'guest', select: 'name room' });
+  } else {
+    populatePaths.push({ path: 'walkInCustomer', select: 'name phone type' });
+  }
+
+  const populated = await order.populate(populatePaths);
+  emitNewOrder(populated.toObject());
+  res.status(201).json({ success: true, order: populated });
+}
+
 export async function getMyOrders(req: AuthRequest, res: Response): Promise<void> {
   const orders = await Order.find({ guest: req.guest!._id })
     .populate('items.menuItem', 'name image price')
@@ -74,6 +157,7 @@ export async function getAllOrders(req: Request, res: Response): Promise<void> {
     .populate('items.menuItem', 'name price')
     .populate('guest', 'name room')
     .populate('room', 'roomNumber name')
+    .populate('walkInCustomer', 'name phone type')
     .sort('-placedAt');
   res.json({ success: true, orders });
 }
@@ -102,19 +186,25 @@ export async function updateOrderStatus(req: AuthRequest, res: Response): Promis
   if (status === 'preparing') order.preparedAt = now;
   if (status === 'delivered') {
     order.deliveredAt = now;
-    // Add to bill
-    const totalDesc = `Room service order #${order._id}`;
-    const guestDoc = await (await import('../models/Guest')).default.findById(order.guest);
-    if (!guestDoc?.bill) throw new AppError('Guest bill not found', 404);
-    await addLineItem(
-      guestDoc.bill as any,
-      String(order.guest),
-      'food_order',
-      totalDesc,
-      order.totalAmount,
-      order._id as any
-    );
-    order.addedToBill = true;
+    if (order.orderPaymentMethod === 'cash') {
+      // Cash paid at point of service — skip bill line item
+      order.addedToBill = true;
+    } else {
+      const totalDesc = order.isAdminOrder
+        ? `Dine-in / restaurant order #${order._id}`
+        : `Room service order #${order._id}`;
+      const guestDoc = await (await import('../models/Guest')).default.findById(order.guest);
+      if (!guestDoc?.bill) throw new AppError('Guest bill not found', 404);
+      await addLineItem(
+        guestDoc.bill as any,
+        String(order.guest),
+        'food_order',
+        totalDesc,
+        order.totalAmount,
+        order._id as any
+      );
+      order.addedToBill = true;
+    }
   }
   await order.save();
 

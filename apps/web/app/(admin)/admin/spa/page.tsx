@@ -200,10 +200,10 @@ export default function AdminSpaPage() {
     } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
   };
 
-  const doComplete = async (id: string) => {
+  const doComplete = async (id: string, paymentMethod: 'room_bill' | 'cash') => {
     try {
-      await api.patch(`/spa/bookings/${id}/complete`, {});
-      toast.success('Session completed & bill charged');
+      await api.patch(`/spa/bookings/${id}/complete`, { paymentMethod });
+      toast.success(paymentMethod === 'cash' ? 'Session completed — paid in cash' : 'Session completed & charged to room bill');
       setSelectedBooking(null);
       fetchSchedule(); fetchAll();
     } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
@@ -519,6 +519,19 @@ export default function AdminSpaPage() {
                                   {b.scheduledStart} · {b.service?.name?.split(' ')[0]}
                                 </div>
                               )}
+                              {durPct(start, end) > 4 && (
+                                <div style={{
+                                  display: 'inline-block', marginTop: '0.15rem',
+                                  fontFamily: A.cinzel, fontSize: '0.48rem', letterSpacing: '0.1em',
+                                  textTransform: 'uppercase', fontWeight: 700,
+                                  color: overrun ? 'hsl(38 70% 30%)' : sc.text,
+                                  background: overrun ? 'hsl(38 70% 45% / 0.15)' : `${sc.text}18`,
+                                  border: `1px solid ${overrun ? 'hsl(38 70% 45% / 0.4)' : `${sc.text}40`}`,
+                                  padding: '0.05rem 0.35rem',
+                                }}>
+                                  {overrun ? 'overrun' : b.status.replace('_', ' ')}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -722,7 +735,7 @@ export default function AdminSpaPage() {
             booking={selectedBooking}
             onArrive={() => doArrive(selectedBooking._id)}
             onStatus={(s: string) => doStatus(selectedBooking._id, s)}
-            onComplete={() => doComplete(selectedBooking._id)}
+            onComplete={(method: 'room_bill' | 'cash') => doComplete(selectedBooking._id, method)}
             onClose={() => setSelectedBooking(null)}
           />
         </Modal>
@@ -778,6 +791,7 @@ function BookingDetailModal({ booking: b, onArrive, onStatus, onComplete }: any)
           ['Actual', b.actualStart ? `${b.actualStart} – ${b.actualEnd}` : '—'],
           ['Price', `NPR ${b.price}`],
           ['Walk-in', b.isWalkIn ? 'Yes' : 'No'],
+          ...(b.status === 'completed' ? [['Paid Via', b.spaPaymentMethod === 'cash' ? 'Cash (at desk)' : 'Room Bill']] : []),
         ].map(([k, v]) => (
           <div key={k}>
             <div style={{ fontFamily: A.cinzel, fontSize: '0.58rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: A.muted, marginBottom: '0.2rem' }}>{k}</div>
@@ -799,7 +813,10 @@ function BookingDetailModal({ booking: b, onArrive, onStatus, onComplete }: any)
           <Btn variant="primary" onClick={() => onStatus('in_progress')}><Sparkles size={13} /> Start Session</Btn>
         )}
         {['arrived','in_progress'].includes(b.status) && (
-          <Btn variant="green" onClick={onComplete}><CheckCircle size={13} /> Complete & Charge</Btn>
+          <>
+            <Btn variant="green" onClick={() => onComplete('room_bill')}><CheckCircle size={13} /> Complete → Bill</Btn>
+            <Btn variant="ghost" onClick={() => onComplete('cash')}><CheckCircle size={13} /> Complete → Cash</Btn>
+          </>
         )}
         {['pending','confirmed'].includes(b.status) && (
           <Btn variant="ghost" onClick={() => onStatus('confirmed')}>
@@ -816,13 +833,19 @@ function BookingDetailModal({ booking: b, onArrive, onStatus, onComplete }: any)
 
 // ── Walk-in Modal ─────────────────────────────────────────────────────────────
 
+type SpaCustomerMode = 'hotel_guest' | 'walk_in';
+
 function WalkInModal({ services, therapists, prefill, date, onClose, onSaved }: any) {
+  const [customerMode, setCustomerMode] = useState<SpaCustomerMode>('hotel_guest');
   const [form, setForm] = useState({
     service: '', guestId: '', date, startTime: prefill?.startTime || '',
     therapistId: prefill?.therapistId || '', note: '',
   });
-  const [guests, setGuests] = useState<any[]>([]);
-  const [saving, setSaving] = useState(false);
+  // External walk-in fields
+  const [wicName, setWicName]   = useState('');
+  const [wicPhone, setWicPhone] = useState('');
+  const [guests, setGuests]     = useState<any[]>([]);
+  const [saving, setSaving]     = useState(false);
 
   useEffect(() => {
     api.get('/checkin/active').then(({ data }) => setGuests(data.guests || []));
@@ -831,13 +854,43 @@ function WalkInModal({ services, therapists, prefill, date, onClose, onSaved }: 
   const f = (k: string) => (e: any) => setForm(p => ({ ...p, [k]: e.target.value }));
 
   const save = async () => {
-    if (!form.service || !form.guestId || !form.date || !form.startTime) {
+    if (!form.service || !form.date || !form.startTime) {
       toast.error('Fill all required fields'); return;
+    }
+    if (customerMode === 'hotel_guest' && !form.guestId) {
+      toast.error('Select a checked-in guest'); return;
+    }
+    if (customerMode === 'walk_in' && !wicName.trim()) {
+      toast.error('Enter walk-in customer name'); return;
     }
     setSaving(true);
     try {
-      await api.post('/spa/walkin', form);
-      toast.success('Walk-in booking created');
+      let walkInCustomerId: string | undefined;
+      if (customerMode === 'walk_in') {
+        const { data: wicData } = await api.post('/walkin-customers', {
+          name: wicName.trim(),
+          phone: wicPhone.trim() || undefined,
+          type: 'spa',
+        });
+        if (!wicData.success) { toast.error('Failed to register walk-in customer'); return; }
+        walkInCustomerId = wicData.customer._id;
+      }
+
+      const payload: any = {
+        service: form.service,
+        date: form.date,
+        startTime: form.startTime,
+        therapistId: form.therapistId || undefined,
+        note: form.note,
+      };
+      if (walkInCustomerId) {
+        payload.walkInCustomerId = walkInCustomerId;
+      } else {
+        payload.guestId = form.guestId;
+      }
+
+      await api.post('/spa/walkin', payload);
+      toast.success(customerMode === 'walk_in' ? 'Walk-in booking created — cash at desk' : 'Walk-in booking created');
       onSaved();
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Failed');
@@ -846,16 +899,51 @@ function WalkInModal({ services, therapists, prefill, date, onClose, onSaved }: 
 
   return (
     <Modal title="Walk-in Booking" onClose={onClose}>
+      {/* Customer type toggle */}
+      <div style={{ display: 'flex', border: `1px solid ${A.border}`, overflow: 'hidden', marginBottom: '1.25rem' }}>
+        <button
+          onClick={() => setCustomerMode('hotel_guest')}
+          style={{ flex: 1, padding: '0.5rem', border: 'none', cursor: 'pointer', fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', background: customerMode === 'hotel_guest' ? A.navy : '#fff', color: customerMode === 'hotel_guest' ? A.gold : A.muted, transition: 'background 0.2s' }}
+        >
+          Hotel Guest
+        </button>
+        <button
+          onClick={() => setCustomerMode('walk_in')}
+          style={{ flex: 1, padding: '0.5rem', border: 'none', cursor: 'pointer', fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', background: customerMode === 'walk_in' ? 'hsl(270 45% 40%)' : '#fff', color: customerMode === 'walk_in' ? '#fff' : A.muted, transition: 'background 0.2s' }}
+        >
+          External Walk-in
+        </button>
+      </div>
+
+      {/* Hotel guest picker */}
+      {customerMode === 'hotel_guest' && (
+        <Field label="Guest *">
+          <select value={form.guestId} onChange={f('guestId')} style={inputStyle}>
+            <option value="">Select checked-in guest…</option>
+            {guests.map((g: any) => <option key={g._id} value={g._id}>{g.name} — Room {g.room?.roomNumber}</option>)}
+          </select>
+        </Field>
+      )}
+
+      {/* External walk-in fields */}
+      {customerMode === 'walk_in' && (
+        <div style={{ padding: '0.875rem 1rem', background: 'hsl(270 40% 97%)', border: `1px solid hsl(270 40% 82%)`, marginBottom: '1rem' }}>
+          <p style={{ fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'hsl(270 45% 40%)', marginBottom: '0.75rem' }}>External Customer — Cash Only</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <Field label="Name *">
+              <input type="text" value={wicName} onChange={e => setWicName(e.target.value)} placeholder="e.g. John Smith" style={inputStyle} />
+            </Field>
+            <Field label="Phone (optional)">
+              <input type="text" value={wicPhone} onChange={e => setWicPhone(e.target.value)} placeholder="+1 555 000 0000" style={inputStyle} />
+            </Field>
+          </div>
+        </div>
+      )}
+
       <Field label="Service *">
         <select value={form.service} onChange={f('service')} style={inputStyle}>
           <option value="">Select service…</option>
           {services.map((s: any) => <option key={s._id} value={s._id}>{s.name} ({s.duration} min)</option>)}
-        </select>
-      </Field>
-      <Field label="Guest *">
-        <select value={form.guestId} onChange={f('guestId')} style={inputStyle}>
-          <option value="">Select checked-in guest…</option>
-          {guests.map((g: any) => <option key={g._id} value={g._id}>{g.name} — Room {g.room?.roomNumber}</option>)}
         </select>
       </Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -875,8 +963,15 @@ function WalkInModal({ services, therapists, prefill, date, onClose, onSaved }: 
       <Field label="Note">
         <input type="text" value={form.note} onChange={f('note')} placeholder="Optional note…" style={inputStyle} />
       </Field>
+
+      {customerMode === 'walk_in' && (
+        <div style={{ padding: '0.5rem 0.75rem', background: 'hsl(142 40% 95%)', border: '1px solid hsl(142 40% 80%)', marginBottom: '0.75rem', fontSize: '0.78rem', fontFamily: A.raleway, color: 'hsl(142 45% 28%)' }}>
+          Cash collected at point of completion — will not appear on any room bill.
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-        <Btn onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create Walk-in'}</Btn>
+        <Btn onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Create Booking'}</Btn>
         <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
       </div>
     </Modal>

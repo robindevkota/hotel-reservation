@@ -238,9 +238,11 @@ export async function getDaySchedule(date: Date): Promise<TherapistSchedule[]> {
   const result: TherapistSchedule[] = [];
 
   for (const therapist of therapists) {
-    const myBookings = allBookings.filter(
-      b => b.therapist && String(b.therapist) === String(therapist._id)
-    );
+    const myBookings = allBookings.filter(b => {
+      if (!b.therapist) return false;
+      const tid = (b.therapist as any)._id ?? b.therapist;
+      return String(tid) === String(therapist._id);
+    });
 
     // Compute free gaps between 09:00 and 21:00
     const freeSlots: Array<{ startTime: string; endTime: string }> = [];

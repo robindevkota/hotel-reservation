@@ -2,15 +2,131 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
-import { Filter } from 'lucide-react';
+import { Filter, BedDouble } from 'lucide-react';
 import { A, StatusPill, PageHeader, AdminTable, AdminRow, AdminTd, ActionBtn, Spinner, EmptyRow, adminTableCss } from '../../_adminStyles';
 
 const STATUSES = ['','pending','confirmed','checked_in','checked_out','cancelled'];
 
+// ── Add Second Room Modal ─────────────────────────────────────────────────────
+function AddRoomModal({ reservation, onClose, onDone }: { reservation: any; onClose: () => void; onDone: () => void }) {
+  const [rooms, setRooms]         = useState<any[]>([]);
+  const [loadingRooms, setLR]     = useState(true);
+  const [selectedRoom, setRoom]   = useState('');
+  const [checkIn, setCheckIn]     = useState('');
+  const [checkOut, setCheckOut]   = useState('');
+  const [busy, setBusy]           = useState(false);
+  const [guestId, setGuestId]     = useState<string | null>(null);
+
+  // Resolve the active guest doc for this reservation
+  useEffect(() => {
+    api.get('/checkin/active')
+      .then(({ data }) => {
+        const match = (data.guests || []).find((g: any) => String(g.reservation) === String(reservation._id));
+        if (match) setGuestId(match._id);
+      })
+      .catch(() => {});
+  }, [reservation._id]);
+
+  // Load available rooms
+  useEffect(() => {
+    api.get('/rooms?available=true')
+      .then(({ data }) => { setRooms(data.rooms || []); })
+      .catch(() => {})
+      .finally(() => setLR(false));
+  }, []);
+
+  const inputSt: React.CSSProperties = { width:'100%', padding:'0.6rem 0.75rem', border:`1px solid ${A.border}`, fontFamily:A.cinzel, fontSize:'0.72rem', color:A.navy, background:'#fff', outline:'none', boxSizing:'border-box' };
+  const lblSt: React.CSSProperties  = { display:'block', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.4rem', marginTop:'1rem' };
+
+  const submit = async () => {
+    if (!guestId) { toast.error('Could not find active guest session'); return; }
+    if (!selectedRoom) { toast.error('Select a room'); return; }
+    if (!checkIn || !checkOut) { toast.error('Enter check-in and check-out dates'); return; }
+    if (new Date(checkOut) <= new Date(checkIn)) { toast.error('Check-out must be after check-in'); return; }
+
+    setBusy(true);
+    try {
+      // Step 1: create linked reservation
+      const { data: resData } = await api.post('/reservations/walk-in-linked', {
+        existingGuestId: guestId,
+        room: selectedRoom,
+        checkInDate: checkIn,
+        checkOutDate: checkOut,
+        numberOfGuests: reservation.numberOfGuests || 1,
+      });
+      if (!resData.success) throw new Error(resData.message || 'Failed to create reservation');
+
+      // Step 2: check in the new reservation (linked)
+      const { data: ciData } = await api.post(`/checkin/${resData.reservation._id}`, { linkedToGuestId: guestId });
+      if (!ciData.success) throw new Error(ciData.message || 'Check-in failed');
+
+      toast.success(`Second room assigned — ${ciData.guest?.name} checked into new room`);
+      onDone();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || e.message || 'Failed');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'hsl(220 55% 18% / 0.72)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+      <div style={{ background:'#fff', maxWidth:'480px', width:'100%', padding:'2rem', border:`1px solid ${A.border}` }}>
+        <h3 style={{ fontFamily:A.cinzel, fontSize:'0.8rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Assign Additional Room</h3>
+        <p style={{ fontFamily:A.cinzel, fontSize:'0.7rem', color:A.muted, marginBottom:'1.5rem', lineHeight:1.6 }}>
+          Currently checked-in guest <strong style={{ color:A.navy }}>{reservation.guest?.name}</strong> will be assigned a second room.
+          A separate bill will be created — no billing collision with the primary stay.
+        </p>
+
+        <label style={lblSt}>Available Room</label>
+        {loadingRooms
+          ? <p style={{ fontFamily:A.cinzel, fontSize:'0.7rem', color:A.muted }}>Loading rooms…</p>
+          : rooms.length === 0
+            ? <p style={{ fontFamily:A.cinzel, fontSize:'0.7rem', color:'hsl(0 60% 42%)' }}>No rooms currently available</p>
+            : (
+              <select value={selectedRoom} onChange={e => setRoom(e.target.value)} style={{ ...inputSt }}>
+                <option value="">— Select a room —</option>
+                {rooms.map((r: any) => (
+                  <option key={r._id} value={r._id}>
+                    {r.name || r.roomNumber} — {r.type || r.categorySlug} — ${r.pricePerNight}/night
+                  </option>
+                ))}
+              </select>
+            )
+        }
+
+        <label style={lblSt}>Check-In Date</label>
+        <input type="date" value={checkIn} onChange={e => setCheckIn(e.target.value)} style={inputSt} />
+
+        <label style={lblSt}>Check-Out Date</label>
+        <input type="date" value={checkOut} onChange={e => setCheckOut(e.target.value)} style={inputSt} />
+
+        {!guestId && (
+          <p style={{ fontFamily:A.cinzel, fontSize:'0.62rem', color:'hsl(0 60% 42%)', marginTop:'0.75rem' }}>
+            Warning: guest session not found. The guest may not be actively checked in.
+          </p>
+        )}
+
+        <div style={{ display:'flex', gap:'0.75rem', marginTop:'1.75rem' }}>
+          <button onClick={onClose} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={submit} disabled={busy || !guestId || !selectedRoom}
+            style={{ flex:1, background:A.navy, color:'#fff', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:600, opacity: (busy || !guestId || !selectedRoom) ? 0.55 : 1 }}>
+            {busy ? 'Processing…' : 'Check In to Second Room'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
 export default function ReservationsPage() {
   const [reservations, setReservations] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('');
+  const [loading, setLoading]           = useState(true);
+  const [filter, setFilter]             = useState('');
+  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [addRoomTarget, setAddRoomTarget] = useState<any | null>(null);
 
   const fetchData = () => {
     setLoading(true);
@@ -21,9 +137,29 @@ export default function ReservationsPage() {
 
   useEffect(() => { fetchData(); }, [filter]);
 
-  const confirm   = async (id: string) => { try { await api.patch(`/reservations/${id}/confirm`);  toast.success('Confirmed');   fetchData(); } catch(e:any){ toast.error(e.response?.data?.message||'Failed'); } };
-  const checkIn   = async (id: string) => { try { const {data} = await api.post(`/checkin/${id}`); toast.success('Checked in!'); fetchData(); if(data.qrCodeUrl) window.open(data.qrCodeUrl,'_blank'); } catch(e:any){ toast.error(e.response?.data?.message||'Failed'); } };
-  const cancel    = async (id: string) => { if(!confirm('Cancel this reservation?')) return; try { await api.patch(`/reservations/${id}/cancel`); toast.success('Cancelled'); fetchData(); } catch(e:any){ toast.error(e.response?.data?.message||'Failed'); } };
+  const confirmRes = async (id: string) => {
+    try { await api.patch(`/reservations/${id}/confirm`); toast.success('Confirmed'); fetchData(); }
+    catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
+  };
+
+  const checkIn = async (id: string) => {
+    try {
+      const { data } = await api.post(`/checkin/${id}`);
+      toast.success('Checked in!');
+      fetchData();
+      if (data.qrCodeUrl) window.open(data.qrCodeUrl, '_blank');
+    } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
+  };
+
+  const cancelRes = async () => {
+    if (!cancelTarget) return;
+    try {
+      await api.patch(`/reservations/${cancelTarget}/cancel`, { reason: cancelReason || 'Cancelled by staff' });
+      toast.success('Cancelled');
+      fetchData();
+    } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
+    finally { setCancelTarget(null); setCancelReason(''); }
+  };
 
   return (
     <>
@@ -33,17 +169,17 @@ export default function ReservationsPage() {
           <PageHeader eyebrow="Manage" title="Reservations" />
           <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:'#fff', border:`1px solid ${A.border}`, padding:'0.5rem 0.875rem' }}>
             <Filter size={13} color={A.gold} strokeWidth={1.8} />
-            <select value={filter} onChange={e=>setFilter(e.target.value)}
+            <select value={filter} onChange={e => setFilter(e.target.value)}
               style={{ fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.navy, background:'transparent', border:'none', outline:'none', cursor:'pointer' }}>
-              {STATUSES.map(s => <option key={s} value={s}>{s ? s.replace('_',' ') : 'All Statuses'}</option>)}
+              {STATUSES.map(s => <option key={s} value={s}>{s ? s.replace('_', ' ') : 'All Statuses'}</option>)}
             </select>
           </div>
         </div>
 
-        <AdminTable headers={['Guest','Room','Check-In','Check-Out','Nights','Total','Status','Actions']} minWidth={900}>
+        <AdminTable headers={['Guest','Room','Check-In','Check-Out','Nights','Total','Status','Actions']} minWidth={960}>
           {loading ? <Spinner />
           : reservations.length === 0 ? <EmptyRow colSpan={8} message="No reservations found" />
-          : reservations.map((r:any) => (
+          : reservations.map((r: any) => (
             <AdminRow key={r._id}>
               <AdminTd>
                 <div style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy, marginBottom:'0.15rem' }}>{r.guest?.name}</div>
@@ -57,15 +193,58 @@ export default function ReservationsPage() {
               <AdminTd><StatusPill status={r.status} /></AdminTd>
               <AdminTd>
                 <div style={{ display:'flex', gap:'0.4rem', flexWrap:'wrap' }}>
-                  {r.status==='pending'    && <ActionBtn variant="confirm"  onClick={()=>confirm(r._id)}>Confirm</ActionBtn>}
-                  {r.status==='confirmed'  && <ActionBtn variant="checkin"  onClick={()=>checkIn(r._id)}>Check In</ActionBtn>}
-                  {['pending','confirmed'].includes(r.status) && <ActionBtn variant="cancel" onClick={()=>cancel(r._id)}>Cancel</ActionBtn>}
+                  {r.status === 'pending'   && <ActionBtn variant="confirm" onClick={() => confirmRes(r._id)}>Confirm</ActionBtn>}
+                  {r.status === 'confirmed' && <ActionBtn variant="checkin" onClick={() => checkIn(r._id)}>Check In</ActionBtn>}
+                  {['pending','confirmed'].includes(r.status) && (
+                    <ActionBtn variant="cancel" onClick={() => { setCancelTarget(r._id); setCancelReason(''); }}>Cancel</ActionBtn>
+                  )}
+                  {/* Add second room — only for actively checked-in guests */}
+                  {r.status === 'checked_in' && (
+                    <button
+                      onClick={() => setAddRoomTarget(r)}
+                      style={{ display:'flex', alignItems:'center', gap:'0.35rem', color:'hsl(270 50% 38%)', border:'1px solid hsl(270 50% 75%)', background:'hsl(270 60% 97%)', fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.35rem 0.75rem', cursor:'pointer', fontWeight:600 }}>
+                      <BedDouble size={11} strokeWidth={2} />
+                      Add Room
+                    </button>
+                  )}
                 </div>
               </AdminTd>
             </AdminRow>
           ))}
         </AdminTable>
       </div>
+
+      {/* Cancel Modal */}
+      {cancelTarget && (
+        <div style={{ position:'fixed', inset:0, background:'hsl(220 55% 18% / 0.7)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div style={{ background:'#fff', maxWidth:'420px', width:'100%', padding:'2rem', border:`1px solid ${A.border}` }}>
+            <h3 style={{ fontFamily:A.cinzel, fontSize:'0.8rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy, marginBottom:'1.25rem' }}>Cancel Reservation</h3>
+            <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Reason (optional)</label>
+            <textarea
+              rows={3}
+              value={cancelReason}
+              onChange={e => setCancelReason(e.target.value)}
+              placeholder="e.g. Guest request, double booking..."
+              style={{ width:'100%', padding:'0.625rem 0.75rem', border:`1px solid ${A.border}`, fontFamily:A.raleway, fontSize:'0.85rem', color:A.navy, resize:'none', boxSizing:'border-box' as any, outline:'none', marginBottom:'1.25rem' }}
+            />
+            <div style={{ display:'flex', gap:'0.75rem' }}>
+              <button onClick={() => { setCancelTarget(null); setCancelReason(''); }}
+                style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Keep</button>
+              <button onClick={cancelRes}
+                style={{ flex:1, background:'hsl(0 60% 48%)', color:'#fff', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:600 }}>Yes, Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Second Room Modal */}
+      {addRoomTarget && (
+        <AddRoomModal
+          reservation={addRoomTarget}
+          onClose={() => setAddRoomTarget(null)}
+          onDone={() => { setAddRoomTarget(null); fetchData(); }}
+        />
+      )}
     </>
   );
 }

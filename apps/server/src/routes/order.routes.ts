@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate.middleware';
 const router = Router();
 
 router.post('/', ...requireGuest, orders.orderValidation, validate, orders.placeOrder);
+router.post('/admin', ...requireStaff, requireAdmin, orders.adminPlaceOrder);
 router.get('/my', ...requireGuest, orders.getMyOrders);
 
 router.get('/', ...requireStaff, requireAdmin, orders.getAllOrders);

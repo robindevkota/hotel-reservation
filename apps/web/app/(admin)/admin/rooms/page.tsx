@@ -77,11 +77,18 @@ export default function AdminRoomsPage() {
   const [deleteCatConfirm, setDeleteCatConfirm] = useState<string | null>(null);
 
   // Availability state
-  const [view, setView] = useState<'rooms' | 'availability' | 'categories'>('rooms');
+  const [view, setView] = useState<'rooms' | 'availability' | 'categories' | 'exchange_rate'>('rooms');
   const [availDate, setAvailDate] = useState(todayStr());
   const [availability, setAvailability] = useState<any[]>([]);
   const [availLoading, setAvailLoading] = useState(false);
   const [todayAvail, setTodayAvail] = useState<any[]>([]);
+
+  // Exchange rate
+  const [currentRate, setCurrentRate] = useState<number | null>(null);
+  const [rateInput, setRateInput] = useState('');
+  const [rateSaving, setRateSaving] = useState(false);
+  const [rateUpdatedBy, setRateUpdatedBy] = useState('');
+  const [rateUpdatedAt, setRateUpdatedAt] = useState('');
 
   // Walk-in modal
   const [walkInModal, setWalkInModal] = useState(false);
@@ -132,6 +139,14 @@ export default function AdminRoomsPage() {
 
   useEffect(() => {
     if (view === 'availability') fetchAvailability(availDate);
+    if (view === 'exchange_rate') {
+      api.get('/payment/exchange-rate/usd-npr').then(({ data }) => {
+        setCurrentRate(data.rate);
+        setRateInput(String(data.rate));
+        setRateUpdatedBy(data.updatedBy || '');
+        setRateUpdatedAt(data.updatedAt || '');
+      }).catch(() => {});
+    }
   }, [view, availDate]);
 
   const openCreate = () => { setEditRoom(null); setForm({ ...empty }); setUploadedImages([]); setStep(1); setModal(true); };
@@ -301,9 +316,10 @@ export default function AdminRoomsPage() {
         {/* View Tabs */}
         <div style={{ display:'flex', gap:'0', marginBottom:'2rem', borderBottom:`1px solid ${A.border}` }}>
           {[
-            { key:'rooms',        label:'Room Cards',  Icon:Bed          },
-            { key:'availability', label:'Availability', Icon:CalendarDays },
-            { key:'categories',   label:'Categories',   Icon:Tag          },
+            { key:'rooms',         label:'Room Cards',    Icon:Bed          },
+            { key:'availability',  label:'Availability',  Icon:CalendarDays },
+            { key:'categories',    label:'Categories',    Icon:Tag          },
+            { key:'exchange_rate', label:'Exchange Rate',  Icon:DollarSign   },
           ].map(({ key, label, Icon }) => (
             <button key={key} className="view-tab" onClick={() => { setView(key as any); }}
               style={{ borderColor: view===key ? A.gold : 'transparent', color: view===key ? A.navy : A.muted, background: view===key ? 'hsl(43 72% 55%/0.06)' : 'transparent', borderBottom: view===key ? `2px solid ${A.gold}` : '2px solid transparent', marginBottom:'-1px' }}>
@@ -482,6 +498,88 @@ export default function AdminRoomsPage() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── EXCHANGE RATE VIEW ── */}
+        {view === 'exchange_rate' && (
+          <div style={{ maxWidth: '32rem', margin: '0 auto' }}>
+            <div style={{ background: '#fff', border: `1px solid ${A.border}`, padding: '2rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', marginBottom: '1.75rem' }}>
+                <div style={{ width: '2.75rem', height: '2.75rem', background: `${A.gold}18`, border: `1px solid ${A.gold}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <DollarSign size={20} color={A.gold} strokeWidth={1.8} />
+                </div>
+                <div>
+                  <p style={{ fontFamily: A.cinzel, fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: A.navy, marginBottom: '0.2rem' }}>USD → NPR Exchange Rate</p>
+                  <p style={{ fontFamily: A.raleway, fontSize: '0.78rem', color: A.muted }}>Used to display prices for Nepali guests at booking</p>
+                </div>
+              </div>
+
+              {/* Current rate display */}
+              <div style={{ background: A.papyrus, border: `1px solid ${A.border}`, padding: '1.25rem 1.5rem', marginBottom: '1.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: A.muted, marginBottom: '0.35rem' }}>Current Rate</p>
+                  <p style={{ fontFamily: A.cinzel, fontSize: '1.75rem', color: A.navy, fontWeight: 700, lineHeight: 1 }}>
+                    1 USD = <span style={{ color: A.gold }}>{currentRate ?? '—'}</span> NPR
+                  </p>
+                </div>
+                {rateUpdatedAt && (
+                  <div style={{ textAlign: 'right' }}>
+                    <p style={{ fontFamily: A.raleway, fontSize: '0.7rem', color: A.muted }}>
+                      Updated by <strong>{rateUpdatedBy || 'admin'}</strong>
+                    </p>
+                    <p style={{ fontFamily: A.raleway, fontSize: '0.7rem', color: A.muted }}>
+                      {new Date(rateUpdatedAt).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Update form */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.13em', textTransform: 'uppercase', color: A.navy, marginBottom: '0.5rem', fontWeight: 600 }}>
+                  New Rate (NPR per 1 USD)
+                </label>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <input
+                    type="number" min="1" step="0.01"
+                    value={rateInput}
+                    onChange={(e) => setRateInput(e.target.value)}
+                    placeholder="e.g. 135.50"
+                    style={{ flex: 1, padding: '0.7rem 1rem', border: `1px solid ${A.border}`, outline: 'none', fontFamily: A.raleway, fontSize: '0.9rem', color: A.navy, background: '#fff' }}
+                  />
+                  <button
+                    disabled={rateSaving}
+                    onClick={async () => {
+                      const val = parseFloat(rateInput);
+                      if (!val || val < 1) { toast.error('Enter a valid rate'); return; }
+                      setRateSaving(true);
+                      try {
+                        const { data } = await api.put('/payment/exchange-rate/usd-npr', { rate: val });
+                        setCurrentRate(data.rate);
+                        toast.success('Exchange rate updated');
+                        // Refresh meta
+                        const { data: fresh } = await api.get('/payment/exchange-rate/usd-npr');
+                        setRateUpdatedBy(fresh.updatedBy || '');
+                        setRateUpdatedAt(fresh.updatedAt || '');
+                      } catch (e: any) {
+                        toast.error(e.response?.data?.message || 'Failed to update');
+                      } finally { setRateSaving(false); }
+                    }}
+                    style={{ padding: '0.7rem 1.5rem', background: A.gradGold, color: A.navy, fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', border: 'none', cursor: 'pointer', fontWeight: 700, opacity: rateSaving ? 0.6 : 1 }}
+                  >
+                    {rateSaving ? 'Saving…' : 'Update'}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ background: 'hsl(210 80% 97%)', border: '1px solid hsl(210 70% 85%)', padding: '0.75rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                <span style={{ color: 'hsl(210 70% 45%)', fontSize: '0.8rem', flexShrink: 0 }}>ℹ</span>
+                <p style={{ fontFamily: A.raleway, fontSize: '0.75rem', color: 'hsl(210 50% 35%)', margin: 0 }}>
+                  Check the live rate on <strong>Google</strong> by searching <strong>"1 USD to NPR"</strong> and enter it here. Update whenever the rate changes significantly.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 

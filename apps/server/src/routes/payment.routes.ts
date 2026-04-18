@@ -12,4 +12,12 @@ router.post('/upfront', payment.chargeUpfront);     // non-refundable: charge 10
 router.post('/cash', ...requireStaff, requireAdmin, payment.cashPayment);
 router.get('/receipt/:billId', requireStaffOrGuest, payment.getReceipt);
 
+// PhonePay (Nepali guests)
+router.get('/phonepay/merchant-info', payment.getPhonePayMerchantInfo);
+router.post('/phonepay/verify', payment.verifyPhonePayDeposit);
+
+// Exchange rate
+router.get('/exchange-rate/usd-npr', payment.getUsdNprRate);                          // public
+router.put('/exchange-rate/usd-npr', ...requireStaff, payment.updateUsdNprRate);      // staff only
+
 export default router;

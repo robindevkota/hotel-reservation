@@ -12,6 +12,7 @@ export interface IGuest extends Document {
   qrSessionExpiry: Date;
   isActive: boolean;
   bill: mongoose.Types.ObjectId;
+  linkedToGuestId?: mongoose.Types.ObjectId;
 }
 
 const GuestSchema = new Schema<IGuest>(
@@ -27,6 +28,7 @@ const GuestSchema = new Schema<IGuest>(
     qrSessionExpiry: { type: Date, required: true },
     isActive: { type: Boolean, default: true },
     bill: { type: Schema.Types.ObjectId, ref: 'Bill' },
+    linkedToGuestId: { type: Schema.Types.ObjectId, ref: 'Guest' },
   },
   { timestamps: true }
 );

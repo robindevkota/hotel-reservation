@@ -3,9 +3,11 @@ import { body } from 'express-validator';
 import crypto from 'crypto';
 import Reservation from '../models/Reservation';
 import Room from '../models/Room';
+import Guest from '../models/Guest';
 import Offer from '../models/Offer';
 import { AppError } from '../middleware/errorHandler';
 import { sendReservationConfirmation, sendCancellationConfirmation } from '../services/notification.service';
+import { getUsdToNprRate } from '../services/exchangeRate.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 import stripe from '../config/stripe';
 import type { CancellationPolicy } from '../models/Reservation';
@@ -28,10 +30,11 @@ export const reservationValidation = [
   body('checkOutDate').isISO8601(),
   body('numberOfGuests').isInt({ min: 1 }),
   body('cancellationPolicy').optional().isIn(['flexible', 'non_refundable']),
+  body('guestType').optional().isIn(['foreign', 'nepali']),
 ];
 
 export async function createReservation(req: Request, res: Response): Promise<void> {
-  const { guest, room: roomId, checkInDate, checkOutDate, numberOfGuests, specialRequests, cancellationPolicy = 'flexible' } = req.body;
+  const { guest, room: roomId, checkInDate, checkOutDate, numberOfGuests, specialRequests, cancellationPolicy = 'flexible', guestType = 'foreign' } = req.body;
 
   const checkIn = new Date(checkInDate);
   const checkOut = new Date(checkOutDate);
@@ -64,12 +67,20 @@ export async function createReservation(req: Request, res: Response): Promise<vo
   const afterPolicy = cancellationPolicy === 'non_refundable'
     ? Math.round(baseCharges * 0.9 * 100) / 100
     : baseCharges;
-  const roomCharges = Math.round(afterPolicy * offerMultiplier * 100) / 100;
+  const usdCharges = Math.round(afterPolicy * offerMultiplier * 100) / 100;
+
+  // Nepali guests pay in NPR — convert using live exchange rate
+  const isNepali = guestType === 'nepali';
+  const roomCharges = isNepali
+    ? Math.round(usdCharges * (await getUsdToNprRate()) * 100) / 100
+    : usdCharges;
 
   // Generate unique booking reference (retry once on collision)
   let bookingRef = generateBookingRef();
   const existing = await Reservation.findOne({ bookingRef });
   if (existing) bookingRef = generateBookingRef();
+
+  const depositAmount = isNepali ? Math.round(roomCharges * 0.5 * 100) / 100 : 0;
 
   const reservation = await Reservation.create({
     bookingRef,
@@ -81,22 +92,28 @@ export async function createReservation(req: Request, res: Response): Promise<vo
     specialRequests,
     totalNights,
     roomCharges,
-    cancellationPolicy,
+    cancellationPolicy: isNepali ? 'non_refundable' : cancellationPolicy,
+    guestType,
+    paymentMethod: isNepali ? 'phonepay' : 'stripe',
+    depositAmount,
+    depositPaid: false,
   });
 
-  // Send confirmation email (non-blocking)
-  sendReservationConfirmation(
-    guest.email,
-    guest.name,
-    reservation.bookingRef,
-    checkIn,
-    checkOut,
-    room.name,
-    roomCharges,
-    cancellationPolicy,
-  ).catch(console.error);
+  // Send confirmation email only for foreign guests (Nepali email sent after deposit verified)
+  if (!isNepali) {
+    sendReservationConfirmation(
+      guest.email,
+      guest.name,
+      reservation.bookingRef,
+      checkIn,
+      checkOut,
+      room.name,
+      roomCharges,
+      cancellationPolicy,
+    ).catch(console.error);
+  }
 
-  res.status(201).json({ success: true, reservation });
+  res.status(201).json({ success: true, reservation, depositAmount, guestType });
 }
 
 export async function listReservations(req: Request, res: Response): Promise<void> {
@@ -308,6 +325,21 @@ export async function markNoShow(req: Request, res: Response): Promise<void> {
   res.json({ success: true, reservation, penaltyCharged });
 }
 
+// Admin: mark a non-refundable reservation as paid upfront (cash / offline payment).
+// In the normal Stripe flow this is set automatically by chargeUpfront + webhook.
+// This endpoint handles cash non-refundable payments and test environments.
+export async function markPaidUpfront(req: Request, res: Response): Promise<void> {
+  const reservation = await Reservation.findById(req.params.id);
+  if (!reservation) throw new AppError('Reservation not found', 404);
+  if (reservation.cancellationPolicy !== 'non_refundable') {
+    throw new AppError('Only non-refundable reservations can be marked paid upfront', 400);
+  }
+  if (reservation.paidUpfront) throw new AppError('Reservation already marked as paid upfront', 400);
+  reservation.paidUpfront = true;
+  await reservation.save();
+  res.json({ success: true, reservation });
+}
+
 // Returns booked date ranges for a room so the frontend can gray out unavailable dates.
 // Only confirmed + checked_in reservations block availability.
 export async function getBlockedDates(req: Request, res: Response): Promise<void> {
@@ -324,6 +356,60 @@ export async function getBlockedDates(req: Request, res: Response): Promise<void
   }));
 
   res.json({ success: true, blocked });
+}
+
+// Walk-in for a guest who is already checked in and wants a second room.
+// Creates a new confirmed reservation + links it back to the existing guest via linkedToGuestId.
+// The new room gets its own Guest doc and Bill — no billing collision with the primary stay.
+export async function walkInLinkedReservation(req: Request, res: Response): Promise<void> {
+  const { existingGuestId, room: roomId, checkInDate, checkOutDate, numberOfGuests, specialRequests } = req.body;
+
+  if (!existingGuestId) throw new AppError('existingGuestId is required', 400);
+
+  const existingGuest = await Guest.findById(existingGuestId);
+  if (!existingGuest) throw new AppError('Existing guest not found', 404);
+  if (!existingGuest.isActive) throw new AppError('Existing guest is not currently checked in', 400);
+
+  const checkIn = new Date(checkInDate);
+  const checkOut = new Date(checkOutDate);
+  if (checkOut <= checkIn) throw new AppError('Check-out must be after check-in', 400);
+
+  const room = await Room.findById(roomId);
+  if (!room) throw new AppError('Room not found', 404);
+
+  const conflict = await Reservation.findOne({
+    room: roomId,
+    status: { $in: ['confirmed', 'checked_in'] },
+    checkInDate: { $lt: checkOut },
+    checkOutDate: { $gt: checkIn },
+  });
+  if (conflict) {
+    throw new AppError(
+      `Room is already reserved for these dates (${new Date(conflict.checkInDate).toLocaleDateString()} – ${new Date(conflict.checkOutDate).toLocaleDateString()})`,
+      409,
+    );
+  }
+
+  const totalNights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+  const roomCharges = totalNights * room.pricePerNight;
+
+  const reservation = await Reservation.create({
+    guest: {
+      name: existingGuest.name,
+      email: existingGuest.email,
+      phone: existingGuest.phone,
+    },
+    room: roomId,
+    checkInDate: checkIn,
+    checkOutDate: checkOut,
+    numberOfGuests: numberOfGuests || 1,
+    specialRequests,
+    totalNights,
+    roomCharges,
+    status: 'confirmed',
+  });
+
+  res.status(201).json({ success: true, reservation, linkedToGuestId: existingGuestId });
 }
 
 // Walk-in: create reservation + confirm in one step (admin only)

@@ -23,6 +23,10 @@ export interface IBill extends Document {
   totalAmount: number;
   taxAmount: number;
   grandTotal: number;
+  // Non-refundable guests pre-pay the room at booking — track separately so
+  // recalculate() excludes it from the in-stay grandTotal.
+  prepaidAmount: number;
+  prepaidAt?: Date;
   status: BillStatus;
   paidAt?: Date;
   paymentMethod?: PaymentMethod;
@@ -53,6 +57,8 @@ const BillSchema = new Schema<IBill>(
     status: { type: String, enum: ['open', 'pending_payment', 'paid'], default: 'open' },
     paidAt: { type: Date },
     paymentMethod: { type: String, enum: ['stripe', 'cash', 'card_on_site'] },
+    prepaidAmount: { type: Number, default: 0 },
+    prepaidAt: { type: Date },
     stripePaymentIntentId: { type: String, default: '' },
     receiptUrl: { type: String, default: '' },
   },
@@ -74,9 +80,13 @@ BillSchema.methods.recalculate = function () {
   this.otherCharges = this.lineItems
     .filter((i: ILineItem) => i.type === 'other')
     .reduce((s: number, i: ILineItem) => s + i.amount, 0);
-  this.totalAmount = this.roomCharges + this.foodCharges + this.spaCharges + this.otherCharges;
-  this.taxAmount = parseFloat((this.totalAmount * TAX_RATE).toFixed(2));
-  this.grandTotal = parseFloat((this.totalAmount + this.taxAmount).toFixed(2));
+
+  // For non-refundable guests the room was pre-paid at booking.
+  // Exclude it from totalAmount so the guest only owes food/spa/other at checkout.
+  const chargeableRoom = Math.max(0, this.roomCharges - (this.prepaidAmount || 0));
+  this.totalAmount = parseFloat((chargeableRoom + this.foodCharges + this.spaCharges + this.otherCharges).toFixed(2));
+  this.taxAmount   = parseFloat((this.totalAmount * TAX_RATE).toFixed(2));
+  this.grandTotal  = parseFloat((this.totalAmount + this.taxAmount).toFixed(2));
 };
 
 export default mongoose.model<IBill>('Bill', BillSchema);

@@ -33,10 +33,14 @@ export async function getDashboardAnalytics(req: AuthRequest, res: Response) {
     pendingOrders,
     spaBookings,
     paidBills,
+    // Cash orders delivered in last 7 days
+    cashOrdersLast7,
+    // Cash spa completed in last 7 days
+    cashSpaLast7,
   ] = await Promise.all([
     showRooms ? Room.countDocuments({}) : Promise.resolve(0),
     showRooms ? Room.countDocuments({ isAvailable: true }) : Promise.resolve(0),
-    showRooms ? Reservation.find({}).lean() : Promise.resolve([]),
+    showRooms ? Reservation.find({}).populate('room', 'type pricePerNight').lean() : Promise.resolve([]),
     showRooms
       ? Reservation.find({ createdAt: { $gte: startOf30Days } })
           .populate('room', 'name roomNumber type pricePerNight')
@@ -48,21 +52,54 @@ export async function getDashboardAnalytics(req: AuthRequest, res: Response) {
     showFood
       ? Order.find({ status: { $in: ['pending', 'accepted', 'preparing'] } })
           .populate('room', 'roomNumber')
+          .populate('walkInCustomer', 'name type')
           .sort({ placedAt: -1 })
           .lean()
       : Promise.resolve([]),
     showSpa ? SpaBooking.find({ createdAt: { $gte: startOf30Days } }).lean() : Promise.resolve([]),
-    (showRooms || isSuperAdmin) ? Bill.find({ status: 'paid' }).lean() : Promise.resolve([]),
+    (showRooms || isSuperAdmin) ? Bill.find({ status: { $in: ['paid', 'pending_payment'] } }).lean() : Promise.resolve([]),
+    // Cash orders (hotel guest cash + walk-in) delivered in last 7 days
+    showFood
+      ? Order.find({
+          orderPaymentMethod: 'cash',
+          status: 'delivered',
+          deliveredAt: { $gte: startOf7Days },
+        }).lean()
+      : Promise.resolve([]),
+    // Cash spa completed in last 7 days
+    showSpa
+      ? SpaBooking.find({
+          spaPaymentMethod: 'cash',
+          status: 'completed',
+          updatedAt: { $gte: startOf7Days },
+        }).lean()
+      : Promise.resolve([]),
   ]);
 
   // ── KPI Stats ─────────────────────────────────────────────────────────────
-  const checkedIn  = allReservations.filter(r => r.status === 'checked_in').length;
+  // Use actual room availability for occupancy — reservation status counts are unreliable
+  // (future-dated checked_in reservations inflate the count)
+  const occupiedRooms = totalRooms - availableRooms;
+  const checkedIn  = occupiedRooms;
   const pending    = allReservations.filter(r => r.status === 'pending').length;
   const confirmed  = allReservations.filter(r => r.status === 'confirmed').length;
   const checkedOut = allReservations.filter(r => r.status === 'checked_out').length;
 
-  const totalRevenue = paidBills.reduce((s, b) => s + (b.grandTotal || 0), 0);
-  const occupancyRate = totalRooms > 0 ? Math.round((checkedIn / totalRooms) * 100) : 0;
+  // Room-bill revenue = paid bills (covers room + room_bill food/spa)
+  const billRevenue = paidBills.reduce((s, b) => s + (b.grandTotal || 0), 0);
+
+  // Cash revenue = delivered cash orders + completed cash spa (not on any bill)
+  const allDeliveredCashOrders = allOrders.filter(
+    o => o.status === 'delivered' && o.orderPaymentMethod === 'cash'
+  );
+  const allCompletedCashSpa = spaBookings.filter(
+    b => b.status === 'completed' && (b as any).spaPaymentMethod === 'cash'
+  );
+  const cashOrderRevenue = allDeliveredCashOrders.reduce((s, o) => s + (o.totalAmount || 0), 0);
+  const cashSpaRevenue   = allCompletedCashSpa.reduce((s, b) => s + (b.price || 0), 0);
+
+  const totalRevenue = billRevenue + cashOrderRevenue + cashSpaRevenue;
+  const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
 
   // ── Reservations last 30 days (daily) ─────────────────────────────────────
   const reservationsByDay: Record<string, number> = {};
@@ -83,16 +120,31 @@ export async function getDashboardAnalytics(req: AuthRequest, res: Response) {
     reservations: count,
   }));
 
-  // ── Revenue last 7 days ────────────────────────────────────────────────────
+  // ── Revenue last 7 days — bill payments + cash orders + cash spa ──────────
   const revenueByDay: Record<string, number> = {};
   for (let i = 0; i < 7; i++) {
     const d = new Date(startOf7Days);
     d.setDate(d.getDate() + i);
     revenueByDay[d.toISOString().split('T')[0]] = 0;
   }
+
+  // Bill revenue bucketed by paidAt (paid bills) or updatedAt (pending_payment = checked out)
   paidBills.forEach(b => {
-    const key = new Date((b.paidAt || (b as any).updatedAt || new Date()) as Date).toISOString().split('T')[0];
+    const ts = (b as any).paidAt || (b as any).updatedAt || new Date();
+    const key = new Date(ts as Date).toISOString().split('T')[0];
     if (revenueByDay[key] !== undefined) revenueByDay[key] += b.grandTotal || 0;
+  });
+
+  // Cash orders bucketed by deliveredAt
+  cashOrdersLast7.forEach((o: any) => {
+    const key = new Date(o.deliveredAt).toISOString().split('T')[0];
+    if (revenueByDay[key] !== undefined) revenueByDay[key] += o.totalAmount || 0;
+  });
+
+  // Cash spa bucketed by updatedAt (when completed)
+  cashSpaLast7.forEach((b: any) => {
+    const key = new Date(b.updatedAt).toISOString().split('T')[0];
+    if (revenueByDay[key] !== undefined) revenueByDay[key] += b.price || 0;
   });
 
   const revenueTrend = Object.entries(revenueByDay).map(([date, revenue]) => ({
@@ -129,32 +181,45 @@ export async function getDashboardAnalytics(req: AuthRequest, res: Response) {
     bookings: data.count,
   }));
 
-  // ── Orders by category ────────────────────────────────────────────────────
+  // ── Orders stats (all delivered — room_bill + cash) ───────────────────────
   const deliveredOrders = allOrders.filter(o => o.status === 'delivered');
   const orderStats = {
     total: allOrders.length,
     delivered: deliveredOrders.length,
     pending: allOrders.filter(o => ['pending', 'accepted', 'preparing'].includes(o.status)).length,
     totalRevenue: deliveredOrders.reduce((s, o) => s + o.totalAmount, 0),
+    cashRevenue: allDeliveredCashOrders.reduce((s, o) => s + o.totalAmount, 0),
+    walkInCount: allOrders.filter(o => (o as any).walkInCustomer).length,
   };
 
-  // ── Spa stats ─────────────────────────────────────────────────────────────
+  // ── Spa stats (all completed — room_bill + cash) ──────────────────────────
   const completedSpa = spaBookings.filter(b => b.status === 'completed');
   const spaStats = {
     total: spaBookings.length,
     confirmed: spaBookings.filter(b => b.status === 'confirmed').length,
     completed: completedSpa.length,
     revenue: completedSpa.reduce((s, b) => s + b.price, 0),
+    cashRevenue: allCompletedCashSpa.reduce((s, b) => s + b.price, 0),
+    walkInCount: spaBookings.filter(b => (b as any).walkInCustomer).length,
   };
 
-  // ── Revenue by section ────────────────────────────────────────────────────
-  const roomRevenue   = Math.round(paidBills.reduce((s, b) => {
-    const roomItems = (b.lineItems || []).filter((l: any) => l.type === 'room_charge');
+  // ── Revenue by section (all sources) ─────────────────────────────────────
+  const roomRevenue = Math.round(paidBills.reduce((s, b) => {
+    const roomItems = (b.lineItems || []).filter((l: any) => l.type === 'room');
     return s + roomItems.reduce((a: number, l: any) => a + (l.amount || 0), 0);
   }, 0));
-  const foodRevenue   = Math.round(orderStats.totalRevenue);
-  const spaRevenue    = Math.round(spaStats.revenue);
-  const otherRevenue  = Math.round(totalRevenue) - roomRevenue - foodRevenue - spaRevenue;
+
+  // Food = delivered orders (room_bill via bills + cash directly)
+  const foodRevenue = Math.round(orderStats.totalRevenue);
+
+  // Spa = completed bookings (room_bill via bills + cash directly)
+  const spaRevenue = Math.round(spaStats.revenue);
+
+  // Other = manual charges on paid bills (type 'other') — not double-counted
+  const otherRevenue = Math.round(paidBills.reduce((s, b) => {
+    const otherItems = (b.lineItems || []).filter((l: any) => l.type === 'other');
+    return s + otherItems.reduce((a: number, l: any) => a + (l.amount || 0), 0);
+  }, 0));
 
   const revenueBySection = [
     { section: 'Rooms',      revenue: roomRevenue,              color: 'hsl(43 72% 55%)' },

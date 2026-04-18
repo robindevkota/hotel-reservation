@@ -167,11 +167,15 @@ async function placeAndDeliver(
 }
 
 /** Walk a spa booking from pending all the way to completed. */
-async function completeSpaBooking(bookingId: string, adminToken: string) {
+async function completeSpaBooking(
+  bookingId: string,
+  adminToken: string,
+  paymentMethod: 'room_bill' | 'cash' = 'room_bill',
+) {
   await patch(`/spa/bookings/${bookingId}/status`, { status: 'confirmed' }, adminToken);
   await patch(`/spa/bookings/${bookingId}/arrive`, {}, adminToken);
   await patch(`/spa/bookings/${bookingId}/status`, { status: 'in_progress' }, adminToken);
-  await patch(`/spa/bookings/${bookingId}/complete`, {}, adminToken);
+  await patch(`/spa/bookings/${bookingId}/complete`, { paymentMethod }, adminToken);
 }
 
 /** Fetch both admin and guest views of a bill and return them. */
@@ -933,6 +937,425 @@ test.describe('Phase 4 — Week 4: Checkout Wave + Room Recycling', () => {
     const bill = billD.bill ?? billD;
     expect(bill.status).toBe('pending_payment');
     assertVAT(bill);
+  });
+
+  test('SIM-25 Hassan early-departure (flexible) — room charge trimmed to 1 night', async () => {
+    // Hassan books 4 nights but leaves after 1 night
+    const room = FREE_ROOMS.find((r: any) =>
+      ![...Object.values(G).map(g => g.roomId), ...BULK.map(b => b.roomId)].includes(r._id)
+    ) ?? FREE_ROOMS.slice(-1)[0];
+    if (!room) { test.skip(true, 'No free room for Hassan'); return; }
+
+    const nights = 4;
+    const result = await bookAndCheckin(
+      ADMIN, room._id,
+      'Hassan Tarek', 'hassan.sim@nile.eg',
+      simDate(25),
+      simDate(25 + nights),
+      'flexible',
+    );
+    if (!result) { test.skip(true, 'Hassan check-in failed'); return; }
+    G['hassan'] = { ...result, roomId: room._id, roomPrice: room.pricePerNight };
+
+    // Verify bill opened with full 4-night room charge
+    const { data: billBefore } = await get(`/billing/${G['hassan'].guestId}`, ADMIN);
+    const before = billBefore.bill ?? billBefore;
+    expect(before.roomCharges).toBeCloseTo(nights * room.pricePerNight, 1);
+
+    // Admin performs early checkout — only 1 night stayed
+    const { data: earlyD } = await post(`/checkin/early-checkout/${G['hassan'].guestId}`, { nightsStayed: 1 }, ADMIN);
+    expect(earlyD.success).toBe(true);
+    expect(earlyD.nightsStayed).toBe(1);
+    expect(earlyD.policy).toBe('flexible');
+
+    // Room charge must now equal exactly 1 night
+    const bill = earlyD.bill;
+    const roomItem = bill.lineItems.find((li: any) => li.type === 'room');
+    expect(roomItem.amount).toBeCloseTo(room.pricePerNight, 1);
+
+    // Bill finalised — pending_payment
+    expect(bill.status).toBe('pending_payment');
+
+    // VAT still correct on trimmed amount
+    assertVAT(bill);
+
+    // Room freed immediately
+    expect(await isRoomAvailable(room._id)).toBe(true);
+  });
+
+  test('SIM-26 Sara checks in and requests a second room (linked walk-in)', async () => {
+    // Get two free rooms
+    const { data: freeD } = await get('/rooms?available=true', ADMIN);
+    const freeNow: any[] = (freeD.rooms ?? []).filter((r: any) => r.isAvailable === true);
+    if (freeNow.length < 2) { test.skip(true, 'Need 2 free rooms for Sara'); return; }
+
+    const primaryRoom = freeNow[0];
+    const secondRoom  = freeNow[1];
+
+    // Sara checks into her primary room
+    const result = await bookAndCheckin(
+      ADMIN, primaryRoom._id,
+      'Sara Mansour', 'sara.sim@nile.eg',
+      simDate(26),
+      simDate(29),
+    );
+    if (!result) { test.skip(true, 'Sara primary check-in failed'); return; }
+    G['sara'] = { ...result, roomId: primaryRoom._id, roomPrice: primaryRoom.pricePerNight };
+
+    // Sara wants a second room — admin creates walk-in-linked
+    const { data: linkedD } = await post('/reservations/walk-in-linked', {
+      existingGuestId: G['sara'].guestId,
+      room: secondRoom._id,
+      checkInDate: simDate(26),
+      checkOutDate: simDate(29),
+      numberOfGuests: 1,
+    }, ADMIN);
+    expect(linkedD.success).toBe(true);
+    expect(linkedD.reservation.status).toBe('confirmed');
+    expect(linkedD.linkedToGuestId).toBe(G['sara'].guestId);
+
+    const secondResId = linkedD.reservation._id;
+
+    // Check in the second reservation, passing linkedToGuestId
+    const { data: ci2D } = await post(`/checkin/${secondResId}`, { linkedToGuestId: G['sara'].guestId }, ADMIN);
+    expect(ci2D.success).toBe(true);
+
+    const secondGuestId = ci2D.guest._id;
+
+    // Second room has its own fresh bill
+    const { data: bill2D } = await get(`/billing/${secondGuestId}`, ADMIN);
+    const bill2 = bill2D.bill ?? bill2D;
+    expect(bill2.status).toBe('open');
+    expect(bill2.lineItems[0].type).toBe('room');
+
+    // Bills are independent — different IDs
+    const { data: bill1D } = await get(`/billing/${G['sara'].guestId}`, ADMIN);
+    const bill1 = bill1D.bill ?? bill1D;
+    expect(bill1._id).not.toBe(bill2._id);
+
+    // Both rooms occupied
+    expect(await isRoomAvailable(primaryRoom._id)).toBe(false);
+    expect(await isRoomAvailable(secondRoom._id)).toBe(false);
+
+    // Cleanup: checkout both guests
+    await post(`/checkin/checkout/${secondGuestId}`, {}, ADMIN).catch(() => {});
+    await post(`/checkin/checkout/${G['sara'].guestId}`, {}, ADMIN).catch(() => {});
+  });
+
+  test('SIM-27 Nadia (non-refundable) — room pre-paid, only food+spa due at checkout', async () => {
+    // Find two free rooms (one for Nadia)
+    const { data: freeD } = await get('/rooms?available=true', ADMIN);
+    const freeNow: any[] = (freeD.rooms ?? []).filter((r: any) => r.isAvailable === true);
+    if (!freeNow.length) { test.skip(true, 'No free rooms for Nadia'); return; }
+
+    const room = freeNow[0];
+    const nights = 3;
+
+    // Book as non_refundable + paidUpfront
+    const { data: resD, status: resStatus } = await post('/reservations', {
+      guest: { name: 'Nadia Kamal', email: 'nadia.sim27@nile.eg', phone: '+20-100-000-0027' },
+      room: room._id,
+      checkInDate: simDate(27),
+      checkOutDate: simDate(27 + nights),
+      numberOfGuests: 1,
+      cancellationPolicy: 'non_refundable',
+      paidUpfront: true,
+    }, ADMIN);
+    expect(resStatus).toBe(201);
+    expect(resD.success).toBe(true);
+
+    // Confirm, mark paid upfront (simulates Stripe chargeUpfront), then check in
+    await patch(`/reservations/${resD.reservation._id}/confirm`, {}, ADMIN);
+    await patch(`/reservations/${resD.reservation._id}/mark-paid-upfront`, {}, ADMIN);
+    const { data: ciD } = await post(`/checkin/${resD.reservation._id}`, {}, ADMIN);
+    expect(ciD.success).toBe(true);
+    const nadiaGuestId = ciD.guest._id;
+
+    // Bill should show prepaidAmount = roomCharges, grandTotal = 0
+    const { data: billOpen } = await get(`/billing/${nadiaGuestId}`, ADMIN);
+    const openBill = billOpen.bill ?? billOpen;
+    expect(openBill.prepaidAmount).toBeCloseTo(openBill.roomCharges, 2);
+    expect(openBill.grandTotal).toBeCloseTo(0, 2);
+
+    // Add food + spa charges during stay
+    const foodAmt = 95;
+    const spaAmt  = 150;
+    await post(`/billing/${nadiaGuestId}/add`, { description: 'Breakfast in bed', amount: foodAmt }, ADMIN);
+    await post(`/billing/${nadiaGuestId}/add`, { description: 'Aromatherapy session', amount: spaAmt }, ADMIN);
+
+    // Checkout
+    const { data: coD } = await post(`/checkin/checkout/${nadiaGuestId}`, {}, ADMIN);
+    expect(coD.success).toBe(true);
+
+    // Grand total = (food + spa) × 1.13 only — room still excluded
+    const { data: billFinal } = await get(`/billing/${nadiaGuestId}`, ADMIN);
+    const finalBill = billFinal.bill ?? billFinal;
+    expect(finalBill.status).toBe('pending_payment');
+
+    const expectedTotal = parseFloat(((foodAmt + spaAmt) * 1.13).toFixed(2));
+    expect(finalBill.grandTotal).toBeCloseTo(expectedTotal, 1);
+    expect(finalBill.roomCharges).toBeGreaterThan(0);     // still recorded
+    expect(finalBill.prepaidAmount).toBeGreaterThan(0);   // still tracked
+    expect(finalBill.totalAmount).toBeCloseTo(foodAmt + spaAmt, 1);
+
+    // Room freed after checkout
+    expect(await isRoomAvailable(room._id)).toBe(true);
+  });
+
+  test('SIM-28 Spa cash payment — guest pays at desk, room bill unchanged; restaurant charge added manually', async () => {
+    // Find a free room for this test's guest
+    const { data: freeD } = await get('/rooms?available=true', ADMIN);
+    const freeNow: any[] = (freeD.rooms ?? []).filter((r: any) => r.isAvailable === true);
+    if (!freeNow.length) { test.skip(true, 'No free rooms for SIM-28'); return; }
+
+    const room = freeNow[0];
+    const result = await walkInAndCheckin(
+      ADMIN, room._id,
+      'Layla Samir', 'layla.sim28@nile.eg',
+      simDate(28), simDate(31),
+    );
+    if (!result) { test.skip(true, 'SIM-28 check-in failed'); return; }
+    G['layla28'] = { ...result, roomId: room._id, roomPrice: room.pricePerNight };
+
+    // ── Part A: spa cash payment ────────────────────────────────────────────
+
+    // Get a spa service
+    const { data: svcD } = await get('/spa/services');
+    const spaServices: any[] = svcD.services ?? svcD;
+    const svc = spaServices.find((s: any) => s.isAvailable);
+    test.skip(!svc, 'No spa service available');
+
+    const spaBefore = (await get(`/billing/${G['layla28'].guestId}`, ADMIN)).data?.bill?.spaCharges ?? 0;
+    const linesBefore = (await get(`/billing/${G['layla28'].guestId}`, ADMIN)).data?.bill?.lineItems?.length ?? 1;
+
+    // Admin creates walk-in spa booking
+    const { data: wkD, status: wkStatus } = await post('/spa/walkin', {
+      service: svc?._id,
+      guestId: G['layla28'].guestId,
+      date: simDate(28),
+      startTime: '14:00',
+    }, ADMIN);
+
+    if (wkStatus !== 201 || !wkD.success) {
+      // Spa slot may be taken — skip spa portion gracefully
+      console.log('SIM-28: spa walk-in slot taken, skipping spa cash test portion');
+    } else {
+      const bookingId = wkD.booking._id;
+
+      // Complete with cash — should NOT add a line item to the bill
+      await completeSpaBooking(bookingId, ADMIN, 'cash');
+
+      const { data: billAfterSpa } = await get(`/billing/${G['layla28'].guestId}`, ADMIN);
+      const billSpa = billAfterSpa.bill ?? billAfterSpa;
+
+      // spa line item must NOT appear
+      expect(billSpa.spaCharges ?? 0).toBeCloseTo(spaBefore, 2);
+      expect(billSpa.lineItems.length).toBe(linesBefore);
+
+      // booking stored with spaPaymentMethod=cash
+      const { data: bkD } = await get(`/spa/bookings`, ADMIN);
+      const bk = (bkD.bookings ?? []).find((b: any) => b._id === bookingId);
+      expect(bk?.spaPaymentMethod).toBe('cash');
+    }
+
+    // ── Part B: restaurant dining on room bill ──────────────────────────────
+
+    const { data: billBeforeDining } = await get(`/billing/${G['layla28'].guestId}`, ADMIN);
+    const before = billBeforeDining.bill ?? billBeforeDining;
+    const otherBefore = before.otherCharges ?? 0;
+    const linesBeforeDining = before.lineItems.length;
+
+    const diningAmt = 110;
+    const { data: addD } = await post(`/billing/${G['layla28'].guestId}/add`, {
+      description: 'Restaurant dining — lunch',
+      amount: diningAmt,
+    }, ADMIN);
+    expect(addD.success).toBe(true);
+
+    const { data: billAfterDining } = await get(`/billing/${G['layla28'].guestId}`, ADMIN);
+    const after = billAfterDining.bill ?? billAfterDining;
+
+    // One new 'other' line item for the dining charge
+    expect(after.lineItems.length).toBe(linesBeforeDining + 1);
+    const diningItem = after.lineItems.find((li: any) => li.description === 'Restaurant dining — lunch');
+    expect(diningItem).toBeTruthy();
+    expect(diningItem.type).toBe('other');
+    expect(diningItem.amount).toBeCloseTo(diningAmt, 2);
+    expect(after.otherCharges).toBeCloseTo(otherBefore + diningAmt, 2);
+
+    // VAT recalculated correctly
+    assertVAT(after);
+
+    // Cleanup
+    await post(`/checkin/checkout/${G['layla28'].guestId}`, {}, ADMIN).catch(() => {});
+  });
+
+  test('SIM-29 Admin creates restaurant order for dine-in guest — cash and room_bill paths', async () => {
+    test.setTimeout(60_000);
+
+    // Find a free room
+    const { data: freeD } = await get('/rooms?available=true', ADMIN);
+    const freeNow: any[] = (freeD.rooms ?? []).filter((r: any) => r.isAvailable === true);
+    if (!freeNow.length) { test.skip(true, 'No free rooms for SIM-29'); return; }
+
+    const room = freeNow[0];
+    const result = await walkInAndCheckin(
+      ADMIN, room._id,
+      'Kareem Mansour', 'kareem.sim29@nile.eg',
+      simDate(29), simDate(32),
+    );
+    if (!result) { test.skip(true, 'SIM-29 check-in failed'); return; }
+    G['kareem29'] = { ...result, roomId: room._id, roomPrice: room.pricePerNight };
+
+    const { data: menuD } = await get('/menu', ADMIN);
+    const menuItem = (menuD.items ?? menuD.menuItems ?? []).find((m: any) => m.isAvailable);
+    if (!menuItem) { test.skip(true, 'No available menu item'); return; }
+
+    const guestId = G['kareem29'].guestId;
+
+    // ── Part A: admin order cash → no bill line item ──────────────────────────
+
+    const billBefore = (await get(`/billing/${guestId}`, ADMIN)).data?.bill ?? {};
+    const foodBefore = billBefore.foodCharges ?? 0;
+    const linesBefore = billBefore.lineItems?.length ?? 0;
+
+    const { data: cashOrderD } = await post('/orders/admin', {
+      guestId,
+      items: [{ menuItem: menuItem._id, quantity: 2 }],
+      notes: 'Dine-in lunch',
+      orderPaymentMethod: 'cash',
+    }, ADMIN);
+    expect(cashOrderD.success).toBe(true);
+    expect(cashOrderD.order.isAdminOrder).toBe(true);
+    expect(cashOrderD.order.orderPaymentMethod).toBe('cash');
+
+    // Deliver cash order
+    for (const status of ['accepted', 'preparing', 'ready', 'delivering', 'delivered']) {
+      const { data } = await patch(`/orders/${cashOrderD.order._id}/status`, { status }, ADMIN);
+      expect(data.success).toBe(true);
+    }
+
+    const { data: billAfterCash } = await get(`/billing/${guestId}`, ADMIN);
+    const bCash = billAfterCash.bill ?? billAfterCash;
+    // Cash order must NOT touch the bill
+    expect(bCash.foodCharges ?? 0).toBeCloseTo(foodBefore, 2);
+    expect(bCash.lineItems.length).toBe(linesBefore);
+
+    // ── Part B: admin order room_bill → food_order line item on bill ──────────
+
+    const { data: billOrderD } = await post('/orders/admin', {
+      guestId,
+      items: [{ menuItem: menuItem._id, quantity: 1 }],
+      notes: 'Dine-in dinner — charge to room',
+      orderPaymentMethod: 'room_bill',
+    }, ADMIN);
+    expect(billOrderD.success).toBe(true);
+    expect(billOrderD.order.orderPaymentMethod).toBe('room_bill');
+
+    for (const status of ['accepted', 'preparing', 'ready', 'delivering', 'delivered']) {
+      const { data } = await patch(`/orders/${billOrderD.order._id}/status`, { status }, ADMIN);
+      expect(data.success).toBe(true);
+    }
+
+    const { data: billAfterRoom } = await get(`/billing/${guestId}`, ADMIN);
+    const bRoom = billAfterRoom.bill ?? billAfterRoom;
+    expect(bRoom.foodCharges).toBeGreaterThan(foodBefore);
+
+    const dineItem = bRoom.lineItems.find((li: any) =>
+      li.type === 'food_order' && li.description?.match(/dine-in|restaurant/i)
+    );
+    expect(dineItem).toBeTruthy();
+    expect(dineItem.amount).toBeCloseTo(menuItem.price, 2);
+
+    // VAT correct after the new food charge
+    assertVAT(bRoom);
+
+    // Cleanup
+    await post(`/checkin/checkout/${guestId}`, {}, ADMIN).catch(() => {});
+  });
+
+  test('SIM-30 External walk-in customers — dine-in order + spa booking, both cash, revenue in analytics', async () => {
+    test.setTimeout(60_000);
+
+    // ── Part A: walk-in dine-in order ────────────────────────────────────────
+    const { data: menuD } = await get('/menu', ADMIN);
+    const menuItem = (menuD.items ?? menuD.menuItems ?? []).find((m: any) => m.isAvailable);
+    if (!menuItem) { test.skip(true, 'No available menu item for SIM-30'); return; }
+
+    const { data: wicDineD } = await post('/walkin-customers', {
+      name: 'External Diner — Sim30',
+      phone: '+20100000030',
+      type: 'dine_in',
+    }, ADMIN);
+    expect(wicDineD.success).toBe(true);
+    expect(wicDineD.customer.type).toBe('dine_in');
+
+    const { data: orderD } = await post('/orders/admin', {
+      walkInCustomerId: wicDineD.customer._id,
+      items: [{ menuItem: menuItem._id, quantity: 2 }],
+      notes: 'External walk-in lunch',
+      orderPaymentMethod: 'cash',
+    }, ADMIN);
+    expect(orderD.success).toBe(true);
+    expect(orderD.order.isAdminOrder).toBe(true);
+    expect(orderD.order.orderPaymentMethod).toBe('cash');
+    expect(orderD.order.addedToBill).toBe(true);
+
+    // Deliver order
+    for (const status of ['accepted', 'preparing', 'ready', 'delivering', 'delivered']) {
+      const { data } = await patch(`/orders/${orderD.order._id}/status`, { status }, ADMIN);
+      expect(data.success).toBe(true);
+    }
+
+    // ── Part B: walk-in spa booking ──────────────────────────────────────────
+    const { data: svcD } = await get('/spa/services');
+    const spaServices: any[] = svcD.services ?? svcD;
+    const svc = spaServices.find((s: any) => s.isAvailable);
+
+    if (svc) {
+      const { data: wicSpaD } = await post('/walkin-customers', {
+        name: 'External Spa Guest — Sim30',
+        type: 'spa',
+      }, ADMIN);
+      expect(wicSpaD.success).toBe(true);
+
+      const { data: bkD, status: bkStatus } = await post('/spa/walkin', {
+        walkInCustomerId: wicSpaD.customer._id,
+        service: svc._id,
+        date: simDate(30),
+        startTime: '15:00',
+      }, ADMIN);
+
+      if (bkStatus === 201 && bkD.success) {
+        expect(bkD.booking.spaPaymentMethod).toBe('cash');
+        expect(bkD.booking.addedToBill).toBe(true);
+
+        // Complete the booking
+        await patch(`/spa/bookings/${bkD.booking._id}/arrive`, {}, ADMIN);
+        await patch(`/spa/bookings/${bkD.booking._id}/status`, { status: 'in_progress' }, ADMIN);
+        const { data: complD } = await patch(`/spa/bookings/${bkD.booking._id}/complete`, { paymentMethod: 'cash' }, ADMIN);
+        expect(complD.success).toBe(true);
+        expect(complD.booking.status).toBe('completed');
+
+        // Analytics spaStats.walkInCount includes this
+        const { data: analyticsD } = await get('/analytics', ADMIN);
+        expect(analyticsD.spaStats.walkInCount).toBeGreaterThanOrEqual(1);
+        expect(analyticsD.spaStats.cashRevenue).toBeGreaterThan(0);
+      } else {
+        console.log('SIM-30: spa slot taken, skipping spa walk-in portion');
+      }
+    }
+
+    // ── Part C: analytics reflects cash walk-in orders ───────────────────────
+    const { data: analyticsD } = await get('/analytics', ADMIN);
+    expect(analyticsD.orderStats.cashRevenue).toBeGreaterThan(0);
+    expect(analyticsD.orderStats.walkInCount).toBeGreaterThanOrEqual(1);
+    expect(analyticsD.kpis.totalRevenue).toBeGreaterThan(0);
+
+    // Walk-in customers list contains today's records
+    const { data: wicListD } = await get(`/walkin-customers?date=${simDate(0).slice(0,10)}`, ADMIN);
+    // May be 0 if simDate(30) is different from today — just verify endpoint works
+    expect(Array.isArray(wicListD.customers)).toBe(true);
   });
 
   test('SIM-24 Final state — simulation complete, invariants hold', async () => {

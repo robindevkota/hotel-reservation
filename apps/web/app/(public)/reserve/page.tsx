@@ -168,14 +168,22 @@ function ReserveContent() {
   const [loading, setLoading] = useState(false);
   const [confirmation, setConfirmation] = useState<any>(null);
   const [policy, setPolicy] = useState<Policy>('flexible');
+  const [guestType, setGuestType] = useState<'foreign' | 'nepali'>('foreign');
   // Stripe upfront payment state
   const [clientSecret, setClientSecret] = useState('');
   const [upfrontAmount, setUpfrontAmount] = useState(0);
+  // PhonePay state
+  const [depositAmount, setDepositAmount] = useState(0);
+  const [transactionId, setTransactionId] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [merchantInfo, setMerchantInfo] = useState<any>(null);
+  const [usdToNpr, setUsdToNpr] = useState<number>(135); // fallback rate
 
   const [form, setForm] = useState({
     checkInDate: '', checkOutDate: '', numberOfGuests: 2,
     name: '', email: '', phone: '', idProof: '', specialRequests: '',
   });
+  const [unavailableRoomIds, setUnavailableRoomIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const roomId = searchParams.get('room');
@@ -185,6 +193,9 @@ function ReserveContent() {
       setSelectedRoom({ _id: roomId, name: roomName || '', pricePerNight: Number(price), images: [], type: '' });
       setPreSelected(true);
     }
+    api.get('/payment/exchange-rate/usd-npr').then(({ data }) => {
+      if (data.rate) setUsdToNpr(data.rate);
+    }).catch(() => {});
     api.get('/rooms?available=true').then(({ data }) => {
       const list: Room[] = data.rooms || [];
       setRooms(list);
@@ -195,6 +206,26 @@ function ReserveContent() {
     }).catch(() => {});
   }, [searchParams]);
 
+  // Re-check availability against confirmed reservations whenever dates change
+  useEffect(() => {
+    if (!form.checkInDate || !form.checkOutDate) {
+      setUnavailableRoomIds(new Set());
+      return;
+    }
+    api.get(`/rooms/availability?checkIn=${form.checkInDate}&checkOut=${form.checkOutDate}`)
+      .then(({ data }) => {
+        const unavailable = new Set<string>(
+          (data.rooms || [])
+            .filter((r: any) => r.isAvailableForDates === false)
+            .map((r: any) => r._id as string)
+        );
+        setUnavailableRoomIds(unavailable);
+        // Deselect current room if it's no longer available for chosen dates
+        setSelectedRoom(prev => (prev && unavailable.has(prev._id) ? null : prev));
+      })
+      .catch(() => {});
+  }, [form.checkInDate, form.checkOutDate]);
+
   const nights = form.checkInDate && form.checkOutDate
     ? Math.max(0, Math.ceil((new Date(form.checkOutDate).getTime() - new Date(form.checkInDate).getTime()) / 86400000))
     : 0;
@@ -203,8 +234,13 @@ function ReserveContent() {
   const baseTotal = selectedRoom ? nights * selectedRoom.pricePerNight : 0;
   // Apply non-refundable discount first, then offer discount on top (mirrors server logic)
   const afterPolicy = policy === 'non_refundable' ? Math.round(baseTotal * 0.9 * 100) / 100 : baseTotal;
-  const totalCost = Math.round(afterPolicy * offerRoomMultiplier * 100) / 100;
-  const savings = baseTotal - totalCost;
+  const totalCostUsd = Math.round(afterPolicy * offerRoomMultiplier * 100) / 100;
+  // Nepali guests see NPR; foreign guests see USD
+  const totalCost = guestType === 'nepali' ? Math.round(totalCostUsd * usdToNpr * 100) / 100 : totalCostUsd;
+  const savings = guestType === 'nepali'
+    ? Math.round(baseTotal * usdToNpr * 100) / 100 - totalCost
+    : baseTotal - totalCost;
+  const currencySymbol = guestType === 'nepali' ? 'NPR ' : '$';
 
   // Step 3 → submit reservation
   const handleSubmit = async () => {
@@ -220,24 +256,48 @@ function ReserveContent() {
         checkOutDate: form.checkOutDate,
         numberOfGuests: form.numberOfGuests,
         specialRequests: form.specialRequests,
-        cancellationPolicy: policy,
+        cancellationPolicy: guestType === 'nepali' ? 'non_refundable' : policy,
+        guestType,
       });
       setConfirmation(data.reservation);
 
-      // Both policies go to Step 4 (card step)
-      // flexible  → /payment/authorize  (hold 1 night, capture_method: manual)
-      // non_refundable → /payment/upfront (charge 100% now)
-      const endpoint = policy === 'non_refundable' ? '/payment/upfront' : '/payment/authorize';
-      const { data: payData } = await api.post(endpoint, {
-        reservationId: data.reservation._id,
-      });
-      setClientSecret(payData.clientSecret);
-      setUpfrontAmount(payData.amount);
-      setStep(4);
+      if (guestType === 'nepali') {
+        // Fetch merchant info and go to PhonePay step
+        const { data: info } = await api.get('/payment/phonepay/merchant-info');
+        setMerchantInfo(info);
+        setDepositAmount(data.depositAmount);
+        setStep(4);
+      } else {
+        // Stripe flow
+        const endpoint = policy === 'non_refundable' ? '/payment/upfront' : '/payment/authorize';
+        const { data: payData } = await api.post(endpoint, { reservationId: data.reservation._id });
+        setClientSecret(payData.clientSecret);
+        setUpfrontAmount(payData.amount);
+        setStep(4);
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to create reservation');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // PhonePay deposit verification
+  const handlePhonePayVerify = async () => {
+    if (!transactionId.trim()) { toast.error('Please enter your transaction ID'); return; }
+    if (!confirmation) return;
+    setVerifying(true);
+    try {
+      await api.post('/payment/phonepay/verify', {
+        reservationId: confirmation._id,
+        transactionId: transactionId.trim(),
+      });
+      toast.success('Payment verified! Booking confirmed.');
+      setStep(5);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Verification failed');
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -300,6 +360,20 @@ function ReserveContent() {
           {/* ── Step 1: Dates & Room ── */}
           {step === 1 && (
             <div>
+              {/* Guest Type Toggle */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
+                {(['foreign', 'nepali'] as const).map((type) => (
+                  <button key={type} onClick={() => setGuestType(type)}
+                    style={{ padding: '1rem', border: `2px solid ${guestType === type ? S.gold : S.border}`, background: guestType === type ? `hsl(43 72% 55% / 0.08)` : '#fff', cursor: 'pointer', textAlign: 'left', boxShadow: guestType === type ? `0 0 0 3px hsl(43 72% 55% / 0.12)` : 'none', transition: 'all 0.2s' }}>
+                    <p style={{ fontFamily: S.cinzel, fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: S.navy, marginBottom: '0.25rem' }}>
+                      {type === 'foreign' ? '🌍 Foreign Guest' : '🇳🇵 Nepali Guest'}
+                    </p>
+                    <p style={{ fontFamily: S.raleway, fontSize: '0.72rem', color: S.muted }}>
+                      {type === 'foreign' ? 'Pay via Credit/Debit Card (Stripe)' : 'Pay 50% deposit via PhonePay'}
+                    </p>
+                  </button>
+                ))}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.25rem' }}>
                 <div>
                   <label style={labelStyle}>Check-In Date</label>
@@ -344,28 +418,39 @@ function ReserveContent() {
                     <p style={{ fontFamily: S.raleway, color: S.muted, fontSize: '0.85rem', textAlign: 'center', padding: '3rem 0' }}>Loading available rooms...</p>
                   ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1.25rem', marginBottom: '2rem' }}>
-                      {rooms.map((room) => (
-                        <button key={room._id} className={`room-sel${selectedRoom?._id === room._id ? ' active' : ''}`}
-                          onClick={() => setSelectedRoom(room)} style={{ width: '100%' }}>
+                      {rooms.map((room) => {
+                        const booked = unavailableRoomIds.has(room._id);
+                        return (
+                        <button key={room._id}
+                          className={`room-sel${selectedRoom?._id === room._id ? ' active' : ''}`}
+                          onClick={() => !booked && setSelectedRoom(room)}
+                          disabled={booked}
+                          style={{ width: '100%', opacity: booked ? 0.45 : 1, cursor: booked ? 'not-allowed' : 'pointer', position: 'relative' }}>
                           <div style={{ position: 'relative', height: '10rem', overflow: 'hidden' }}>
                             <Image src={room.images?.[0] || '/room-deluxe.jpg'} alt={room.name} fill sizes="(max-width:768px) 100vw, 280px" className="room-sel-img" style={{ objectFit: 'cover' }} />
                             {selectedRoom?._id === room._id && (
                               <div style={{ position: 'absolute', top: '0.625rem', right: '0.625rem', background: S.gradGold, color: S.navy, width: '1.75rem', height: '1.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.85rem' }}>✓</div>
+                            )}
+                            {booked && (
+                              <div style={{ position: 'absolute', inset: 0, background: 'hsl(220 55% 10% / 0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <span style={{ fontFamily: S.cinzel, fontSize: '0.6rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: '#fff', background: 'hsl(0 55% 42% / 0.85)', padding: '0.3rem 0.75rem' }}>Unavailable</span>
+                              </div>
                             )}
                           </div>
                           <div style={{ padding: '0.875rem 1rem' }}>
                             <p style={{ fontFamily: S.cinzel, fontSize: '0.78rem', color: S.navy, marginBottom: '0.35rem' }}>{room.name}</p>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontFamily: S.raleway, fontSize: '0.7rem', color: S.muted, textTransform: 'capitalize' }}>{room.type}</span>
-                              <span style={{ fontFamily: S.cinzel, fontSize: '0.85rem', color: S.gold }}>
-                                ${Math.round(room.pricePerNight * offerRoomMultiplier * 100) / 100}
-                                {offerRoomMultiplier < 1 && <span style={{ fontSize: '0.6rem', color: S.muted, textDecoration: 'line-through', marginLeft: '0.3rem' }}>${room.pricePerNight}</span>}
-                                <span style={{ fontSize: '0.65rem', color: S.muted }}>/night</span>
+                              <span style={{ fontFamily: S.cinzel, fontSize: '0.85rem', color: booked ? S.muted : S.gold }}>
+                                {booked ? 'Booked' : `${currencySymbol}${Math.round(room.pricePerNight * offerRoomMultiplier * (guestType === 'nepali' ? usdToNpr : 1) * 100) / 100}`}
+                                {!booked && offerRoomMultiplier < 1 && <span style={{ fontSize: '0.6rem', color: S.muted, textDecoration: 'line-through', marginLeft: '0.3rem' }}>{currencySymbol}{Math.round(room.pricePerNight * (guestType === 'nepali' ? usdToNpr : 1))}</span>}
+                                {!booked && <span style={{ fontSize: '0.65rem', color: S.muted }}>/night</span>}
                               </span>
                             </div>
                           </div>
                         </button>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </>
@@ -376,7 +461,7 @@ function ReserveContent() {
                   <span style={{ fontFamily: S.cinzel, fontSize: '0.68rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(245,236,215,0.6)' }}>
                     {selectedRoom.name} × {nights} night{nights !== 1 ? 's' : ''}
                   </span>
-                  <span style={{ fontFamily: S.cinzel, fontSize: '1.25rem', color: S.gold, fontWeight: 600 }}>${baseTotal.toLocaleString()}</span>
+                  <span style={{ fontFamily: S.cinzel, fontSize: '1.25rem', color: S.gold, fontWeight: 600 }}>{currencySymbol}{guestType === 'nepali' ? Math.round(baseTotal * usdToNpr).toLocaleString() : baseTotal.toLocaleString()}</span>
                 </div>
               )}
 
@@ -384,7 +469,8 @@ function ReserveContent() {
                 <button className="res-btn-primary" onClick={() => {
                   if (!selectedRoom)                           { toast.error('Please select a room'); return; }
                   if (!form.checkInDate || !form.checkOutDate) { toast.error('Please select dates'); return; }
-                  setStep(2);
+                  // Nepali guests skip rate selection (always non-refundable 50% deposit)
+                  setStep(guestType === 'nepali' ? 3 : 2);
                 }}>Continue →</button>
               </div>
             </div>
@@ -498,11 +584,11 @@ function ReserveContent() {
             <div>
               <div style={{ background: S.navy, padding: '1rem 1.5rem', border: `1px solid hsl(43 72% 55% / 0.2)`, marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <span style={{ fontFamily: S.cinzel, fontSize: '0.68rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(245,236,215,0.6)' }}>
-                  {selectedRoom?.name} · {nights} night{nights !== 1 ? 's' : ''} · {policy === 'non_refundable' ? 'Non-Refundable' : 'Flexible'}
+                  {selectedRoom?.name} · {nights} night{nights !== 1 ? 's' : ''} · {guestType === 'nepali' ? 'PhonePay Deposit' : policy === 'non_refundable' ? 'Non-Refundable' : 'Flexible'}
                 </span>
                 <span style={{ fontFamily: S.cinzel, fontSize: '1.1rem', color: S.gold, fontWeight: 600 }}>
-                  ${totalCost.toFixed(2)}
-                  {policy === 'non_refundable' && <span style={{ fontSize: '0.65rem', color: '#22c55e', marginLeft: '0.5rem' }}>10% OFF</span>}
+                  {currencySymbol}{totalCost.toFixed(2)}
+                  {guestType === 'foreign' && policy === 'non_refundable' && <span style={{ fontSize: '0.65rem', color: '#22c55e', marginLeft: '0.5rem' }}>10% OFF</span>}
                 </span>
               </div>
 
@@ -536,8 +622,15 @@ function ReserveContent() {
                   value={form.specialRequests} onChange={(e) => setForm({ ...form, specialRequests: e.target.value })} />
               </div>
 
-              {/* Policy reminder before card step */}
-              {policy === 'flexible' ? (
+              {/* Policy reminder before payment step */}
+              {guestType === 'nepali' ? (
+                <div style={{ background: '#fff8e6', border: `1px solid ${S.gold}`, padding: '0.875rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                  <AlertTriangle size={16} color={S.gold} style={{ flexShrink: 0, marginTop: '2px' }} />
+                  <p style={{ fontFamily: S.raleway, fontSize: '0.82rem', color: S.navy, margin: 0 }}>
+                    A <strong>50% deposit</strong> of <strong>NPR {Math.round(totalCost * 0.5 * 100) / 100}</strong> is required via PhonePay to confirm your booking. The remaining 50% is due at check-in. <strong>Deposit is non-refundable.</strong>
+                  </p>
+                </div>
+              ) : policy === 'flexible' ? (
                 <div style={{ background: '#f0f9ff', border: '1px solid #38bdf8', padding: '0.875rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
                   <CheckCircle2 size={16} color="#0ea5e9" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <p style={{ fontFamily: S.raleway, fontSize: '0.82rem', color: S.navy, margin: 0 }}>
@@ -554,19 +647,68 @@ function ReserveContent() {
               )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <button className="res-btn-secondary" onClick={() => setStep(2)}>← Back</button>
+                <button className="res-btn-secondary" onClick={() => setStep(guestType === 'nepali' ? 1 : 2)}>← Back</button>
                 <button className="res-btn-primary" disabled={loading} onClick={handleSubmit}>
-                  {loading ? 'Processing...' : 'Continue to Card →'}
+                  {loading ? 'Processing...' : guestType === 'nepali' ? 'Continue to PhonePay →' : 'Continue to Card →'}
                 </button>
               </div>
             </div>
           )}
 
-          {/* ── Step 4: Card step (both policies) ── */}
+          {/* ── Step 4: PhonePay deposit (Nepali guests) ── */}
+          {step === 4 && guestType === 'nepali' && merchantInfo && (
+            <div>
+              {/* Amount bar */}
+              <div style={{ background: S.navy, padding: '1.25rem 1.5rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid hsl(43 72% 55% / 0.2)`, flexWrap: 'wrap', gap: '0.5rem' }}>
+                <span style={{ fontFamily: S.cinzel, fontSize: '0.68rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(245,236,215,0.6)' }}>50% Deposit — PhonePay</span>
+                <span style={{ fontFamily: S.cinzel, fontSize: '1.25rem', color: S.gold, fontWeight: 600 }}>NPR {depositAmount.toFixed(2)}</span>
+              </div>
+
+              {/* Info banner */}
+              <div style={{ background: '#fff8e6', border: `1px solid ${S.gold}`, padding: '0.875rem 1.25rem', marginBottom: '2rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                <AlertTriangle size={16} color={S.gold} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <p style={{ fontFamily: S.raleway, fontSize: '0.82rem', color: S.navy, margin: 0 }}>
+                  Pay <strong>NPR {depositAmount.toFixed(2)}</strong> (50% deposit) via PhonePay to confirm your booking. The remaining 50% is due at check-in. <strong>Deposit is non-refundable.</strong>
+                </p>
+              </div>
+
+              {/* Merchant info */}
+              <div style={{ background: '#fff', border: `1px solid ${S.border}`, padding: '1.5rem', marginBottom: '2rem', textAlign: 'center' }}>
+                <p style={{ fontFamily: S.cinzel, fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: S.muted, marginBottom: '0.75rem' }}>Send Payment To</p>
+                <p style={{ fontFamily: S.cinzel, fontSize: '1.5rem', color: S.navy, fontWeight: 700, marginBottom: '0.25rem' }}>{merchantInfo.merchantPhone}</p>
+                <p style={{ fontFamily: S.raleway, fontSize: '0.82rem', color: S.muted, marginBottom: '0.5rem' }}>{merchantInfo.merchantName}</p>
+                <p style={{ fontFamily: S.cinzel, fontSize: '0.72rem', color: S.gold }}>Amount: NPR {depositAmount.toFixed(2)}</p>
+                {merchantInfo.isMock && (
+                  <div style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: 'hsl(200 80% 95%)', border: '1px solid hsl(200 80% 70%)', fontFamily: S.raleway, fontSize: '0.75rem', color: 'hsl(200 60% 35%)' }}>
+                    🧪 Test mode — use transaction ID starting with <strong>TEST</strong> (e.g. TEST123456)
+                  </div>
+                )}
+              </div>
+
+              {/* Transaction ID input */}
+              <div style={{ marginBottom: '2rem' }}>
+                <label style={labelStyle}>PhonePay Transaction ID</label>
+                <input className="res-input" style={inputStyle} placeholder="e.g. TEST123456 or your PhonePay transaction ID"
+                  value={transactionId} onChange={(e) => setTransactionId(e.target.value)} />
+                <p style={{ fontFamily: S.raleway, fontSize: '0.72rem', color: S.muted, marginTop: '0.5rem' }}>
+                  Find the transaction ID in your PhonePay app after payment.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <button className="res-btn-secondary" onClick={() => setStep(3)} disabled={verifying}>← Back</button>
+                <button className="res-btn-primary" onClick={handlePhonePayVerify} disabled={verifying}>
+                  {verifying ? 'Verifying...' : 'Verify & Confirm Booking'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 4: Card step (foreign guests — Stripe) ── */}
           {/* Elements is mounted once when clientSecret arrives and stays mounted   */}
           {/* so the Stripe iframe never gets destroyed and recreated on re-renders  */}
           {clientSecret && (
-            <div style={{ display: step === 4 ? 'block' : 'none' }}>
+            <div style={{ display: step === 4 && guestType === 'foreign' ? 'block' : 'none' }}>
               <Elements stripe={stripePromise}>
                 <StripeCardForm
                   clientSecret={clientSecret}
@@ -586,7 +728,7 @@ function ReserveContent() {
                 <PartyPopper size={56} strokeWidth={1.2} />
               </div>
               <h2 style={{ fontFamily: S.cinzel, fontWeight: 600, fontSize: 'clamp(1.5rem, 3vw, 2.2rem)', color: S.navy, marginBottom: '0.75rem' }}>
-                {policy === 'non_refundable' ? 'Booking Paid & Confirmed' : 'Reservation Confirmed'}
+                {guestType === 'nepali' ? 'Deposit Verified — Booking Confirmed' : policy === 'non_refundable' ? 'Booking Paid & Confirmed' : 'Reservation Confirmed'}
               </h2>
               <div style={{ width: '6rem', height: '1px', background: S.divider, margin: '1.25rem auto' }} />
               <p style={{ fontFamily: S.cormo, fontStyle: 'italic', color: S.muted, fontSize: '1.1rem', marginBottom: '2.5rem' }}>
@@ -594,7 +736,17 @@ function ReserveContent() {
               </p>
 
               <div style={{ background: S.navy, padding: '2rem', border: `1px solid hsl(43 72% 55% / 0.2)`, maxWidth: '30rem', margin: '0 auto 2.5rem', textAlign: 'left' }}>
-                {[
+                {(guestType === 'nepali' ? [
+                  ['Booking Reference', confirmation.bookingRef],
+                  ['Room',             selectedRoom?.name],
+                  ['Check-In',         new Date(form.checkInDate).toDateString()],
+                  ['Check-Out',        new Date(form.checkOutDate).toDateString()],
+                  ['Nights',           String(nights)],
+                  ['Rate',             'Non-Refundable (Nepali Guest)'],
+                  ['Total',            `NPR ${totalCost.toFixed(2)}`],
+                  ['Deposit Paid',     `NPR ${depositAmount.toFixed(2)} via PhonePay`],
+                  ['Balance Due',      `NPR ${(totalCost - depositAmount).toFixed(2)} at check-in`],
+                ] : [
                   ['Booking Reference', confirmation.bookingRef],
                   ['Room',             selectedRoom?.name],
                   ['Check-In',         new Date(form.checkInDate).toDateString()],
@@ -603,7 +755,7 @@ function ReserveContent() {
                   ['Rate',             policy === 'non_refundable' ? 'Non-Refundable (10% off)' : 'Flexible'],
                   ['Total',            `$${totalCost.toFixed(2)}`],
                   ['Payment',          policy === 'non_refundable' ? 'Paid in full' : `Card held — $${selectedRoom ? selectedRoom.pricePerNight : 0} (pay balance at checkout)`],
-                ].map(([k, v]) => (
+                ]).map(([k, v]) => (
                   <div key={String(k)} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid hsl(43 72% 55% / 0.1)', paddingBottom: '0.625rem', marginBottom: '0.625rem', gap: '1rem' }}>
                     <span style={{ fontFamily: S.cinzel, fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(245,236,215,0.45)', flexShrink: 0 }}>{k}</span>
                     <span style={{ fontFamily: S.cinzel, fontSize: '0.82rem', color: k === 'Booking Reference' ? S.gold : 'rgba(245,236,215,0.85)', fontWeight: k === 'Booking Reference' ? 700 : 400, textAlign: 'right' }}>{v}</span>
@@ -611,7 +763,7 @@ function ReserveContent() {
                 ))}
               </div>
 
-              {policy === 'flexible' && (
+              {guestType === 'foreign' && policy === 'flexible' && (
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: '0.5rem', marginBottom: '2rem', maxWidth: '28rem', margin: '0 auto 2rem' }}>
                   <CheckCircle2 size={16} color="#22c55e" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <p style={{ fontFamily: S.raleway, fontSize: '0.82rem', color: S.muted, textAlign: 'left' }}>

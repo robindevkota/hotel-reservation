@@ -17,6 +17,14 @@
  *  I. Bill consistency — admin vs guest see identical data
  *  J. Inventory — ingredients, recipes, sell, consume, stocktake, variance
  *  K. Spa slot collision — online vs walk-in, date/time guards, concurrency race
+ *  L. Early checkout guards — flexible trim, non-refundable keep, validation
+ *  M. Linked second room — walk-in for active guest, separate bills, conflict guards
+ *  N. Non-refundable split billing — prepaid room excluded from grandTotal, food/spa still accrue
+ *  O. Date-range availability — confirmed reservation blocks room for those dates in /rooms/availability
+ *     (backs the reserve-page UI fix that greys out unavailable rooms when dates are selected)
+ *  P. Spa payment method — cash vs room_bill on complete, addedToBill guard, restaurant dining on bill
+ *  Q. Admin order flow — admin creates order for checked-in guest, cash vs room_bill, bill guard
+ *  R. Walk-in customer flow — external dine_in + spa walk-ins, revenue in analytics, access control
  */
 
 import { test, expect } from '@playwright/test';
@@ -2350,6 +2358,1447 @@ test.describe('K. Spa Slot Collision', () => {
     expect(successes.length).toBe(1);
     expect(failures.length).toBe(1);
     expect(failures[0].message ?? failures[0].error).toMatch(/already booked|not available|slot/i);
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// L. EARLY CHECKOUT GUARDS
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('L. Early Checkout Guards', () => {
+
+  test('L-01 flexible: early checkout trims room charge to nights stayed', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const activeRes = await get('/checkin/active', token).catch(() => ({}));
+    const occupiedIds = new Set(((activeRes as any).guests ?? []).map((g: any) => String(g.room)));
+    const room = allRooms.find((r: any) => r.isAvailable === true && !occupiedIds.has(String(r._id)));
+    if (!room) { test.skip(true, 'No available rooms'); return; }
+
+    // Book 5 nights (flexible)
+    const checkIn  = daysFromNow(600);
+    const checkOut = daysFromNow(600, 5);
+    const res = await post('/reservations', {
+      guest: { name: 'EarlyLeaver', email: `el${Date.now()}@t.com`, phone: '+1' },
+      room: room._id, checkInDate: checkIn, checkOutDate: checkOut, numberOfGuests: 1,
+      cancellationPolicy: 'flexible',
+    }, token);
+    if (!res.success) { test.skip(true, `Reservation failed: ${res.message}`); return; }
+    _createdReservationIds.push(res.reservation._id);
+    await patch(`/reservations/${res.reservation._id}/confirm`, {}, token);
+    const ci = await post(`/checkin/${res.reservation._id}`, {}, token);
+    if (!ci.success) { test.skip(true, 'Check-in failed'); return; }
+    _createdGuestIds.push(ci.guest._id);
+
+    // Early checkout after 1 night
+    const earlyRes = await post(`/checkin/early-checkout/${ci.guest._id}`, { nightsStayed: 1 }, token);
+    expect(earlyRes.success).toBe(true);
+    expect(earlyRes.nightsStayed).toBe(1);
+    expect(earlyRes.policy).toBe('flexible');
+
+    // Bill room charge = 1 × pricePerNight
+    const bill = earlyRes.bill;
+    const roomItem = bill.lineItems.find((li: any) => li.type === 'room');
+    expect(roomItem).toBeTruthy();
+    expect(roomItem.amount).toBeCloseTo(room.pricePerNight, 1);
+
+    // Room is freed
+    const roomAfter = ((await get('/rooms', token)).rooms ?? []).find((r: any) => r._id === room._id);
+    expect(roomAfter?.isAvailable).toBe(true);
+  });
+
+  test('L-02 non-refundable: early checkout does not change room charge', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const activeRes = await get('/checkin/active', token).catch(() => ({}));
+    const occupiedIds = new Set(((activeRes as any).guests ?? []).map((g: any) => String(g.room)));
+    const room = allRooms.find((r: any) => r.isAvailable === true && !occupiedIds.has(String(r._id)));
+    if (!room) { test.skip(true, 'No available rooms'); return; }
+
+    const nights = 4;
+    const checkIn  = daysFromNow(610);
+    const checkOut = daysFromNow(610, nights);
+    const res = await post('/reservations', {
+      guest: { name: 'EarlyNR', email: `enr${Date.now()}@t.com`, phone: '+1' },
+      room: room._id, checkInDate: checkIn, checkOutDate: checkOut, numberOfGuests: 1,
+      cancellationPolicy: 'non_refundable',
+    }, token);
+    if (!res.success) { test.skip(true, `Reservation failed: ${res.message}`); return; }
+    _createdReservationIds.push(res.reservation._id);
+    await patch(`/reservations/${res.reservation._id}/confirm`, {}, token);
+    const ci = await post(`/checkin/${res.reservation._id}`, {}, token);
+    if (!ci.success) { test.skip(true, 'Check-in failed'); return; }
+    _createdGuestIds.push(ci.guest._id);
+
+    const originalRoomCharge = ci.bill.lineItems.find((li: any) => li.type === 'room')?.amount;
+
+    // Early checkout after 1 night — hotel keeps full amount
+    const earlyRes = await post(`/checkin/early-checkout/${ci.guest._id}`, { nightsStayed: 1 }, token);
+    expect(earlyRes.success).toBe(true);
+    expect(earlyRes.policy).toBe('non_refundable');
+
+    const roomItem = earlyRes.bill.lineItems.find((li: any) => li.type === 'room');
+    expect(roomItem.amount).toBeCloseTo(originalRoomCharge, 1);
+  });
+
+  test('L-03 nightsStayed >= totalNights is rejected', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    // totalNights from makeCheckedInGuest is 2 — passing 2 should be rejected
+    const r = await post(`/checkin/early-checkout/${g.guestId}`, { nightsStayed: 2 }, token);
+    expect(r.success).toBe(false);
+    expect(r.message).toMatch(/less than booked nights/i);
+  });
+
+  test('L-04 nightsStayed = 0 is rejected', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const r = await post(`/checkin/early-checkout/${g.guestId}`, { nightsStayed: 0 }, token);
+    expect(r.success).toBe(false);
+    expect(r.message).toMatch(/positive integer/i);
+  });
+
+  test('L-05 early checkout on already checked-out guest is rejected', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    // Normal checkout first
+    await post(`/checkin/checkout/${g.guestId}`, {}, token);
+
+    const r = await post(`/checkin/early-checkout/${g.guestId}`, { nightsStayed: 1 }, token);
+    expect(r.success).toBe(false);
+    expect(r.message).toMatch(/already checked out/i);
+  });
+
+  test('L-06 unauthenticated cannot call early-checkout', async () => {
+    const r = await post('/checkin/early-checkout/000000000000000000000001', { nightsStayed: 1 });
+    expect([401, 403]).toContain((r as any).statusCode ?? 401);
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// M. LINKED SECOND ROOM (WALK-IN FOR ACTIVE GUEST)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('M. Linked Second Room', () => {
+
+  test('M-01 active guest can get a second room via walk-in-linked', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const activeRes = await get('/checkin/active', token).catch(() => ({}));
+    const occupiedIds = new Set(((activeRes as any).guests ?? []).map((g: any) => String(g.room)));
+    const freeRooms = allRooms.filter((r: any) => r.isAvailable === true && !occupiedIds.has(String(r._id)));
+    if (freeRooms.length < 2) { test.skip(true, 'Need at least 2 free rooms'); return; }
+
+    // Check in primary guest on room[0]
+    const primaryRoom = freeRooms[0];
+    const secondRoom  = freeRooms[1];
+
+    const checkIn  = daysFromNow(700);
+    const checkOut = daysFromNow(700, 3);
+    const res = await post('/reservations', {
+      guest: { name: 'Primary Guest', email: `primary${Date.now()}@t.com`, phone: '+1' },
+      room: primaryRoom._id, checkInDate: checkIn, checkOutDate: checkOut, numberOfGuests: 1,
+    }, token);
+    if (!res.success) { test.skip(true, 'Primary reservation failed'); return; }
+    _createdReservationIds.push(res.reservation._id);
+    await patch(`/reservations/${res.reservation._id}/confirm`, {}, token);
+    const ci = await post(`/checkin/${res.reservation._id}`, {}, token);
+    if (!ci.success) { test.skip(true, 'Primary check-in failed'); return; }
+    _createdGuestIds.push(ci.guest._id);
+    const primaryGuestId = ci.guest._id;
+
+    // Request second room via walk-in-linked
+    const linked = await post('/reservations/walk-in-linked', {
+      existingGuestId: primaryGuestId,
+      room: secondRoom._id,
+      checkInDate: checkIn,
+      checkOutDate: checkOut,
+      numberOfGuests: 1,
+    }, token);
+    expect(linked.success).toBe(true);
+    expect(linked.linkedToGuestId).toBe(primaryGuestId);
+    expect(linked.reservation.status).toBe('confirmed');
+    _createdReservationIds.push(linked.reservation._id);
+
+    // Check in the linked reservation (passing linkedToGuestId in body)
+    const ci2 = await post(`/checkin/${linked.reservation._id}`, { linkedToGuestId: primaryGuestId }, token);
+    expect(ci2.success).toBe(true);
+    _createdGuestIds.push(ci2.guest._id);
+
+    // Second guest has its own bill
+    expect(ci2.bill).toBeTruthy();
+    expect(ci2.bill.lineItems[0].type).toBe('room');
+
+    // Second guest doc is linked back to primary
+    expect(ci2.guest.linkedToGuestId).toBe(primaryGuestId);
+  });
+
+  test('M-02 walk-in-linked requires existingGuestId', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const room = allRooms.find((r: any) => r.isAvailable === true);
+    if (!room) { test.skip(true, 'No free room'); return; }
+
+    const r = await post('/reservations/walk-in-linked', {
+      room: room._id,
+      checkInDate: daysFromNow(710),
+      checkOutDate: daysFromNow(710, 2),
+      numberOfGuests: 1,
+    }, token);
+    expect(r.success).toBe(false);
+    expect(r.message).toMatch(/existingGuestId/i);
+  });
+
+  test('M-03 walk-in-linked rejects non-existent existingGuestId', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const room = allRooms.find((r: any) => r.isAvailable === true);
+    if (!room) { test.skip(true, 'No free room'); return; }
+
+    const r = await post('/reservations/walk-in-linked', {
+      existingGuestId: '000000000000000000000001',
+      room: room._id,
+      checkInDate: daysFromNow(710),
+      checkOutDate: daysFromNow(710, 2),
+      numberOfGuests: 1,
+    }, token);
+    expect(r.success).toBe(false);
+    expect(r.message).toMatch(/not found/i);
+  });
+
+  test('M-04 walk-in-linked rejects checked-out (inactive) guest', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    // Checkout the guest first
+    await post(`/checkin/checkout/${g.guestId}`, {}, token);
+
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const room = allRooms.find((r: any) => r.isAvailable === true);
+    if (!room) { test.skip(true, 'No free room for second room'); return; }
+
+    const r = await post('/reservations/walk-in-linked', {
+      existingGuestId: g.guestId,
+      room: room._id,
+      checkInDate: daysFromNow(720),
+      checkOutDate: daysFromNow(720, 2),
+      numberOfGuests: 1,
+    }, token);
+    expect(r.success).toBe(false);
+    expect(r.message).toMatch(/not currently checked in/i);
+  });
+
+  test('M-05 walk-in-linked rejects room conflict (already reserved for those dates)', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    // Book a room for conflicting dates
+    const checkIn  = daysFromNow(730);
+    const checkOut = daysFromNow(730, 3);
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const activeRes2 = await get('/checkin/active', token).catch(() => ({}));
+    const occupiedIds2 = new Set(((activeRes2 as any).guests ?? []).map((x: any) => String(x.room)));
+    const freeRoom = allRooms.find((r: any) => r.isAvailable === true && !occupiedIds2.has(String(r._id)) && r._id !== g.roomId);
+    if (!freeRoom) { test.skip(true, 'No second free room'); return; }
+
+    // Pre-book it so it has a confirmed reservation for those dates
+    const preRes = await post('/reservations', {
+      guest: { name: 'Blocker', email: `blocker${Date.now()}@t.com`, phone: '+1' },
+      room: freeRoom._id, checkInDate: checkIn, checkOutDate: checkOut, numberOfGuests: 1,
+    }, token);
+    if (preRes.success) {
+      _createdReservationIds.push(preRes.reservation._id);
+      await patch(`/reservations/${preRes.reservation._id}/confirm`, {}, token);
+    }
+
+    const r = await post('/reservations/walk-in-linked', {
+      existingGuestId: g.guestId,
+      room: freeRoom._id,
+      checkInDate: checkIn,
+      checkOutDate: checkOut,
+      numberOfGuests: 1,
+    }, token);
+    expect(r.success).toBe(false);
+    expect([400, 409]).toContain(r.statusCode ?? 409);
+  });
+
+  test('M-06 unauthenticated cannot call walk-in-linked', async () => {
+    const r = await post('/reservations/walk-in-linked', {
+      existingGuestId: '000000000000000000000001',
+      room: '000000000000000000000002',
+      checkInDate: daysFromNow(740),
+      checkOutDate: daysFromNow(740, 2),
+      numberOfGuests: 1,
+    });
+    expect([401, 403]).toContain((r as any).statusCode ?? 401);
+  });
+
+});
+
+// ── Suite N — Non-refundable split billing ────────────────────────────────────
+// Verifies that non-refundable guests who pre-paid the room at booking are only
+// charged food/spa/other at checkout (room excluded from grandTotal).
+// Also verifies flexible guests still include room charge in the grand total.
+
+test.describe('Suite N — Non-refundable split billing', () => {
+
+  // Helper: create a reservation + check in, optionally as non-refundable+paidUpfront
+  async function makeNRGuest(token: string, nonRefundable: boolean): Promise<{
+    guestId: string; billId: string; roomId: string; roomPrice: number;
+  } | null> {
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const activeRes = await get('/checkin/active', token).catch(() => ({}));
+    const occupiedIds = new Set(((activeRes as any).guests ?? []).map((g: any) => String(g.room)));
+    const room = allRooms.find((r: any) => r.isAvailable && !occupiedIds.has(String(r._id)));
+    if (!room) return null;
+
+    const ci = daysFromNow(800);
+    const co = daysFromNow(800, 3);
+    const email = `nr${Date.now()}@edge.test`;
+
+    const resR = await post('/reservations', {
+      guest: { name: 'Edge NR Guest', email, phone: '+1' },
+      room: room._id,
+      checkInDate: ci,
+      checkOutDate: co,
+      numberOfGuests: 1,
+      ...(nonRefundable ? { cancellationPolicy: 'non_refundable', paidUpfront: true } : {}),
+    }, token);
+    if (!resR.success) return null;
+    _createdReservationIds.push(resR.reservation._id);
+
+    await patch(`/reservations/${resR.reservation._id}/confirm`, {}, token);
+
+    // For non-refundable guests, mark as paid upfront (simulates Stripe chargeUpfront success)
+    if (nonRefundable) {
+      await patch(`/reservations/${resR.reservation._id}/mark-paid-upfront`, {}, token);
+    }
+
+    const ciR = await post(`/checkin/${resR.reservation._id}`, {}, token);
+    if (!ciR.success) return null;
+    _createdGuestIds.push(ciR.guest._id);
+
+    return {
+      guestId: ciR.guest._id,
+      billId: ciR.bill._id,
+      roomId: room._id,
+      roomPrice: room.pricePerNight,
+    };
+  }
+
+  test('N-01 non-refundable guest: prepaidAmount equals room charge at check-in', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeNRGuest(token, true);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const r = await get(`/billing/${g.guestId}`, token);
+    const bill = r.bill ?? r;
+    expect(bill.prepaidAmount).toBeCloseTo(bill.roomCharges, 2);
+    expect(bill.prepaidAmount).toBeGreaterThan(0);
+  });
+
+  test('N-02 non-refundable guest: grandTotal excludes the prepaid room charge', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeNRGuest(token, true);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const r = await get(`/billing/${g.guestId}`, token);
+    const bill = r.bill ?? r;
+
+    // Only food+spa+other accrue (zero here — fresh bill)
+    expect(bill.grandTotal).toBeCloseTo(0, 2);
+    expect(bill.totalAmount).toBeCloseTo(0, 2);
+    expect(bill.taxAmount).toBeCloseTo(0, 2);
+  });
+
+  test('N-03 non-refundable guest: food charge added on top, VAT on food only', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeNRGuest(token, true);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const foodAmount = 80;
+    // addManualCharge always posts as type 'other' — foodCharges won't increase
+    const addR = await post(`/billing/${g.guestId}/add`, {
+      description: 'In-room dining (manual)', amount: foodAmount,
+    }, token);
+    expect(addR.success).toBe(true);
+
+    const r = await get(`/billing/${g.guestId}`, token);
+    const bill = r.bill ?? r;
+
+    expect(bill.otherCharges).toBeCloseTo(foodAmount, 2);
+    // grandTotal = charge + 13% VAT only — room excluded
+    const expectedTotal = parseFloat((foodAmount * 1.13).toFixed(2));
+    expect(bill.grandTotal).toBeCloseTo(expectedTotal, 1);
+    // roomCharges still recorded but excluded from totalAmount
+    expect(bill.roomCharges).toBeGreaterThan(0);
+    expect(bill.totalAmount).toBeCloseTo(foodAmount, 2);
+  });
+
+  test('N-04 non-refundable guest: bill finalised at checkout — only food+spa+other due', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeNRGuest(token, true);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const spaAmount = 120;
+    await post(`/billing/${g.guestId}/add`, {
+      description: 'Hot stone massage', amount: spaAmount,
+    }, token);
+
+    const coR = await post(`/checkin/checkout/${g.guestId}`, {}, token);
+    expect(coR.success).toBe(true);
+    _createdGuestIds.splice(_createdGuestIds.indexOf(g.guestId), 1); // already checked out
+
+    const r = await get(`/billing/${g.guestId}`, token);
+    const bill = r.bill ?? r;
+    expect(bill.status).toBe('pending_payment');
+
+    // Grand total = spa + 13% only
+    const expected = parseFloat((spaAmount * 1.13).toFixed(2));
+    expect(bill.grandTotal).toBeCloseTo(expected, 1);
+  });
+
+  test('N-05 flexible guest: grandTotal includes room charge (no prepaidAmount)', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeNRGuest(token, false); // flexible (default)
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const r = await get(`/billing/${g.guestId}`, token);
+    const bill = r.bill ?? r;
+
+    expect(bill.prepaidAmount ?? 0).toBe(0);
+    // grandTotal includes room charges + VAT
+    const expectedGrand = parseFloat((bill.totalAmount * 1.13).toFixed(2));
+    expect(bill.grandTotal).toBeCloseTo(expectedGrand, 1);
+    expect(bill.roomCharges).toBeGreaterThan(0);
+    expect(bill.grandTotal).toBeGreaterThan(0);
+  });
+
+  test('N-06 non-refundable guest: grandTotal is zero even after checkout (no extra charges)', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeNRGuest(token, true);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const coR = await post(`/checkin/checkout/${g.guestId}`, {}, token);
+    expect(coR.success).toBe(true);
+    _createdGuestIds.splice(_createdGuestIds.indexOf(g.guestId), 1);
+
+    const r = await get(`/billing/${g.guestId}`, token);
+    const bill = r.bill ?? r;
+    expect(bill.status).toBe('pending_payment');
+    expect(bill.grandTotal).toBeCloseTo(0, 2);
+    expect(bill.prepaidAmount).toBeGreaterThan(0);
+  });
+
+});
+
+// ── Suite O — Date-range availability ────────────────────────────────────────
+// Verifies that GET /rooms/availability?checkIn=&checkOut= correctly marks rooms
+// as unavailable when they have a confirmed or checked-in reservation overlapping
+// those dates — the fix that prevents the reserve-page from showing booked rooms.
+
+test.describe('Suite O — Date-range availability', () => {
+
+  const BASE = 820; // well beyond any other suite's date range
+
+  test('O-01 confirmed reservation blocks room for exact dates', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const room = allRooms.find((r: any) => r.isAvailable);
+    if (!room) { test.skip(true, 'No available room'); return; }
+
+    const ci = daysFromNow(BASE);
+    const co = daysFromNow(BASE, 3);
+
+    const res = await post('/reservations', {
+      guest: { name: 'O Guest 1', email: `o1.${Date.now()}@edge.test`, phone: '+1' },
+      room: room._id, checkInDate: ci, checkOutDate: co, numberOfGuests: 1,
+    }, token);
+    expect(res.success).toBe(true);
+    _createdReservationIds.push(res.reservation._id);
+    await patch(`/reservations/${res.reservation._id}/confirm`, {}, token);
+
+    const avail = await get(`/rooms/availability?checkIn=${ci}&checkOut=${co}`, token);
+    const blocked = avail.rooms.find((r: any) => r._id === room._id);
+    expect(blocked.isAvailableForDates).toBe(false);
+    expect(['reserved', 'occupied']).toContain(blocked.availabilityStatus);
+  });
+
+  test('O-02 other rooms remain available for those same dates', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const freeRooms = allRooms.filter((r: any) => r.isAvailable);
+    if (freeRooms.length < 2) { test.skip(true, 'Need at least 2 free rooms'); return; }
+
+    const ci = daysFromNow(BASE + 10);
+    const co = daysFromNow(BASE + 13);
+
+    // Block only the first room
+    const res = await post('/reservations', {
+      guest: { name: 'O Guest 2', email: `o2.${Date.now()}@edge.test`, phone: '+1' },
+      room: freeRooms[0]._id, checkInDate: ci, checkOutDate: co, numberOfGuests: 1,
+    }, token);
+    if (res.success) {
+      _createdReservationIds.push(res.reservation._id);
+      await patch(`/reservations/${res.reservation._id}/confirm`, {}, token);
+    }
+
+    const avail = await get(`/rooms/availability?checkIn=${ci}&checkOut=${co}`, token);
+    const availableForDates = avail.rooms.filter((r: any) => r.isAvailableForDates !== false);
+    // At least one other room should still be free
+    expect(availableForDates.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('O-03 pending reservation does NOT block availability (only confirmed/checked_in do)', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const room = allRooms.find((r: any) => r.isAvailable);
+    if (!room) { test.skip(true, 'No available room'); return; }
+
+    const ci = daysFromNow(BASE + 20);
+    const co = daysFromNow(BASE + 23);
+
+    // Create but do NOT confirm — stays pending
+    const res = await post('/reservations', {
+      guest: { name: 'O Guest 3', email: `o3.${Date.now()}@edge.test`, phone: '+1' },
+      room: room._id, checkInDate: ci, checkOutDate: co, numberOfGuests: 1,
+    }, token);
+    expect(res.success).toBe(true);
+    _createdReservationIds.push(res.reservation._id);
+    // status is 'pending' — intentionally not confirmed
+
+    const avail = await get(`/rooms/availability?checkIn=${ci}&checkOut=${co}`, token);
+    const entry = avail.rooms.find((r: any) => r._id === room._id);
+    // Pending does NOT block the room
+    expect(entry.isAvailableForDates).toBe(true);
+  });
+
+  test('O-04 adjacent dates (checkout = next guest check-in) are allowed', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const room = allRooms.find((r: any) => r.isAvailable);
+    if (!room) { test.skip(true, 'No available room'); return; }
+
+    const firstIn  = daysFromNow(BASE + 30);
+    const firstOut = daysFromNow(BASE + 33); // checkout day
+    const secondIn = daysFromNow(BASE + 33); // same day = adjacent, not overlapping
+    const secondOut= daysFromNow(BASE + 36);
+
+    const res = await post('/reservations', {
+      guest: { name: 'O Guest 4a', email: `o4a.${Date.now()}@edge.test`, phone: '+1' },
+      room: room._id, checkInDate: firstIn, checkOutDate: firstOut, numberOfGuests: 1,
+    }, token);
+    if (res.success) {
+      _createdReservationIds.push(res.reservation._id);
+      await patch(`/reservations/${res.reservation._id}/confirm`, {}, token);
+    }
+
+    // Second guest's dates start exactly when first ends — should NOT be blocked
+    const avail = await get(`/rooms/availability?checkIn=${secondIn}&checkOut=${secondOut}`, token);
+    const entry = avail.rooms.find((r: any) => r._id === room._id);
+    expect(entry.isAvailableForDates).toBe(true);
+  });
+
+  test('O-05 partial date overlap blocks the room', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const room = allRooms.find((r: any) => r.isAvailable);
+    if (!room) { test.skip(true, 'No available room'); return; }
+
+    const ci = daysFromNow(BASE + 40);
+    const co = daysFromNow(BASE + 44);
+
+    const res = await post('/reservations', {
+      guest: { name: 'O Guest 5', email: `o5.${Date.now()}@edge.test`, phone: '+1' },
+      room: room._id, checkInDate: ci, checkOutDate: co, numberOfGuests: 1,
+    }, token);
+    if (res.success) {
+      _createdReservationIds.push(res.reservation._id);
+      await patch(`/reservations/${res.reservation._id}/confirm`, {}, token);
+    }
+
+    // Query overlaps by 1 day on each end
+    const queryIn  = daysFromNow(BASE + 42);
+    const queryOut = daysFromNow(BASE + 46);
+    const avail = await get(`/rooms/availability?checkIn=${queryIn}&checkOut=${queryOut}`, token);
+    const entry = avail.rooms.find((r: any) => r._id === room._id);
+    expect(entry.isAvailableForDates).toBe(false);
+  });
+
+  test('O-06 checked-in guest blocks room for their stay dates', async () => {
+    const token = await apiLoginAsAdmin();
+    const allRooms = (await get('/rooms', token)).rooms ?? [];
+    const room = allRooms.find((r: any) => r.isAvailable);
+    if (!room) { test.skip(true, 'No available room'); return; }
+
+    const ci = daysFromNow(BASE + 50);
+    const co = daysFromNow(BASE + 53);
+
+    const res = await post('/reservations', {
+      guest: { name: 'O Guest 6', email: `o6.${Date.now()}@edge.test`, phone: '+1' },
+      room: room._id, checkInDate: ci, checkOutDate: co, numberOfGuests: 1,
+    }, token);
+    if (!res.success) { test.skip(true, 'Reservation failed'); return; }
+    _createdReservationIds.push(res.reservation._id);
+    await patch(`/reservations/${res.reservation._id}/confirm`, {}, token);
+
+    const ciR = await post(`/checkin/${res.reservation._id}`, {}, token);
+    if (ciR.success) _createdGuestIds.push(ciR.guest._id);
+
+    // Room is now physically checked in — availability should still show it blocked
+    const avail = await get(`/rooms/availability?checkIn=${ci}&checkOut=${co}`, token);
+    const entry = avail.rooms.find((r: any) => r._id === room._id);
+    expect(entry.isAvailableForDates).toBe(false);
+    expect(entry.availabilityStatus).toBe('occupied');
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P. SPA PAYMENT METHOD — cash vs room_bill, addedToBill guard, restaurant dining
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// P-01  Complete spa with paymentMethod=room_bill → line item added to bill
+// P-02  Complete spa with paymentMethod=cash → NO line item on bill, spaCharges unchanged
+// P-03  addedToBill guard: completing same booking again (room_bill) does not double-charge
+// P-04  addedToBill guard: completing cash-paid booking again does not add line item
+// P-05  spaPaymentMethod=cash stored on booking after cash completion
+// P-06  Invalid paymentMethod value rejected (400)
+// P-07  Restaurant dining charge added via admin manual charge appears on bill as 'other'
+// P-08  Two restaurant charges accumulate correctly; VAT recalculated each time
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Walk a spa booking to arrived+in_progress state, ready for completion */
+async function walkSpaToInProgress(bookingId: string, adminToken: string) {
+  await patch(`/spa/bookings/${bookingId}/status`, { status: 'confirmed' }, adminToken);
+  await patch(`/spa/bookings/${bookingId}/arrive`, {}, adminToken);
+  await patch(`/spa/bookings/${bookingId}/status`, { status: 'in_progress' }, adminToken);
+}
+
+const _pSpaEpoch = 3000 + Math.floor(Math.random() * 4000);
+let _pSpaCounter = 0;
+function pSpaDate(): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + _pSpaEpoch + _pSpaCounter);
+  _pSpaCounter++;
+  return d.toISOString().split('T')[0];
+}
+
+test.describe('P. Spa Payment Method & Restaurant Dining', () => {
+
+  test('P-01 complete spa room_bill → line item added to guest bill', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const svcs = (await get('/spa/services')).services ?? [];
+    const svc = svcs.find((s: any) => s.isAvailable);
+    if (!svc) { test.skip(true, 'No spa service'); return; }
+
+    // Admin walk-in booking (confirmed immediately)
+    const { data: wk } = await (async () => {
+      const r = await fetch(`${API_URL}/spa/walkin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          service: svc._id, guestId: g.guestId,
+          date: pSpaDate(), startTime: '10:00',
+        }),
+      });
+      return { data: await r.json() };
+    })();
+    if (!wk.success) { test.skip(true, 'Walk-in booking failed'); return; }
+    const bookingId = wk.booking._id;
+
+    const billBefore = (await get(`/billing/${g.guestId}`, token)).bill;
+    const spaBefore = billBefore?.spaCharges ?? 0;
+
+    await walkSpaToInProgress(bookingId, token);
+
+    // Complete with room_bill (default)
+    const { data: complD } = await (async () => {
+      const r = await fetch(`${API_URL}/spa/bookings/${bookingId}/complete`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ paymentMethod: 'room_bill' }),
+      });
+      return { data: await r.json() };
+    })();
+    expect(complD.success).toBe(true);
+    expect(complD.booking.spaPaymentMethod).toBe('room_bill');
+    expect(complD.booking.addedToBill).toBe(true);
+
+    const billAfter = (await get(`/billing/${g.guestId}`, token)).bill;
+    expect(billAfter.spaCharges).toBeGreaterThan(spaBefore);
+    const spaItem = billAfter.lineItems.find((li: any) => li.type === 'spa');
+    expect(spaItem).toBeTruthy();
+    expect(spaItem.amount).toBeCloseTo(svc.price, 2);
+  });
+
+  test('P-02 complete spa cash → NO spa line item on bill, spaCharges unchanged', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const svcs = (await get('/spa/services')).services ?? [];
+    const svc = svcs.find((s: any) => s.isAvailable);
+    if (!svc) { test.skip(true, 'No spa service'); return; }
+
+    const wkRes = await fetch(`${API_URL}/spa/walkin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        service: svc._id, guestId: g.guestId,
+        date: pSpaDate(), startTime: '10:00',
+      }),
+    });
+    const wk = await wkRes.json();
+    if (!wk.success) { test.skip(true, 'Walk-in booking failed'); return; }
+    const bookingId = wk.booking._id;
+
+    const billBefore = (await get(`/billing/${g.guestId}`, token)).bill;
+    const spaBefore = billBefore?.spaCharges ?? 0;
+    const linesBefore = billBefore?.lineItems?.length ?? 0;
+
+    await walkSpaToInProgress(bookingId, token);
+
+    // Complete with cash
+    const complRes = await fetch(`${API_URL}/spa/bookings/${bookingId}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ paymentMethod: 'cash' }),
+    });
+    const complD = await complRes.json();
+    expect(complD.success).toBe(true);
+    expect(complD.booking.spaPaymentMethod).toBe('cash');
+    expect(complD.booking.addedToBill).toBe(true);
+
+    // Bill must NOT have a new spa line item
+    const billAfter = (await get(`/billing/${g.guestId}`, token)).bill;
+    expect(billAfter.spaCharges).toBeCloseTo(spaBefore, 2);
+    expect(billAfter.lineItems.length).toBe(linesBefore);  // no new line item
+  });
+
+  test('P-03 room_bill booking completed twice: second call is no-op (addedToBill guard)', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const svcs = (await get('/spa/services')).services ?? [];
+    const svc = svcs.find((s: any) => s.isAvailable);
+    if (!svc) { test.skip(true, 'No spa service'); return; }
+
+    const wkRes = await fetch(`${API_URL}/spa/walkin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ service: svc._id, guestId: g.guestId, date: pSpaDate(), startTime: '10:00' }),
+    });
+    const wk = await wkRes.json();
+    if (!wk.success) { test.skip(true, 'Walk-in booking failed'); return; }
+    const bookingId = wk.booking._id;
+
+    await walkSpaToInProgress(bookingId, token);
+
+    // First complete
+    const c1Res = await fetch(`${API_URL}/spa/bookings/${bookingId}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ paymentMethod: 'room_bill' }),
+    });
+    await c1Res.json();
+
+    const billAfterFirst = (await get(`/billing/${g.guestId}`, token)).bill;
+    const spaAfterFirst = billAfterFirst.spaCharges;
+
+    // Second complete attempt — booking is already 'completed', should be rejected
+    const c2Res = await fetch(`${API_URL}/spa/bookings/${bookingId}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ paymentMethod: 'room_bill' }),
+    });
+    const c2D = await c2Res.json();
+    // Must be rejected (can't complete an already-completed booking)
+    expect(c2D.success).toBe(false);
+
+    // spa charges unchanged
+    const billAfterSecond = (await get(`/billing/${g.guestId}`, token)).bill;
+    expect(billAfterSecond.spaCharges).toBeCloseTo(spaAfterFirst, 2);
+  });
+
+  test('P-04 cash-paid booking completed twice: second call rejected, no line item ever added', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const svcs = (await get('/spa/services')).services ?? [];
+    const svc = svcs.find((s: any) => s.isAvailable);
+    if (!svc) { test.skip(true, 'No spa service'); return; }
+
+    const wkRes = await fetch(`${API_URL}/spa/walkin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ service: svc._id, guestId: g.guestId, date: pSpaDate(), startTime: '10:00' }),
+    });
+    const wk = await wkRes.json();
+    if (!wk.success) { test.skip(true, 'Walk-in booking failed'); return; }
+    const bookingId = wk.booking._id;
+
+    await walkSpaToInProgress(bookingId, token);
+
+    // Cash complete
+    await fetch(`${API_URL}/spa/bookings/${bookingId}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ paymentMethod: 'cash' }),
+    });
+
+    const spaBefore = ((await get(`/billing/${g.guestId}`, token)).bill?.spaCharges) ?? 0;
+
+    // Second complete attempt — rejected
+    const c2Res = await fetch(`${API_URL}/spa/bookings/${bookingId}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ paymentMethod: 'room_bill' }),
+    });
+    const c2D = await c2Res.json();
+    expect(c2D.success).toBe(false);
+
+    // No spa charge ever hit the bill
+    const spaAfter = ((await get(`/billing/${g.guestId}`, token)).bill?.spaCharges) ?? 0;
+    expect(spaAfter).toBeCloseTo(spaBefore, 2);
+    expect(spaAfter).toBeCloseTo(0, 2);
+  });
+
+  test('P-05 spaPaymentMethod field stored correctly on booking document', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const svcs = (await get('/spa/services')).services ?? [];
+    const svc = svcs.find((s: any) => s.isAvailable);
+    if (!svc) { test.skip(true, 'No spa service'); return; }
+
+    // Book 1: room_bill
+    const wk1Res = await fetch(`${API_URL}/spa/walkin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ service: svc._id, guestId: g.guestId, date: pSpaDate(), startTime: '10:00' }),
+    });
+    const wk1 = await wk1Res.json();
+    if (!wk1.success) { test.skip(true, 'Walk-in 1 failed'); return; }
+    await walkSpaToInProgress(wk1.booking._id, token);
+    const rb = await fetch(`${API_URL}/spa/bookings/${wk1.booking._id}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ paymentMethod: 'room_bill' }),
+    });
+    const rbD = await rb.json();
+    expect(rbD.booking.spaPaymentMethod).toBe('room_bill');
+
+    // Book 2: cash
+    const wk2Res = await fetch(`${API_URL}/spa/walkin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ service: svc._id, guestId: g.guestId, date: pSpaDate(), startTime: '10:00' }),
+    });
+    const wk2 = await wk2Res.json();
+    if (!wk2.success) { test.skip(true, 'Walk-in 2 failed'); return; }
+    await walkSpaToInProgress(wk2.booking._id, token);
+    const ca = await fetch(`${API_URL}/spa/bookings/${wk2.booking._id}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ paymentMethod: 'cash' }),
+    });
+    const caD = await ca.json();
+    expect(caD.booking.spaPaymentMethod).toBe('cash');
+  });
+
+  test('P-06 invalid paymentMethod value is rejected with 400', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const svcs = (await get('/spa/services')).services ?? [];
+    const svc = svcs.find((s: any) => s.isAvailable);
+    if (!svc) { test.skip(true, 'No spa service'); return; }
+
+    const wkRes = await fetch(`${API_URL}/spa/walkin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ service: svc._id, guestId: g.guestId, date: pSpaDate(), startTime: '10:00' }),
+    });
+    const wk = await wkRes.json();
+    if (!wk.success) { test.skip(true, 'Walk-in failed'); return; }
+
+    await walkSpaToInProgress(wk.booking._id, token);
+
+    const r = await fetch(`${API_URL}/spa/bookings/${wk.booking._id}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ paymentMethod: 'card' }),  // invalid
+    });
+    const d = await r.json();
+    expect(d.success).toBe(false);
+    expect(d.message).toMatch(/paymentMethod|room_bill|cash/i);
+  });
+
+  test('P-07 restaurant dining charge added via admin manual charge appears on bill as type other', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const billBefore = (await get(`/billing/${g.guestId}`, token)).bill;
+    const linesBefore = billBefore?.lineItems?.length ?? 0;
+    const otherBefore = billBefore?.otherCharges ?? 0;
+
+    const chargeAmt = 85;
+    const addRes = await post(`/billing/${g.guestId}/add`, {
+      description: 'Restaurant dining charge',
+      amount: chargeAmt,
+    }, token);
+    expect(addRes.success).toBe(true);
+
+    const billAfter = (await get(`/billing/${g.guestId}`, token)).bill;
+    expect(billAfter.lineItems.length).toBe(linesBefore + 1);
+
+    const diningItem = billAfter.lineItems.find((li: any) => li.description === 'Restaurant dining charge');
+    expect(diningItem).toBeTruthy();
+    expect(diningItem.type).toBe('other');  // addManualCharge always uses type 'other'
+    expect(diningItem.amount).toBeCloseTo(chargeAmt, 2);
+
+    expect(billAfter.otherCharges).toBeCloseTo(otherBefore + chargeAmt, 2);
+
+    // VAT recalculated correctly after the new charge
+    const expectedTax = Math.round(billAfter.totalAmount * 0.13 * 100) / 100;
+    expect(billAfter.taxAmount).toBeCloseTo(expectedTax, 1);
+  });
+
+  test('P-08 two restaurant charges accumulate; VAT recalculated each time', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const charge1 = 120;
+    const charge2 = 75;
+
+    await post(`/billing/${g.guestId}/add`, { description: 'Lunch at restaurant', amount: charge1 }, token);
+    await post(`/billing/${g.guestId}/add`, { description: 'Dinner at restaurant', amount: charge2 }, token);
+
+    const bill = (await get(`/billing/${g.guestId}`, token)).bill;
+
+    // Both charges present
+    expect(bill.lineItems.filter((li: any) => li.type === 'other').length).toBeGreaterThanOrEqual(2);
+    expect(bill.otherCharges).toBeGreaterThanOrEqual(charge1 + charge2);
+
+    // VAT correct on final total
+    const expectedTax = Math.round(bill.totalAmount * 0.13 * 100) / 100;
+    expect(bill.taxAmount).toBeCloseTo(expectedTax, 1);
+    expect(bill.grandTotal).toBeCloseTo(bill.totalAmount + bill.taxAmount, 1);
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Q. ADMIN ORDER FLOW — admin creates order for checked-in guest
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Q-01  Admin creates order (room_bill) → order appears in kitchen board, isAdminOrder=true
+// Q-02  Admin creates order (cash) → orderPaymentMethod=cash, isAdminOrder=true
+// Q-03  Admin order room_bill: on deliver → food_order line item added to guest bill
+// Q-04  Admin order cash: on deliver → NO line item on bill, addedToBill=true
+// Q-05  Guest without active check-in rejected (404)
+// Q-06  Order with no items rejected (400)
+// Q-07  Order with unavailable menu item rejected (400)
+// Q-08  Invalid orderPaymentMethod rejected (400)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Advance an admin order through all statuses to delivered */
+async function deliverAdminOrder(orderId: string, adminToken: string) {
+  for (const status of ['accepted', 'preparing', 'ready', 'delivering', 'delivered']) {
+    const r = await fetch(`${API_URL}/orders/${orderId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+      body: JSON.stringify({ status }),
+    });
+    const d = await r.json();
+    if (!d.success) throw new Error(`Order → ${status} failed: ${JSON.stringify(d)}`);
+  }
+}
+
+test.describe('Q. Admin Order Flow', () => {
+
+  test('Q-01 admin creates order (room_bill) → isAdminOrder=true, appears in /orders', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const menus = (await get('/menu', token)).menuItems ?? [];
+    const item = menus.find((m: any) => m.isAvailable);
+    if (!item) { test.skip(true, 'No available menu item'); return; }
+
+    const r = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        guestId: g.guestId,
+        items: [{ menuItem: item._id, quantity: 2 }],
+        orderPaymentMethod: 'room_bill',
+      }),
+    });
+    const d = await r.json();
+    expect(d.success).toBe(true);
+    expect(d.order.isAdminOrder).toBe(true);
+    expect(d.order.orderPaymentMethod).toBe('room_bill');
+    expect(d.order.status).toBe('pending');
+    expect(d.order.totalAmount).toBeCloseTo(item.price * 2, 2);
+
+    // Verify it appears in GET /orders
+    const listD = await get('/orders', token);
+    const found = (listD.orders ?? []).find((o: any) => o._id === d.order._id);
+    expect(found).toBeTruthy();
+  });
+
+  test('Q-02 admin creates order (cash) → orderPaymentMethod=cash', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const menus = (await get('/menu', token)).menuItems ?? [];
+    const item = menus.find((m: any) => m.isAvailable);
+    if (!item) { test.skip(true, 'No available menu item'); return; }
+
+    const r = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        guestId: g.guestId,
+        items: [{ menuItem: item._id, quantity: 1 }],
+        orderPaymentMethod: 'cash',
+      }),
+    });
+    const d = await r.json();
+    expect(d.success).toBe(true);
+    expect(d.order.isAdminOrder).toBe(true);
+    expect(d.order.orderPaymentMethod).toBe('cash');
+  });
+
+  test('Q-03 admin order room_bill delivered → food_order line item added to bill', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const menus = (await get('/menu', token)).menuItems ?? [];
+    const item = menus.find((m: any) => m.isAvailable);
+    if (!item) { test.skip(true, 'No available menu item'); return; }
+
+    const billBefore = (await get(`/billing/${g.guestId}`, token)).bill;
+    const foodBefore = billBefore?.foodCharges ?? 0;
+
+    const createR = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        guestId: g.guestId,
+        items: [{ menuItem: item._id, quantity: 1 }],
+        orderPaymentMethod: 'room_bill',
+      }),
+    });
+    const createD = await createR.json();
+    expect(createD.success).toBe(true);
+
+    await deliverAdminOrder(createD.order._id, token);
+
+    const billAfter = (await get(`/billing/${g.guestId}`, token)).bill;
+    expect(billAfter.foodCharges).toBeGreaterThan(foodBefore);
+
+    const foodItem = billAfter.lineItems.find((li: any) => li.type === 'food_order');
+    expect(foodItem).toBeTruthy();
+    expect(foodItem.amount).toBeCloseTo(item.price, 2);
+    expect(foodItem.description).toMatch(/dine-in|restaurant/i);
+  });
+
+  test('Q-04 admin order cash delivered → NO line item added to bill, addedToBill=true', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const menus = (await get('/menu', token)).menuItems ?? [];
+    const item = menus.find((m: any) => m.isAvailable);
+    if (!item) { test.skip(true, 'No available menu item'); return; }
+
+    const billBefore = (await get(`/billing/${g.guestId}`, token)).bill;
+    const linesBefore = billBefore?.lineItems?.length ?? 0;
+    const foodBefore  = billBefore?.foodCharges ?? 0;
+
+    const createR = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        guestId: g.guestId,
+        items: [{ menuItem: item._id, quantity: 1 }],
+        orderPaymentMethod: 'cash',
+      }),
+    });
+    const createD = await createR.json();
+    expect(createD.success).toBe(true);
+
+    await deliverAdminOrder(createD.order._id, token);
+
+    // order should have addedToBill=true but no line item on bill
+    const listD = await get('/orders', token);
+    const delivered = (listD.orders ?? []).find((o: any) => o._id === createD.order._id);
+    expect(delivered?.addedToBill).toBe(true);
+
+    const billAfter = (await get(`/billing/${g.guestId}`, token)).bill;
+    expect(billAfter.lineItems.length).toBe(linesBefore);
+    expect(billAfter.foodCharges).toBeCloseTo(foodBefore, 2);
+  });
+
+  test('Q-05 admin order for non-existent / inactive guest rejected (404)', async () => {
+    const token = await apiLoginAsAdmin();
+    const menus = (await get('/menu', token)).menuItems ?? [];
+    const item = menus.find((m: any) => m.isAvailable);
+    if (!item) { test.skip(true, 'No available menu item'); return; }
+
+    const fakeGuestId = '000000000000000000000001';
+    const r = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        guestId: fakeGuestId,
+        items: [{ menuItem: item._id, quantity: 1 }],
+        orderPaymentMethod: 'room_bill',
+      }),
+    });
+    const d = await r.json();
+    expect(d.success).toBe(false);
+    expect(r.status).toBe(404);
+  });
+
+  test('Q-06 admin order with empty items array rejected (400)', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const r = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        guestId: g.guestId,
+        items: [],
+        orderPaymentMethod: 'room_bill',
+      }),
+    });
+    // Either 400 from validation or items empty guard
+    expect(r.status).toBeGreaterThanOrEqual(400);
+    expect(r.status).toBeLessThan(500);
+  });
+
+  test('Q-07 admin order with unavailable menu item rejected (400)', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    // Use a fake / non-existent menu item ID
+    const fakeItemId = '000000000000000000000002';
+    const r = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        guestId: g.guestId,
+        items: [{ menuItem: fakeItemId, quantity: 1 }],
+        orderPaymentMethod: 'room_bill',
+      }),
+    });
+    const d = await r.json();
+    expect(d.success).toBe(false);
+    expect(r.status).toBe(400);
+  });
+
+  test('Q-08 invalid orderPaymentMethod rejected (400)', async () => {
+    const token = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(token);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const menus = (await get('/menu', token)).menuItems ?? [];
+    const item = menus.find((m: any) => m.isAvailable);
+    if (!item) { test.skip(true, 'No available menu item'); return; }
+
+    const r = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        guestId: g.guestId,
+        items: [{ menuItem: item._id, quantity: 1 }],
+        orderPaymentMethod: 'card',  // invalid
+      }),
+    });
+    const d = await r.json();
+    expect(d.success).toBe(false);
+    expect(r.status).toBe(400);
+    expect(d.message).toMatch(/orderPaymentMethod|room_bill|cash/i);
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R. WALK-IN CUSTOMER FLOW — external dine_in + spa, revenue, access control
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// R-01  Create dine_in walk-in customer → appears in GET /walkin-customers
+// R-02  Create spa walk-in customer → appears in GET /walkin-customers
+// R-03  Walk-in dine_in order placed + delivered → cash revenue, no bill line item
+// R-04  Walk-in spa booking completed → cash revenue, no bill line item
+// R-05  Walk-in order with type=spa rejects (type must be dine_in for orders)
+// R-06  Walk-in spa booking with type=dine_in rejects (type must be spa for spa)
+// R-07  Walk-in customer required fields: missing name rejected (400)
+// R-08  Walk-in customer type must be dine_in or spa (400 for invalid)
+// R-09  Analytics totalRevenue includes delivered cash walk-in orders
+// R-10  Unauthenticated access to GET /walkin-customers rejected (401)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function createWalkIn(token: string, name: string, type: 'dine_in' | 'spa', phone?: string) {
+  const r = await fetch(`${API_URL}/walkin-customers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify({ name, type, phone }),
+  });
+  return r.json();
+}
+
+test.describe('R. Walk-in Customer Flow', () => {
+
+  test('R-01 create dine_in walk-in → returned in list', async () => {
+    const token = await apiLoginAsAdmin();
+    const d = await createWalkIn(token, `DineWalkIn${Date.now()}`, 'dine_in', '+10000000001');
+    expect(d.success).toBe(true);
+    expect(d.customer.type).toBe('dine_in');
+
+    const list = await get('/walkin-customers', token);
+    const found = (list.customers ?? []).find((c: any) => c._id === d.customer._id);
+    expect(found).toBeTruthy();
+  });
+
+  test('R-02 create spa walk-in → type=spa stored', async () => {
+    const token = await apiLoginAsAdmin();
+    const d = await createWalkIn(token, `SpaWalkIn${Date.now()}`, 'spa');
+    expect(d.success).toBe(true);
+    expect(d.customer.type).toBe('spa');
+  });
+
+  test('R-03 walk-in dine_in order delivered → cash, no guest bill touched', async () => {
+    const token = await apiLoginAsAdmin();
+
+    const menus = (await get('/menu', token)).items ?? [];
+    const item = menus.find((m: any) => m.isAvailable);
+    if (!item) { test.skip(true, 'No available menu item'); return; }
+
+    const wic = await createWalkIn(token, `DineWalkIn${Date.now()}`, 'dine_in');
+    expect(wic.success).toBe(true);
+
+    const orderR = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        walkInCustomerId: wic.customer._id,
+        items: [{ menuItem: item._id, quantity: 1 }],
+        orderPaymentMethod: 'cash',
+      }),
+    });
+    const orderD = await orderR.json();
+    expect(orderD.success).toBe(true);
+    expect(orderD.order.orderPaymentMethod).toBe('cash');
+    expect(orderD.order.isAdminOrder).toBe(true);
+    expect(orderD.order.walkInCustomer).toBeTruthy();
+    // addedToBill pre-set true (no bill to add to)
+    expect(orderD.order.addedToBill).toBe(true);
+
+    // Deliver the order
+    for (const status of ['accepted', 'preparing', 'ready', 'delivering', 'delivered']) {
+      const r = await fetch(`${API_URL}/orders/${orderD.order._id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      });
+      const rd = await r.json();
+      expect(rd.success).toBe(true);
+    }
+
+    // Revenue should appear in analytics orderStats
+    const analytics = await get('/analytics', token);
+    expect(analytics.orderStats.cashRevenue).toBeGreaterThan(0);
+  });
+
+  test('R-04 walk-in spa booking completed → cash, no bill line item', async () => {
+    const token = await apiLoginAsAdmin();
+
+    const svcs = (await get('/spa/services')).services ?? [];
+    const svc = svcs.find((s: any) => s.isAvailable);
+    if (!svc) { test.skip(true, 'No spa service'); return; }
+
+    const wic = await createWalkIn(token, `SpaWalkIn${Date.now()}`, 'spa');
+    expect(wic.success).toBe(true);
+
+    const bkR = await fetch(`${API_URL}/spa/walkin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        walkInCustomerId: wic.customer._id,
+        service: svc._id,
+        date: pSpaDate(),
+        startTime: '11:00',
+      }),
+    });
+    const bkD = await bkR.json();
+    if (!bkD.success) { test.skip(true, 'Spa slot taken'); return; }
+
+    expect(bkD.booking.spaPaymentMethod).toBe('cash');
+    expect(bkD.booking.addedToBill).toBe(true);
+    expect(bkD.booking.walkInCustomer).toBeTruthy();
+
+    // Complete it (already confirmed as walk-in)
+    await patch(`/spa/bookings/${bkD.booking._id}/arrive`, {}, token);
+    await patch(`/spa/bookings/${bkD.booking._id}/status`, { status: 'in_progress' }, token);
+    const complR = await fetch(`${API_URL}/spa/bookings/${bkD.booking._id}/complete`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ paymentMethod: 'cash' }),
+    });
+    const complD = await complR.json();
+    expect(complD.success).toBe(true);
+    expect(complD.booking.status).toBe('completed');
+
+    // Analytics spaStats.cashRevenue should include this
+    const analytics = await get('/analytics', token);
+    expect(analytics.spaStats.cashRevenue).toBeGreaterThan(0);
+    expect(analytics.spaStats.walkInCount).toBeGreaterThan(0);
+  });
+
+  test('R-05 walk-in customer type=spa cannot be used for dine_in orders (400)', async () => {
+    const token = await apiLoginAsAdmin();
+
+    const menus = (await get('/menu', token)).items ?? [];
+    const item = menus.find((m: any) => m.isAvailable);
+    if (!item) { test.skip(true, 'No available menu item'); return; }
+
+    const wic = await createWalkIn(token, `SpaWalkIn${Date.now()}`, 'spa');
+    expect(wic.success).toBe(true);
+
+    const r = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        walkInCustomerId: wic.customer._id,
+        items: [{ menuItem: item._id, quantity: 1 }],
+      }),
+    });
+    const d = await r.json();
+    expect(d.success).toBe(false);
+    expect(r.status).toBe(400);
+    expect(d.message).toMatch(/dine_in/i);
+  });
+
+  test('R-06 walk-in customer type=dine_in cannot be used for spa booking (400)', async () => {
+    const token = await apiLoginAsAdmin();
+
+    const svcs = (await get('/spa/services')).services ?? [];
+    const svc = svcs.find((s: any) => s.isAvailable);
+    if (!svc) { test.skip(true, 'No spa service'); return; }
+
+    const wic = await createWalkIn(token, `DineWalkIn${Date.now()}`, 'dine_in');
+    expect(wic.success).toBe(true);
+
+    const r = await fetch(`${API_URL}/spa/walkin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        walkInCustomerId: wic.customer._id,
+        service: svc._id,
+        date: pSpaDate(),
+        startTime: '12:00',
+      }),
+    });
+    const d = await r.json();
+    expect(d.success).toBe(false);
+    expect(r.status).toBe(400);
+    expect(d.message).toMatch(/spa/i);
+  });
+
+  test('R-07 missing name rejected (400)', async () => {
+    const token = await apiLoginAsAdmin();
+    const r = await fetch(`${API_URL}/walkin-customers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ type: 'dine_in' }),
+    });
+    const d = await r.json();
+    expect(d.success).toBe(false);
+    expect(r.status).toBe(400);
+  });
+
+  test('R-08 invalid type rejected (400)', async () => {
+    const token = await apiLoginAsAdmin();
+    const r = await fetch(`${API_URL}/walkin-customers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ name: 'Test', type: 'hotel' }),
+    });
+    const d = await r.json();
+    expect(d.success).toBe(false);
+    expect(r.status).toBe(400);
+  });
+
+  test('R-09 analytics totalRevenue includes delivered cash walk-in orders', async () => {
+    const token = await apiLoginAsAdmin();
+
+    const menus = (await get('/menu', token)).items ?? [];
+    const item = menus.find((m: any) => m.isAvailable);
+    if (!item) { test.skip(true, 'No available menu item'); return; }
+
+    const wic = await createWalkIn(token, `DineWalkIn${Date.now()}`, 'dine_in');
+    const orderR = await fetch(`${API_URL}/orders/admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        walkInCustomerId: wic.customer._id,
+        items: [{ menuItem: item._id, quantity: 1 }],
+        orderPaymentMethod: 'cash',
+      }),
+    });
+    const orderD = await orderR.json();
+    if (!orderD.success) { test.skip(true, 'Order creation failed'); return; }
+
+    // Record analytics before delivery
+    const before = await get('/analytics', token);
+    const revBefore = before.kpis?.totalRevenue ?? 0;
+
+    // Deliver
+    for (const status of ['accepted', 'preparing', 'ready', 'delivering', 'delivered']) {
+      await fetch(`${API_URL}/orders/${orderD.order._id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      });
+    }
+
+    const after = await get('/analytics', token);
+    expect(after.kpis.totalRevenue).toBeGreaterThan(revBefore);
+    expect(after.orderStats.cashRevenue).toBeGreaterThan(0);
+  });
+
+  test('R-10 unauthenticated access to walk-in customers rejected (401)', async () => {
+    const r = await fetch(`${API_URL}/walkin-customers`);
+    expect(r.status).toBe(401);
   });
 
 });

@@ -210,7 +210,11 @@ export async function bookSpa(req: AuthRequest, res: Response): Promise<void> {
 // ── walk-in booking (admin) ───────────────────────────────────────────────────
 
 export async function walkInBooking(req: AuthRequest, res: Response): Promise<void> {
-  const { service: serviceId, guestId, date, startTime, therapistId, note = '' } = req.body;
+  const { service: serviceId, guestId, walkInCustomerId, date, startTime, therapistId, note = '' } = req.body;
+
+  if (!guestId && !walkInCustomerId) {
+    throw new AppError('Provide either guestId (hotel guest) or walkInCustomerId (external walk-in)', 400);
+  }
 
   const service = await SpaService.findById(serviceId);
   if (!service || !service.isAvailable) throw new AppError('Service not available', 400);
@@ -218,7 +222,7 @@ export async function walkInBooking(req: AuthRequest, res: Response): Promise<vo
   const bookingDate = new Date(date);
   const scheduledEnd = addMinutes(startTime, service.duration);
 
-  // If therapistId provided, validate they exist and can do this service
+  // Validate therapist assignment
   let assignedTherapist = null;
   if (therapistId) {
     const t = await SpaTherapist.findById(therapistId);
@@ -227,7 +231,6 @@ export async function walkInBooking(req: AuthRequest, res: Response): Promise<vo
     if (!canDo) throw new AppError('Therapist is not specialised in this service', 400);
     assignedTherapist = t._id;
   } else {
-    // Auto-assign
     const slots = await getAvailableSlots(serviceId, bookingDate, 'any');
     const matchSlot = slots.find(s => s.startTime === startTime);
     if (matchSlot?.freeTherapistIds.length) {
@@ -236,33 +239,49 @@ export async function walkInBooking(req: AuthRequest, res: Response): Promise<vo
     }
   }
 
-  // Import Guest model to validate guest exists
-  const Guest = (await import('../models/Guest')).default;
-  const guest = await Guest.findById(guestId);
-  if (!guest) throw new AppError('Guest not found', 404);
+  // Validate guest or walk-in customer
+  const bookingData: Record<string, any> = {
+    service:          serviceId,
+    therapist:        assignedTherapist,
+    date:             bookingDate,
+    scheduledStart:   startTime,
+    scheduledEnd,
+    durationSnapshot: service.duration,
+    window:           'any',
+    price:            service.price,
+    therapistNote:    note,
+    isWalkIn:         true,
+    status:           'confirmed',
+  };
+
+  if (walkInCustomerId) {
+    const WalkInModel = (await import('../models/WalkInCustomer')).default;
+    const wic = await WalkInModel.findById(walkInCustomerId);
+    if (!wic) throw new AppError('Walk-in customer not found', 404);
+    if (wic.type !== 'spa') throw new AppError('Walk-in customer type must be spa for spa bookings', 400);
+    bookingData.walkInCustomer = wic._id;
+    bookingData.spaPaymentMethod = 'cash';
+    bookingData.addedToBill = true; // cash — skip bill
+  } else {
+    const Guest = (await import('../models/Guest')).default;
+    const guest = await Guest.findById(guestId);
+    if (!guest) throw new AppError('Guest not found', 404);
+    bookingData.guest = guestId;
+  }
 
   let booking;
   try {
-    booking = await SpaBooking.create({
-      guest:            guestId,
-      service:          serviceId,
-      therapist:        assignedTherapist,
-      date:             bookingDate,
-      scheduledStart:   startTime,
-      scheduledEnd,
-      durationSnapshot: service.duration,
-      window:           'any',
-      price:            service.price,
-      therapistNote:    note,
-      isWalkIn:         true,
-      status:           'confirmed',  // walk-ins are pre-confirmed
-    });
+    booking = await SpaBooking.create(bookingData);
   } catch (err: any) {
     if (err.code === 11000) throw new AppError('Therapist already has a booking at this time', 409);
     throw err;
   }
 
-  await booking.populate(['therapist', 'service', 'guest']);
+  const populatePaths: any[] = ['therapist', 'service'];
+  if (bookingData.guest) populatePaths.push('guest');
+  else populatePaths.push('walkInCustomer');
+
+  await booking.populate(populatePaths);
   res.status(201).json({ success: true, booking });
 }
 
@@ -279,6 +298,7 @@ export async function getMyBookings(req: AuthRequest, res: Response): Promise<vo
 export async function getAllBookings(_req: Request, res: Response): Promise<void> {
   const bookings = await SpaBooking.find()
     .populate('guest', 'name email room')
+    .populate('walkInCustomer', 'name phone type')
     .populate('service', 'name duration')
     .populate('therapist', 'name')
     .sort('-date');
@@ -317,19 +337,24 @@ export async function updateBookingStatus(req: AuthRequest, res: Response): Prom
   booking.status = status;
 
   if (status === 'completed' && !booking.addedToBill) {
-    const Guest = (await import('../models/Guest')).default;
-    const guest = await Guest.findById(booking.guest);
-    if (guest?.bill) {
-      const service = await SpaService.findById(booking.service);
-      await addLineItem(
-        guest.bill as any,
-        String(booking.guest),
-        'spa',
-        `Spa: ${service?.name || 'Service'}`,
-        booking.price,
-        booking._id as any
-      );
+    if (booking.spaPaymentMethod === 'cash') {
+      // Cash paid at spa desk — skip bill line item
       booking.addedToBill = true;
+    } else {
+      const Guest = (await import('../models/Guest')).default;
+      const guest = await Guest.findById(booking.guest);
+      if (guest?.bill) {
+        const service = await SpaService.findById(booking.service);
+        await addLineItem(
+          guest.bill as any,
+          String(booking.guest),
+          'spa',
+          `Spa: ${service?.name || 'Service'}`,
+          booking.price,
+          booking._id as any
+        );
+        booking.addedToBill = true;
+      }
     }
   }
 
@@ -390,25 +415,35 @@ export async function markCompleted(req: AuthRequest, res: Response): Promise<vo
     throw new AppError('Session must be arrived or in_progress to complete', 400);
   }
 
+  const { paymentMethod = 'room_bill' } = req.body;
+  if (!['room_bill', 'cash'].includes(paymentMethod)) {
+    throw new AppError('paymentMethod must be room_bill or cash', 400);
+  }
+
   const now = new Date();
   const actualEnd = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
   booking.actualEnd = actualEnd;
-  booking.status    = 'completed';
+  booking.status = 'completed';
+  booking.spaPaymentMethod = paymentMethod as 'room_bill' | 'cash';
 
   if (!booking.addedToBill) {
-    const Guest = (await import('../models/Guest')).default;
-    const guest = await Guest.findById(booking.guest);
-    if (guest?.bill) {
-      const service = await SpaService.findById(booking.service);
-      await addLineItem(
-        guest.bill as any,
-        String(booking.guest),
-        'spa',
-        `Spa: ${service?.name || 'Service'}`,
-        booking.price,
-        booking._id as any
-      );
+    if (paymentMethod === 'cash') {
       booking.addedToBill = true;
+    } else {
+      const Guest = (await import('../models/Guest')).default;
+      const guest = await Guest.findById(booking.guest);
+      if (guest?.bill) {
+        const service = await SpaService.findById(booking.service);
+        await addLineItem(
+          guest.bill as any,
+          String(booking.guest),
+          'spa',
+          `Spa: ${service?.name || 'Service'}`,
+          booking.price,
+          booking._id as any
+        );
+        booking.addedToBill = true;
+      }
     }
   }
 

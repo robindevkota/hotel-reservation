@@ -2,6 +2,8 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export type ReservationStatus = 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show';
 export type CancellationPolicy = 'flexible' | 'non_refundable';
+export type GuestType = 'foreign' | 'nepali';
+export type PaymentMethod = 'stripe' | 'phonepay';
 
 export interface IReservation extends Document {
   bookingRef: string;
@@ -20,12 +22,17 @@ export interface IReservation extends Document {
   specialRequests: string;
   totalNights: number;
   roomCharges: number;
-  // flexible: charged at checkout | non_refundable: charged at booking (10% discount applied)
   paidUpfront: boolean;
   stripePaymentIntentId: string;
-  // set when cancelled after deadline or no-show to record what was charged
   penaltyCharged: number;
   cancelledAt: Date;
+  // Nepali guest PhonePay fields
+  guestType: GuestType;
+  paymentMethod: PaymentMethod;
+  depositAmount: number;
+  depositPaid: boolean;
+  phonepayTransactionId: string;
+  depositPaidAt: Date;
   createdAt: Date;
 }
 
@@ -59,6 +66,12 @@ const ReservationSchema = new Schema<IReservation>(
     stripePaymentIntentId: { type: String, default: '' },
     penaltyCharged: { type: Number, default: 0 },
     cancelledAt: { type: Date },
+    guestType: { type: String, enum: ['foreign', 'nepali'], default: 'foreign' },
+    paymentMethod: { type: String, enum: ['stripe', 'phonepay'], default: 'stripe' },
+    depositAmount: { type: Number, default: 0 },
+    depositPaid: { type: Boolean, default: false },
+    phonepayTransactionId: { type: String, default: '' },
+    depositPaidAt: { type: Date },
   },
   { timestamps: true }
 );

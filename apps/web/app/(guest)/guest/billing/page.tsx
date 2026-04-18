@@ -74,37 +74,59 @@ export default function BillingPage() {
               </span>
             </div>
 
-            {/* Line items */}
+            {/* Pre-paid room section — non-refundable guests only */}
+            {bill.prepaidAmount > 0 && (
+              <div style={{ background: 'hsl(142 40% 97%)', border: '1px solid hsl(142 45% 78%)', marginBottom: '1rem', overflow: 'hidden' }}>
+                <div style={{ background: 'hsl(142 45% 28%)', padding: '0.6rem 1.125rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <CheckCircle2 size={13} color="#fff" strokeWidth={2} />
+                  <p style={{ fontFamily: "'Cinzel', serif", color: '#fff', fontSize: '0.58rem', letterSpacing: '0.2em', textTransform: 'uppercase' }}>Settled at Booking</p>
+                </div>
+                {bill.lineItems.filter((i: any) => i.type === 'room').map((item: any, idx: number) => (
+                  <div key={idx} style={{ padding: '0.875rem 1.125rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, marginRight: '1rem' }}>
+                      <p style={{ color: 'hsl(142 40% 28%)', fontSize: '0.78rem', lineHeight: 1.4 }}>{cleanDescription(item.description)}</p>
+                      <p style={{ color: 'hsl(142 30% 48%)', fontSize: '0.65rem', marginTop: '0.2rem' }}>Non-refundable — paid at booking</p>
+                    </div>
+                    <p style={{ fontFamily: "'Cinzel', serif", color: 'hsl(142 40% 28%)', fontSize: '0.8rem', flexShrink: 0 }}>${item.amount.toFixed(2)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* In-stay charges */}
             <div style={{ background: '#fff', border: '1px solid hsl(220 15% 88%)', marginBottom: '1rem', overflow: 'hidden', boxShadow: '0 1px 8px hsl(220 55% 14% / 0.06)' }}>
               <div style={{ background: NAVY, padding: '0.75rem 1.125rem' }}>
-                <p style={{ fontFamily: "'Cinzel', serif", color: GOLD, fontSize: '0.6rem', letterSpacing: '0.25em', textTransform: 'uppercase' }}>Charges</p>
+                <p style={{ fontFamily: "'Cinzel', serif", color: GOLD, fontSize: '0.6rem', letterSpacing: '0.25em', textTransform: 'uppercase' }}>
+                  {bill.prepaidAmount > 0 ? 'Charges Due at Checkout' : 'Charges'}
+                </p>
               </div>
-              <div>
-                {bill.lineItems.map((item: any, i: number) => (
-                  <div key={i} style={{ padding: '0.875rem 1.125rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: i < bill.lineItems.length - 1 ? '1px solid hsl(220 15% 93%)' : 'none' }}>
+              {bill.lineItems.filter((i: any) => bill.prepaidAmount > 0 ? i.type !== 'room' : true).length === 0
+                ? <p style={{ padding: '0.875rem 1.125rem', color: 'hsl(220 15% 58%)', fontSize: '0.75rem' }}>No additional charges yet</p>
+                : bill.lineItems.filter((i: any) => bill.prepaidAmount > 0 ? i.type !== 'room' : true).map((item: any, i: number, arr: any[]) => (
+                  <div key={i} style={{ padding: '0.875rem 1.125rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: i < arr.length - 1 ? '1px solid hsl(220 15% 93%)' : 'none' }}>
                     <div style={{ flex: 1, marginRight: '1rem' }}>
                       <p style={{ color: NAVY, fontSize: '0.78rem', lineHeight: 1.4 }}>{cleanDescription(item.description)}</p>
                       <p style={{ color: 'hsl(220 15% 58%)', fontSize: '0.65rem', marginTop: '0.2rem' }}>{new Date(item.date).toLocaleDateString()}</p>
                     </div>
                     <p style={{ fontFamily: "'Cinzel', serif", color: NAVY, fontSize: '0.8rem', flexShrink: 0 }}>${item.amount.toFixed(2)}</p>
                   </div>
-                ))}
-              </div>
+                ))
+              }
             </div>
 
             {/* Totals */}
             <div style={{ background: NAVY, padding: '1.5rem', border: `1px solid ${GOLD}25`, boxShadow: '0 4px 20px hsl(220 55% 14% / 0.15)' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1rem' }}>
                 {([
-                  ['Room Charges',     bill.roomCharges],
+                  ...(bill.prepaidAmount > 0 ? [] : [['Room Charges', bill.roomCharges] as [string, number]]),
                   ['Food & Beverages', bill.foodCharges],
                   ['Spa Services',     bill.spaCharges],
                   ['Other',            bill.otherCharges],
                   ['Subtotal',         bill.totalAmount],
                   ['Tax (13% VAT)',    bill.taxAmount],
-                ] as [string, number][]).filter(([, v]) => Number(v) > 0).map(([label, amount]) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontFamily: "'Cinzel', serif", color: 'hsl(40 30% 85% / 0.5)', fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>{label}</span>
+                ] as [string, number][]).filter(([, v]) => Number(v) > 0).map(([lbl, amount]) => (
+                  <div key={lbl} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontFamily: "'Cinzel', serif", color: 'hsl(40 30% 85% / 0.5)', fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>{lbl}</span>
                     <span style={{ fontFamily: "'Cinzel', serif", color: 'hsl(40 30% 88%)', fontSize: '0.75rem' }}>${Number(amount).toFixed(2)}</span>
                   </div>
                 ))}
@@ -117,7 +139,9 @@ export default function BillingPage() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontFamily: "'Cinzel', serif", color: 'hsl(40 30% 92%)', fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase' }}>Grand Total</span>
+                <span style={{ fontFamily: "'Cinzel', serif", color: 'hsl(40 30% 92%)', fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
+                  {bill.prepaidAmount > 0 ? 'Amount Due' : 'Grand Total'}
+                </span>
                 <span style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '1.5rem' }}>${bill.grandTotal.toFixed(2)}</span>
               </div>
             </div>

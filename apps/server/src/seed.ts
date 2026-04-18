@@ -11,6 +11,7 @@ import Guest from './models/Guest';
 import Bill from './models/Bill';
 import Reservation from './models/Reservation';
 import User from './models/User';
+import Ingredient from './models/Ingredient';
 import { generateQRToken, generateQRDataUrl } from './utils/generateQR';
 
 // Egyptian-themed Unsplash images (luxury hotel / Egyptian aesthetic)
@@ -897,6 +898,49 @@ async function seed() {
       console.log(`✅ ${u.department} user created: ${u.email} / ${u.password}`);
     }
   }
+
+  // ─── INVENTORY (INGREDIENTS) ─────────────────────────────────────────
+  await Ingredient.deleteMany({});
+  await Ingredient.insertMany([
+    // Kitchen
+    { name: 'Chicken Breast',       unit: 'kg',     stock: 15,   costPrice: 850,  lowStockThreshold: 3,  category: 'kitchen' },
+    { name: 'Beef Tenderloin',       unit: 'kg',     stock: 8,    costPrice: 1800, lowStockThreshold: 2,  category: 'kitchen' },
+    { name: 'Salmon Fillet',         unit: 'kg',     stock: 6,    costPrice: 1600, lowStockThreshold: 2,  category: 'kitchen' },
+    { name: 'Eggs',                  unit: 'piece',  stock: 120,  costPrice: 18,   lowStockThreshold: 24, category: 'kitchen' },
+    { name: 'Butter',                unit: 'kg',     stock: 5,    costPrice: 600,  lowStockThreshold: 1,  category: 'kitchen' },
+    { name: 'Olive Oil',             unit: 'litre',  stock: 8,    costPrice: 900,  lowStockThreshold: 2,  category: 'kitchen' },
+    { name: 'All-Purpose Flour',     unit: 'kg',     stock: 20,   costPrice: 120,  lowStockThreshold: 5,  category: 'kitchen' },
+    { name: 'Basmati Rice',          unit: 'kg',     stock: 25,   costPrice: 180,  lowStockThreshold: 5,  category: 'kitchen' },
+    { name: 'Tomatoes',              unit: 'kg',     stock: 10,   costPrice: 80,   lowStockThreshold: 3,  category: 'kitchen' },
+    { name: 'Onions',                unit: 'kg',     stock: 12,   costPrice: 50,   lowStockThreshold: 3,  category: 'kitchen' },
+    { name: 'Garlic',                unit: 'kg',     stock: 3,    costPrice: 250,  lowStockThreshold: 1,  category: 'kitchen' },
+    { name: 'Cumin',                 unit: 'g',      stock: 500,  costPrice: 2,    lowStockThreshold: 100, category: 'kitchen' },
+    { name: 'Saffron',               unit: 'g',      stock: 50,   costPrice: 45,   lowStockThreshold: 10, category: 'kitchen' },
+    { name: 'Heavy Cream',           unit: 'litre',  stock: 6,    costPrice: 450,  lowStockThreshold: 2,  category: 'kitchen' },
+    { name: 'Fava Beans',            unit: 'kg',     stock: 10,   costPrice: 120,  lowStockThreshold: 2,  category: 'kitchen' },
+    { name: 'Feta Cheese',           unit: 'kg',     stock: 4,    costPrice: 950,  lowStockThreshold: 1,  category: 'kitchen' },
+    { name: 'Pistachio',             unit: 'kg',     stock: 3,    costPrice: 2200, lowStockThreshold: 0.5, category: 'kitchen' },
+    { name: 'Filo Pastry',           unit: 'packet', stock: 12,   costPrice: 280,  lowStockThreshold: 3,  category: 'kitchen' },
+    // Bar
+    { name: 'Orange Juice',          unit: 'litre',  stock: 20,   costPrice: 180,  lowStockThreshold: 5,  category: 'bar' },
+    { name: 'Mango Juice',           unit: 'litre',  stock: 15,   costPrice: 200,  lowStockThreshold: 4,  category: 'bar' },
+    { name: 'Sparkling Water',       unit: 'bottle', stock: 48,   costPrice: 120,  lowStockThreshold: 12, category: 'bar' },
+    { name: 'Still Water',           unit: 'bottle', stock: 60,   costPrice: 60,   lowStockThreshold: 12, category: 'bar' },
+    { name: 'Whole Milk',            unit: 'litre',  stock: 10,   costPrice: 130,  lowStockThreshold: 3,  category: 'bar' },
+    { name: 'Coffee Beans',          unit: 'kg',     stock: 4,    costPrice: 1800, lowStockThreshold: 1,  category: 'bar' },
+    { name: 'Earl Grey Tea',         unit: 'packet', stock: 10,   costPrice: 350,  lowStockThreshold: 2,  category: 'bar' },
+    { name: 'Honey',                 unit: 'kg',     stock: 5,    costPrice: 600,  lowStockThreshold: 1,  category: 'bar' },
+    { name: 'Mint Leaves',           unit: 'g',      stock: 400,  costPrice: 3,    lowStockThreshold: 100, category: 'bar' },
+    // General
+    { name: 'Napkins',               unit: 'packet', stock: 30,   costPrice: 120,  lowStockThreshold: 5,  category: 'general' },
+    { name: 'Candles',               unit: 'piece',  stock: 50,   costPrice: 80,   lowStockThreshold: 10, category: 'general' },
+    { name: 'Toilet Paper',          unit: 'packet', stock: 40,   costPrice: 180,  lowStockThreshold: 10, category: 'general' },
+    { name: 'Hand Soap',             unit: 'bottle', stock: 35,   costPrice: 220,  lowStockThreshold: 8,  category: 'general' },
+    { name: 'Shampoo',               unit: 'bottle', stock: 30,   costPrice: 280,  lowStockThreshold: 8,  category: 'general' },
+    { name: 'Towels (Bath)',         unit: 'piece',  stock: 80,   costPrice: 450,  lowStockThreshold: 20, category: 'general' },
+    { name: 'Bed Linen Set',         unit: 'piece',  stock: 60,   costPrice: 1200, lowStockThreshold: 10, category: 'general' },
+  ]);
+  console.log('✅ 35 inventory ingredients seeded');
 
   console.log('🏰 Seed complete!');
   process.exit(0);

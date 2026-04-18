@@ -15,6 +15,8 @@ export interface Bill {
   grandTotal: number;
   status: string;
   paymentMethod?: string;
+  prepaidAmount: number;
+  prepaidAt?: string;
 }
 
 export function useBilling(isGuest: boolean) {
