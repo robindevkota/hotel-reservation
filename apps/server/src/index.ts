@@ -39,7 +39,7 @@ initSocket(server);
 app.use(helmet());
 const allowedOrigins = process.env.NODE_ENV === 'production'
   ? [
-      process.env.CLIENT_URL || 'http://localhost:3000',
+      ...(process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',').map(s => s.trim()) : ['http://localhost:3000']),
       'https://royalsuitesnp.com',
       'https://www.royalsuitesnp.com',
       'https://hotel-reservation-web-eight.vercel.app',

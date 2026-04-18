@@ -13,6 +13,7 @@ router.get('/availability', rooms.getRoomAvailability);
 router.get('/calendar', ...requireStaff, requireAdmin, rooms.getRoomCalendar);
 
 router.post('/upload-image', ...requireStaff, requireAdmin, upload.single('image'), rooms.uploadRoomImage);
+router.post('/delete-image', ...requireStaff, requireAdmin, rooms.deleteRoomImage);
 
 router.get('/:slug', rooms.getRoomBySlug);
 

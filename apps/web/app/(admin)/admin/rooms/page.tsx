@@ -900,7 +900,12 @@ export default function AdminRoomsPage() {
                             <Image src={url} alt={`room-${i+1}`} fill style={{ objectFit:'cover' }} />
                             <button
                               type="button"
-                              onClick={() => setUploadedImages(prev => prev.filter((_,j) => j !== i))}
+                              onClick={async () => {
+                                try {
+                                  await api.post('/rooms/delete-image', { imageUrl: url, roomId: editRoom?._id });
+                                } catch {}
+                                setUploadedImages(prev => prev.filter((_,j) => j !== i));
+                              }}
                               style={{ position:'absolute', top:'2px', right:'2px', background:'hsl(0 60% 48%)', border:'none', borderRadius:'50%', width:'18px', height:'18px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', padding:0 }}
                             >
                               <X size={10} color="#fff" />

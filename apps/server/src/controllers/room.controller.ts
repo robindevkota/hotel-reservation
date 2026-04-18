@@ -184,6 +184,27 @@ export async function uploadRoomImage(req: Request, res: Response): Promise<void
   res.json({ success: true, url: result.secure_url });
 }
 
+export async function deleteRoomImage(req: Request, res: Response): Promise<void> {
+  const { imageUrl } = req.body;
+  if (!imageUrl) throw new AppError('imageUrl is required', 400);
+
+  // Only delete from Cloudinary if it's a Cloudinary URL
+  if (imageUrl.includes('cloudinary.com')) {
+    const matches = imageUrl.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/i);
+    if (matches?.[1]) {
+      await cloudinary.uploader.destroy(matches[1]);
+    }
+  }
+
+  // Remove from room's images array
+  const { roomId } = req.body;
+  if (roomId) {
+    await Room.findByIdAndUpdate(roomId, { $pull: { images: imageUrl } });
+  }
+
+  res.json({ success: true });
+}
+
 export async function regenerateQR(req: Request, res: Response): Promise<void> {
   const room = await Room.findById(req.params.id);
   if (!room) throw new AppError('Room not found', 404);
