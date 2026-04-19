@@ -1,7 +1,23 @@
 import PDFDocument from 'pdfkit';
+import https from 'https';
 import { IBill } from '../models/Bill';
 
-export function generateReceiptPDF(bill: IBill & { guest?: any; reservation?: any }): Promise<Buffer> {
+const LOGO_URL = 'https://res.cloudinary.com/dvwey9irk/image/upload/v1776608648/royal-suites/logo.jpg';
+
+function fetchImageBuffer(url: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+      res.on('error', reject);
+    }).on('error', reject);
+  });
+}
+
+export async function generateReceiptPDF(bill: IBill & { guest?: any; reservation?: any }): Promise<Buffer> {
+  const logoBuffer = await fetchImageBuffer(LOGO_URL).catch(() => null);
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50 });
     const chunks: Buffer[] = [];
@@ -10,7 +26,11 @@ export function generateReceiptPDF(bill: IBill & { guest?: any; reservation?: an
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // Header
+    // Header — logo + name
+    if (logoBuffer) {
+      doc.image(logoBuffer, doc.page.width / 2 - 30, doc.y, { width: 60, height: 60, align: 'center' });
+      doc.moveDown(4);
+    }
     doc
       .fillColor('#0D1B3E')
       .fontSize(24)
@@ -92,3 +112,4 @@ export function generateReceiptPDF(bill: IBill & { guest?: any; reservation?: an
     doc.end();
   });
 }
+

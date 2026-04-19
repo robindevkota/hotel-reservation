@@ -1,7 +1,7 @@
 'use client';
 import React, { Suspense, useState } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
 import { CheckCircle2, AlertTriangle, XCircle, CalendarDays, BedDouble, Clock } from 'lucide-react';
@@ -49,8 +49,9 @@ function hoursUntil(dateStr: string) {
 
 function ManageBookingContent() {
   const router = useRouter();
-  const [bookingRef, setBookingRef] = useState('');
-  const [email, setEmail]           = useState('');
+  const searchParams = useSearchParams();
+  const [bookingRef, setBookingRef] = useState(searchParams.get('ref') ?? '');
+  const [email, setEmail]           = useState(searchParams.get('email') ?? '');
   const [loading, setLoading]       = useState(false);
   const [reservation, setReservation] = useState<any>(null);
 
