@@ -13,7 +13,10 @@ import {
   Upload, Loader2, Sparkles, Shield, Sunrise, Palmtree, Tag,
   Maximize2,
 } from 'lucide-react';
-import { A, PageHeader } from '../../_adminStyles';
+import { A, PageHeader, TableFilters, Pagination } from '../../_adminStyles';
+
+const ROOM_PAGE_SIZE = 12;
+const AVAIL_PAGE_SIZE = 10;
 
 const ICON_OPTIONS = [
   { value:'Bed',       label:'Bed',       Icon:Bed       },
@@ -41,7 +44,7 @@ const emptyCategory = { name:'', slug:'', description:'', icon:'Bed', basePrice:
 const emptyWalkIn = { guestName:'', guestEmail:'', guestPhone:'', roomId:'', checkInDate:'', checkOutDate:'', numberOfGuests:'1', specialRequests:'' };
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
-  return <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.13em', textTransform:'uppercase', color:A.navy, marginBottom:'0.4rem', fontWeight:600 }}>{children}</label>;
+  return <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.13em', textTransform:'uppercase', color:A.navy, marginBottom:'0.4rem', fontWeight:600 }}>{children}</label>;
 }
 
 const inputBase: React.CSSProperties = {
@@ -89,6 +92,14 @@ export default function AdminRoomsPage() {
   const [rateSaving, setRateSaving] = useState(false);
   const [rateUpdatedBy, setRateUpdatedBy] = useState('');
   const [rateUpdatedAt, setRateUpdatedAt] = useState('');
+
+  // Filters & pagination
+  const [roomSearch, setRoomSearch]       = useState('');
+  const [roomTypeFilter, setRoomTypeFilter] = useState('');
+  const [roomPage, setRoomPage]           = useState(1);
+  const [availSearch, setAvailSearch]     = useState('');
+  const [availStatusFilter, setAvailStatusFilter] = useState('');
+  const [availPage, setAvailPage]         = useState(1);
 
   // Walk-in modal
   const [walkInModal, setWalkInModal] = useState(false);
@@ -193,28 +204,104 @@ export default function AdminRoomsPage() {
   };
 
   const handleQR = async (room: any) => {
-    // Always fetch fresh room state to avoid stale isAvailable
     const { data: fresh } = await api.get(`/rooms/${room._id}/qr`);
-    const freshRoom = fresh.room;
-
-    let qrToken: string;
-    if (!freshRoom.isAvailable) {
-      // Occupied — use existing token, never regenerate while guest is checked in
-      qrToken = freshRoom.qrToken;
-    } else {
-      // Available — regenerate token
-      const { data } = await api.post(`/rooms/${room._id}/qr/refresh`);
-      toast.success('QR regenerated');
-      qrToken = data.qrToken;
-    }
-
-    // Generate QR image client-side using the browser's own origin — works on any IP/network
+    const qrToken = fresh.room.qrToken;
     const qrUrl = `${window.location.origin}/qr/${qrToken}`;
     const qrCodeUrl = await QRCode.toDataURL(qrUrl, {
       width: 300, margin: 2,
       color: { dark: '#0D1B3E', light: '#F5ECD7' },
     });
-    setQrModal({ url: qrCodeUrl });
+    setQrModal({ roomName: room.name, roomNumber: room.roomNumber, floor: room.floorNumber, url: qrCodeUrl });
+  };
+
+  const printAllQRs = async () => {
+    toast('Generating QR codes…', { icon: '⏳' });
+    const origin = window.location.origin;
+
+    // Group rooms by floor
+    const byFloor: Record<number, any[]> = {};
+    for (const room of rooms) {
+      const f = room.floorNumber || 0;
+      if (!byFloor[f]) byFloor[f] = [];
+      byFloor[f].push(room);
+    }
+
+    // Fetch all qrTokens and generate QR data URLs
+    const cards: { name: string; roomNumber: string; floor: number; type: string; dataUrl: string }[] = [];
+    for (const room of rooms) {
+      try {
+        const { data } = await api.get(`/rooms/${room._id}/qr`);
+        const token = data.room.qrToken;
+        const dataUrl = await QRCode.toDataURL(`${origin}/qr/${token}`, {
+          width: 220, margin: 1,
+          color: { dark: '#0D1B3E', light: '#F5ECD7' },
+        });
+        cards.push({ name: room.name, roomNumber: room.roomNumber, floor: room.floorNumber, type: room.type, dataUrl });
+      } catch { /* skip failed room */ }
+    }
+
+    // Build print HTML grouped by floor
+    const floors = [...new Set(cards.map(c => c.floor))].sort((a, b) => a - b);
+    const floorSections = floors.map(f => {
+      const floorCards = cards.filter(c => c.floor === f);
+      const cardHtml = floorCards.map(c => `
+        <div class="card">
+          <div class="hotel">ROYAL SUITES</div>
+          <div class="floor-lbl">Floor ${f}</div>
+          <img src="${c.dataUrl}" alt="QR ${c.roomNumber}" />
+          <div class="room-num">Room ${c.roomNumber}</div>
+          <div class="room-name">${c.name}</div>
+          <div class="room-type">${c.type}</div>
+          <div class="hint">Scan for Guest Portal</div>
+        </div>`).join('');
+      return `
+        <div class="floor-section">
+          <div class="floor-heading">— Floor ${f} —</div>
+          <div class="grid">${cardHtml}</div>
+        </div>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Royal Suites — All Room QR Codes</title>
+      <style>
+        *{margin:0;padding:0;box-sizing:border-box;}
+        body{font-family:Georgia,serif;background:#fff;padding:16px 20px;}
+        h1{text-align:center;font-size:20px;letter-spacing:6px;color:#C9A84C;margin-bottom:4px;}
+        .sub{text-align:center;font-size:10px;letter-spacing:3px;color:#888;margin-bottom:24px;}
+        .floor-section{margin-bottom:24px;}
+        .floor-heading{text-align:center;font-size:12px;letter-spacing:4px;color:#0D1B3E;margin-bottom:14px;padding-bottom:6px;border-bottom:2px solid #C9A84C;}
+        .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+        .card{border:1px solid #C9A84C;padding:14px 10px 10px;text-align:center;background:#F5ECD7;break-inside:avoid;}
+        .hotel{font-size:8px;letter-spacing:3px;color:#C9A84C;margin-bottom:1px;}
+        .floor-lbl{font-size:8px;letter-spacing:2px;color:#888;margin-bottom:10px;}
+        .card img{width:100%;max-width:180px;height:auto;aspect-ratio:1;display:block;margin:0 auto 10px;}
+        .room-num{font-size:20px;font-weight:bold;color:#0D1B3E;letter-spacing:2px;margin-bottom:3px;}
+        .room-name{font-size:10px;color:#0D1B3E;margin-bottom:3px;line-height:1.4;}
+        .room-type{font-size:8px;letter-spacing:2px;color:#C9A84C;margin-bottom:6px;text-transform:uppercase;}
+        .hint{font-size:7px;letter-spacing:1px;color:#999;border-top:1px solid #e0d0b0;padding-top:5px;}
+        @media print{
+          @page{size:A4;margin:12mm;}
+          body{padding:0;}
+          .floor-section{page-break-after:always;}
+          .floor-section:last-child{page-break-after:avoid;}
+        }
+      </style></head><body>
+      <h1>ROYAL SUITES</h1>
+      <div class="sub">ROOM QR CODES — ALL FLOORS</div>
+      ${floorSections}
+      <script>window.onload=()=>{window.print();}</script>
+    </body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
   const openWalkIn = () => {
@@ -261,6 +348,24 @@ export default function AdminRoomsPage() {
     acc[r.availabilityStatus] = (acc[r.availabilityStatus] || 0) + 1; return acc;
   }, {});
 
+  // Room cards filter + pagination
+  const filteredRooms = rooms.filter(r => {
+    const q = roomSearch.toLowerCase();
+    const matchSearch = !q || r.name?.toLowerCase().includes(q) || String(r.roomNumber).includes(q);
+    const matchType = !roomTypeFilter || r.type === roomTypeFilter;
+    return matchSearch && matchType;
+  });
+  const pagedRooms = filteredRooms.slice((roomPage - 1) * ROOM_PAGE_SIZE, roomPage * ROOM_PAGE_SIZE);
+
+  // Availability filter + pagination
+  const filteredAvail = availability.filter(r => {
+    const q = availSearch.toLowerCase();
+    const matchSearch = !q || r.name?.toLowerCase().includes(q) || String(r.roomNumber).includes(q);
+    const matchStatus = !availStatusFilter || r.availabilityStatus === availStatusFilter;
+    return matchSearch && matchStatus;
+  });
+  const pagedAvail = filteredAvail.slice((availPage - 1) * AVAIL_PAGE_SIZE, availPage * AVAIL_PAGE_SIZE);
+
   return (
     <>
       <style>{`
@@ -281,10 +386,13 @@ export default function AdminRoomsPage() {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'2rem' }}>
           <PageHeader eyebrow="Manage" title="Rooms" />
           <div style={{ display:'flex', gap:'0.75rem' }}>
-            <button onClick={openWalkIn} style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:'#fff', color:A.navy, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.75rem 1.25rem', border:`1px solid ${A.border}`, cursor:'pointer', fontWeight:600 }}>
+            <button onClick={printAllQRs} style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:'#fff', color:'hsl(43 65% 35%)', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.75rem 1.25rem', border:`1px solid hsl(43 65% 70%)`, cursor:'pointer', fontWeight:600 }}>
+              <QrCode size={14} strokeWidth={2} /> Print All QRs
+            </button>
+            <button onClick={openWalkIn} style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:'#fff', color:A.navy, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.75rem 1.25rem', border:`1px solid ${A.border}`, cursor:'pointer', fontWeight:600 }}>
               <UserPlus size={14} strokeWidth={2} /> Walk-In Guest
             </button>
-            <button onClick={openCreate} style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.75rem 1.5rem', border:'none', cursor:'pointer', fontWeight:700, boxShadow:'0 4px 14px -2px hsl(43 72% 55%/0.35)' }}>
+            <button onClick={openCreate} style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.75rem 1.5rem', border:'none', cursor:'pointer', fontWeight:700, boxShadow:'0 4px 14px -2px hsl(43 72% 55%/0.35)' }}>
               <Plus size={15} strokeWidth={2.5} /> Add Room
             </button>
           </div>
@@ -306,7 +414,7 @@ export default function AdminRoomsPage() {
                 </div>
                 <div>
                   <div style={{ fontFamily:A.cinzel, fontSize:'1.6rem', fontWeight:700, color:numColor, lineHeight:1 }}>{count}</div>
-                  <div style={{ fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.1em', textTransform:'uppercase', color, marginTop:'0.25rem' }}>{label}</div>
+                  <div style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.1em', textTransform:'uppercase', color, marginTop:'0.25rem' }}>{label}</div>
                 </div>
               </div>
             );
@@ -330,14 +438,32 @@ export default function AdminRoomsPage() {
 
         {/* ── ROOM CARDS VIEW ── */}
         {view === 'rooms' && (
-          loading ? (
-            <div style={{ textAlign:'center', padding:'4rem', display:'flex', justifyContent:'center' }}>
-              <div style={{ width:'1.75rem', height:'1.75rem', border:`2px solid ${A.gold}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
-              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-            </div>
-          ) : (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))', gap:'1.5rem' }}>
-              {rooms.map(room => {
+          <div>
+            {loading ? (
+              <div style={{ textAlign:'center', padding:'4rem', display:'flex', justifyContent:'center' }}>
+                <div style={{ width:'1.75rem', height:'1.75rem', border:`2px solid ${A.gold}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
+                <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+              </div>
+            ) : (
+              <>
+              <TableFilters
+                search={{ value: roomSearch, onChange: v => { setRoomSearch(v); setRoomPage(1); }, placeholder: 'Search by name or room number…' }}
+                selects={[{
+                  value: roomTypeFilter,
+                  onChange: v => { setRoomTypeFilter(v); setRoomPage(1); },
+                  placeholder: 'All types',
+                  options: Array.from(new Set(rooms.map((r:any) => r.type).filter(Boolean))).map((t:any) => ({ value: t, label: t.charAt(0).toUpperCase() + t.slice(1) })),
+                  width: 150,
+                }]}
+                resultCount={filteredRooms.length}
+                hasActiveFilters={!!roomSearch || !!roomTypeFilter}
+                onClear={() => { setRoomSearch(''); setRoomTypeFilter(''); setRoomPage(1); }}
+              />
+              {pagedRooms.length === 0 && (
+                <p style={{ fontFamily:A.cinzel, fontSize:'0.75rem', color:A.muted, padding:'2rem 0' }}>No rooms match your search.</p>
+              )}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))', gap:'1.5rem' }}>
+                {pagedRooms.map(room => {
                 const cat = categories.find(c => c.slug === (room.categorySlug || room.type));
                 const CatIcon = cat ? (ICON_MAP[cat.icon]?.Icon || Tag) : Tag;
                 return (
@@ -355,7 +481,7 @@ export default function AdminRoomsPage() {
                       <div style={{ position:'absolute', top:'0.75rem', right:'0.75rem', width:'0.6rem', height:'0.6rem', borderRadius:'50%', background: room.isAvailable ? 'hsl(142 50% 45%)' : 'hsl(0 60% 52%)', boxShadow:`0 0 0 3px ${room.isAvailable ? 'hsl(142 60% 85%)' : 'hsl(0 70% 85%)'}` }} />
                       {/* Price */}
                       <div style={{ position:'absolute', bottom:'0.875rem', right:'0.875rem', fontFamily:A.cinzel, fontSize:'1.2rem', fontWeight:700, color:A.gold }}>
-                        ${room.pricePerNight}<span style={{ fontSize:'0.68rem', color:'rgba(245,236,215,0.6)' }}>/night</span>
+                        ${room.pricePerNight}<span style={{ fontSize:'0.75rem', color:'rgba(245,236,215,0.6)' }}>/night</span>
                       </div>
                       {/* Name */}
                       <div style={{ position:'absolute', bottom:'0.875rem', left:'0.875rem' }}>
@@ -390,7 +516,10 @@ export default function AdminRoomsPage() {
                 );
               })}
             </div>
-          )
+              <Pagination page={roomPage} pageSize={ROOM_PAGE_SIZE} total={filteredRooms.length} onPage={setRoomPage} />
+              </>
+            )}
+          </div>
         )}
 
         {/* ── AVAILABILITY VIEW ── */}
@@ -406,7 +535,7 @@ export default function AdminRoomsPage() {
               <button onClick={() => shiftDate(1)} style={{ background:'#fff', border:`1px solid ${A.border}`, padding:'0.5rem', cursor:'pointer', display:'flex', alignItems:'center', color:A.navy }}>
                 <ChevronRight size={16} strokeWidth={2} />
               </button>
-              <button onClick={() => setAvailDate(todayStr())} style={{ fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.gold, border:`1px solid hsl(43 72% 55%/0.4)`, background:'hsl(43 72% 55%/0.06)', padding:'0.5rem 0.875rem', cursor:'pointer' }}>
+              <button onClick={() => setAvailDate(todayStr())} style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.gold, border:`1px solid hsl(43 72% 55%/0.4)`, background:'hsl(43 72% 55%/0.06)', padding:'0.5rem 0.875rem', cursor:'pointer' }}>
                 Today
               </button>
 
@@ -425,12 +554,28 @@ export default function AdminRoomsPage() {
               </div>
             </div>
 
+            {/* Availability filters */}
+            <TableFilters
+              search={{ value: availSearch, onChange: v => { setAvailSearch(v); setAvailPage(1); }, placeholder: 'Search room name or number…' }}
+              selects={[{
+                value: availStatusFilter,
+                onChange: v => { setAvailStatusFilter(v); setAvailPage(1); },
+                placeholder: 'All statuses',
+                options: Object.entries(STATUS_CONFIG).map(([k, v]) => ({ value: k, label: v.label })),
+                width: 160,
+              }]}
+              resultCount={filteredAvail.length}
+              hasActiveFilters={!!availSearch || !!availStatusFilter}
+              onClear={() => { setAvailSearch(''); setAvailStatusFilter(''); setAvailPage(1); }}
+            />
+
             {/* Availability table */}
             {availLoading ? (
               <div style={{ textAlign:'center', padding:'3rem', display:'flex', justifyContent:'center' }}>
                 <div style={{ width:'1.75rem', height:'1.75rem', border:`2px solid ${A.gold}`, borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
               </div>
             ) : (
+              <>
               <div style={{ background:'#fff', border:`1px solid ${A.border}`, overflow:'hidden' }}>
                 {/* Table header */}
                 <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 2fr 1fr', background:A.navy, padding:'0.75rem 1.25rem', gap:'1rem' }}>
@@ -439,11 +584,11 @@ export default function AdminRoomsPage() {
                   ))}
                 </div>
 
-                {availability.length === 0 && (
-                  <div style={{ padding:'2rem', textAlign:'center', fontFamily:A.raleway, color:A.muted, fontSize:'0.85rem' }}>No rooms found</div>
+                {pagedAvail.length === 0 && (
+                  <div style={{ padding:'2rem', textAlign:'center', fontFamily:A.raleway, color:A.muted, fontSize:'0.85rem' }}>{availSearch || availStatusFilter ? 'No rooms match your filters' : 'No rooms found'}</div>
                 )}
 
-                {availability.map((room, i) => {
+                {pagedAvail.map((room, i) => {
                   const sc = STATUS_CONFIG[room.availabilityStatus] || STATUS_CONFIG.unavailable;
                   const cat = categories.find(c => c.slug === (room.categorySlug || room.type));
                   const res = room.currentReservation;
@@ -458,7 +603,7 @@ export default function AdminRoomsPage() {
                       {/* Type */}
                       <div style={{ display:'flex', alignItems:'center', gap:'0.4rem' }}>
                         {cat && (ICON_MAP[cat.icon]?.Icon) && React.createElement(ICON_MAP[cat.icon].Icon, { size:13, color:A.gold, strokeWidth:1.8 })}
-                        <span style={{ fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.08em', textTransform:'uppercase', color:A.muted }}>{cat?.name || room.type}</span>
+                        <span style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.08em', textTransform:'uppercase', color:A.muted }}>{cat?.name || room.type}</span>
                       </div>
 
                       {/* Floor / # */}
@@ -484,12 +629,12 @@ export default function AdminRoomsPage() {
                       <div style={{ display:'flex', gap:'0.4rem' }}>
                         {room.availabilityStatus === 'available' && (
                           <button onClick={() => { setWalkInForm({ ...emptyWalkIn, roomId: room._id, checkInDate: availDate, checkOutDate: availDate }); setWalkInError(''); setWalkInModal(true); }}
-                            style={{ fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.08em', textTransform:'uppercase', padding:'0.3rem 0.6rem', background:'hsl(142 50% 95%)', color:'hsl(142 50% 28%)', border:'1px solid hsl(142 50% 70%)', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.3rem' }}>
+                            style={{ fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.08em', textTransform:'uppercase', padding:'0.3rem 0.6rem', background:'hsl(142 50% 95%)', color:'hsl(142 50% 28%)', border:'1px solid hsl(142 50% 70%)', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.3rem' }}>
                             <UserPlus size={10} strokeWidth={2} /> Walk-in
                           </button>
                         )}
                         <button onClick={() => openEdit(room)}
-                          style={{ fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.08em', textTransform:'uppercase', padding:'0.3rem 0.6rem', background:'hsl(210 80% 97%)', color:'hsl(210 70% 35%)', border:'1px solid hsl(210 70% 75%)', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.3rem' }}>
+                          style={{ fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.08em', textTransform:'uppercase', padding:'0.3rem 0.6rem', background:'hsl(210 80% 97%)', color:'hsl(210 70% 35%)', border:'1px solid hsl(210 70% 75%)', cursor:'pointer', display:'flex', alignItems:'center', gap:'0.3rem' }}>
                           <Edit2 size={10} strokeWidth={2} /> Edit
                         </button>
                       </div>
@@ -497,6 +642,8 @@ export default function AdminRoomsPage() {
                   );
                 })}
               </div>
+              <Pagination page={availPage} pageSize={AVAIL_PAGE_SIZE} total={filteredAvail.length} onPage={setAvailPage} />
+              </>
             )}
           </div>
         )}
@@ -587,7 +734,7 @@ export default function AdminRoomsPage() {
         {view === 'categories' && (
           <div>
             <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:'1.5rem' }}>
-              <button onClick={openCreateCat} style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.75rem 1.5rem', border:'none', cursor:'pointer', fontWeight:700 }}>
+              <button onClick={openCreateCat} style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.75rem 1.5rem', border:'none', cursor:'pointer', fontWeight:700 }}>
                 <Plus size={14} strokeWidth={2.5} /> Add Category
               </button>
             </div>
@@ -621,11 +768,11 @@ export default function AdminRoomsPage() {
                     <div style={{ display:'flex', gap:'1.5rem', paddingTop:'0.5rem', borderTop:`1px solid ${A.border}` }}>
                       <div>
                         <p style={{ fontFamily:A.cinzel, fontSize:'1.1rem', color:A.gold, fontWeight:700 }}>${cat.basePrice}</p>
-                        <p style={{ fontFamily:A.raleway, fontSize:'0.65rem', color:A.muted, textTransform:'uppercase', letterSpacing:'0.08em' }}>Base Price</p>
+                        <p style={{ fontFamily:A.raleway, fontSize:'0.75rem', color:A.muted, textTransform:'uppercase', letterSpacing:'0.08em' }}>Base Price</p>
                       </div>
                       <div>
                         <p style={{ fontFamily:A.cinzel, fontSize:'1.1rem', color:A.navy, fontWeight:700 }}>{roomCount}</p>
-                        <p style={{ fontFamily:A.raleway, fontSize:'0.65rem', color:A.muted, textTransform:'uppercase', letterSpacing:'0.08em' }}>Rooms</p>
+                        <p style={{ fontFamily:A.raleway, fontSize:'0.75rem', color:A.muted, textTransform:'uppercase', letterSpacing:'0.08em' }}>Rooms</p>
                       </div>
                     </div>
                   </div>
@@ -673,7 +820,7 @@ export default function AdminRoomsPage() {
                     <button key={value} type="button" onClick={() => setCatForm(p=>({...p,icon:value}))}
                       style={{ border:`2px solid ${catForm.icon===value ? A.gold : A.border}`, background: catForm.icon===value ? `${A.gold}14` : '#fff', padding:'0.6rem 0.4rem', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:'0.3rem', transition:'all 0.15s' }}>
                       <IcoComp size={18} color={catForm.icon===value ? A.gold : A.muted} strokeWidth={1.8} />
-                      <span style={{ fontFamily:A.raleway, fontSize:'0.58rem', color:catForm.icon===value ? A.navy : A.muted }}>{label}</span>
+                      <span style={{ fontFamily:A.raleway, fontSize:'0.72rem', color:catForm.icon===value ? A.navy : A.muted }}>{label}</span>
                     </button>
                   ))}
                 </div>
@@ -688,8 +835,8 @@ export default function AdminRoomsPage() {
               </div>
               {/* Actions */}
               <div style={{ display:'flex', gap:'0.875rem', marginTop:'0.25rem' }}>
-                <button onClick={() => setCatModal(false)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.875rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
-                <button onClick={handleSaveCat} disabled={catSaving} style={{ flex:2, background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.2em', textTransform:'uppercase', padding:'0.875rem', border:'none', cursor:'pointer', fontWeight:700, opacity:catSaving?0.6:1 }}>
+                <button onClick={() => setCatModal(false)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.875rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
+                <button onClick={handleSaveCat} disabled={catSaving} style={{ flex:2, background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.2em', textTransform:'uppercase', padding:'0.875rem', border:'none', cursor:'pointer', fontWeight:700, opacity:catSaving?0.6:1 }}>
                   {catSaving ? 'Saving…' : editCat ? 'Save Changes' : 'Create Category'}
                 </button>
               </div>
@@ -707,8 +854,8 @@ export default function AdminRoomsPage() {
             <h3 style={{ fontFamily:A.cinzel, fontSize:'0.9rem', color:A.navy, marginBottom:'0.5rem' }}>Delete Category?</h3>
             <p style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted, marginBottom:'1.5rem' }}>Existing rooms in this category will not be deleted but will lose their category link.</p>
             <div style={{ display:'flex', gap:'0.75rem' }}>
-              <button onClick={() => setDeleteCatConfirm(null)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
-              <button onClick={() => handleDeleteCat(deleteCatConfirm)} style={{ flex:1, background:'hsl(0 60% 48%)', color:'#fff', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:700 }}>Delete</button>
+              <button onClick={() => setDeleteCatConfirm(null)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
+              <button onClick={() => handleDeleteCat(deleteCatConfirm)} style={{ flex:1, background:'hsl(0 60% 48%)', color:'#fff', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:700 }}>Delete</button>
             </div>
           </div>
         </div>
@@ -739,7 +886,7 @@ export default function AdminRoomsPage() {
 
               {/* Guest details */}
               <div>
-                <p style={{ fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.muted, marginBottom:'0.875rem', borderBottom:`1px solid ${A.border}`, paddingBottom:'0.5rem' }}>Guest Information</p>
+                <p style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.muted, marginBottom:'0.875rem', borderBottom:`1px solid ${A.border}`, paddingBottom:'0.5rem' }}>Guest Information</p>
                 <div style={{ display:'flex', flexDirection:'column', gap:'0.875rem' }}>
                   <div>
                     <FieldLabel>Full Name *</FieldLabel>
@@ -760,7 +907,7 @@ export default function AdminRoomsPage() {
 
               {/* Room & dates */}
               <div>
-                <p style={{ fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.muted, marginBottom:'0.875rem', borderBottom:`1px solid ${A.border}`, paddingBottom:'0.5rem' }}>Reservation Details</p>
+                <p style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.muted, marginBottom:'0.875rem', borderBottom:`1px solid ${A.border}`, paddingBottom:'0.5rem' }}>Reservation Details</p>
                 <div style={{ display:'flex', flexDirection:'column', gap:'0.875rem' }}>
                   <div>
                     <FieldLabel>Room *</FieldLabel>
@@ -808,10 +955,10 @@ export default function AdminRoomsPage() {
 
               {/* Actions */}
               <div style={{ display:'flex', gap:'0.875rem', paddingTop:'0.25rem' }}>
-                <button onClick={() => setWalkInModal(false)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.875rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>
+                <button onClick={() => setWalkInModal(false)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.875rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>
                   Cancel
                 </button>
-                <button onClick={handleWalkIn} disabled={walkInSaving} style={{ flex:2, background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.2em', textTransform:'uppercase', padding:'0.875rem', border:'none', cursor:'pointer', fontWeight:700, opacity:walkInSaving?0.6:1 }}>
+                <button onClick={handleWalkIn} disabled={walkInSaving} style={{ flex:2, background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.2em', textTransform:'uppercase', padding:'0.875rem', border:'none', cursor:'pointer', fontWeight:700, opacity:walkInSaving?0.6:1 }}>
                   {walkInSaving ? 'Creating...' : 'Create Walk-In'}
                 </button>
               </div>
@@ -904,7 +1051,7 @@ export default function AdminRoomsPage() {
                   </div>
 
                   <button onClick={() => { if(!form.name||!form.slug){toast.error('Name and slug required');return;} setStep(2); }}
-                    style={{ marginTop:'0.5rem', background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.2em', textTransform:'uppercase', padding:'0.875rem', border:'none', cursor:'pointer', fontWeight:700 }}>
+                    style={{ marginTop:'0.5rem', background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.2em', textTransform:'uppercase', padding:'0.875rem', border:'none', cursor:'pointer', fontWeight:700 }}>
                     Continue →
                   </button>
                 </div>
@@ -965,7 +1112,7 @@ export default function AdminRoomsPage() {
                     {form.amenities && (
                       <div style={{ display:'flex', flexWrap:'wrap', gap:'0.3rem', marginTop:'0.5rem' }}>
                         {form.amenities.split(',').map(a=>a.trim()).filter(Boolean).map(a => (
-                          <span key={a} style={{ fontFamily:A.raleway, fontSize:'0.65rem', background:A.papyrus, color:A.muted, padding:'0.18rem 0.5rem', border:`1px solid ${A.border}` }}>{a}</span>
+                          <span key={a} style={{ fontFamily:A.raleway, fontSize:'0.75rem', background:A.papyrus, color:A.muted, padding:'0.18rem 0.5rem', border:`1px solid ${A.border}` }}>{a}</span>
                         ))}
                       </div>
                     )}
@@ -1017,10 +1164,10 @@ export default function AdminRoomsPage() {
 
                   {/* Actions */}
                   <div style={{ display:'flex', gap:'0.875rem', marginTop:'0.5rem' }}>
-                    <button onClick={() => setStep(1)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.875rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>
+                    <button onClick={() => setStep(1)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.875rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>
                       ← Back
                     </button>
-                    <button onClick={handleSave} disabled={saving} style={{ flex:2, background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.2em', textTransform:'uppercase', padding:'0.875rem', border:'none', cursor:'pointer', fontWeight:700, opacity:saving?0.6:1 }}>
+                    <button onClick={handleSave} disabled={saving} style={{ flex:2, background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.2em', textTransform:'uppercase', padding:'0.875rem', border:'none', cursor:'pointer', fontWeight:700, opacity:saving?0.6:1 }}>
                       {saving ? 'Saving...' : editRoom ? 'Save Changes' : 'Create Room'}
                     </button>
                   </div>
@@ -1040,8 +1187,8 @@ export default function AdminRoomsPage() {
             <h3 style={{ fontFamily:A.cinzel, fontSize:'0.9rem', color:A.navy, marginBottom:'0.5rem' }}>Delete Room?</h3>
             <p style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted, marginBottom:'1.5rem' }}>This action cannot be undone.</p>
             <div style={{ display:'flex', gap:'0.75rem' }}>
-              <button onClick={() => setDeleteConfirm(null)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
-              <button onClick={() => handleDelete(deleteConfirm)} style={{ flex:1, background:'hsl(0 60% 48%)', color:'#fff', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:700 }}>
+              <button onClick={() => setDeleteConfirm(null)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
+              <button onClick={() => handleDelete(deleteConfirm)} style={{ flex:1, background:'hsl(0 60% 48%)', color:'#fff', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:700 }}>
                 <XCircle size={12} style={{ display:'inline',marginRight:'0.4rem' }} strokeWidth={2} />Delete
               </button>
             </div>
@@ -1055,8 +1202,9 @@ export default function AdminRoomsPage() {
           <div style={{ position:'absolute', inset:0, background:'hsl(220 55% 18%/0.7)', backdropFilter:'blur(6px)' }} onClick={() => setQrModal(null)} />
           <div style={{ position:'relative', background:'#fff', padding:'2.5rem', textAlign:'center', maxWidth:'20rem', width:'100%', border:`1px solid ${A.border}` }}>
             <button onClick={() => setQrModal(null)} style={{ position:'absolute', top:'0.875rem', right:'0.875rem', background:'none', border:'none', cursor:'pointer', color:A.muted }}><X size={18} /></button>
-            <p style={{ fontFamily:A.cormo, color:A.gold, fontSize:'0.82rem', letterSpacing:'0.2em', textTransform:'uppercase', marginBottom:'0.5rem' }}>Room QR Code</p>
-            <h3 style={{ fontFamily:A.cinzel, fontSize:'1rem', color:A.navy, marginBottom:'1.5rem' }}>Scan for Guest Portal</h3>
+            <p style={{ fontFamily:A.cormo, color:A.gold, fontSize:'0.82rem', letterSpacing:'0.2em', textTransform:'uppercase', marginBottom:'0.25rem' }}>Room QR Code</p>
+            <h3 style={{ fontFamily:A.cinzel, fontSize:'1rem', color:A.navy, marginBottom:'0.25rem' }}>{qrModal.roomName}</h3>
+            <p style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.1em', color:A.muted, marginBottom:'1.25rem' }}>Room {qrModal.roomNumber} · Floor {qrModal.floor}</p>
             <img src={qrModal.url} alt="Room QR" style={{ width:'11rem', height:'11rem', margin:'0 auto 1.25rem', display:'block' }} />
             <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem', background:A.papyrus, padding:'0.625rem', border:`1px solid ${A.border}` }}>
               <CheckCircle size={13} color={A.gold} strokeWidth={2} />

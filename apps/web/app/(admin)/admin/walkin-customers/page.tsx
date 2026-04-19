@@ -3,7 +3,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import { UserPlus, Banknote, Coffee, Sparkles, RefreshCw } from 'lucide-react';
-import { A, PageHeader, AdminTable, AdminRow, AdminTd, Spinner, EmptyRow, adminTableCss } from '../../_adminStyles';
+import { A, PageHeader, AdminTable, AdminRow, AdminTd, Spinner, EmptyRow, adminTableCss, Pagination } from '../../_adminStyles';
+
+const PAGE_SIZE = 10;
 
 type WalkInType = 'dine_in' | 'spa' | '';
 
@@ -28,10 +30,12 @@ export default function WalkInCustomersPage() {
   const [loading, setLoading]       = useState(true);
   const [typeFilter, setTypeFilter] = useState<WalkInType>('');
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
+  const [page, setPage]             = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      setPage(1);
       const params = new URLSearchParams();
       if (typeFilter) params.set('type', typeFilter);
       if (dateFilter) params.set('date', dateFilter);
@@ -45,6 +49,7 @@ export default function WalkInCustomersPage() {
 
   const dineInCount = customers.filter(c => c.type === 'dine_in').length;
   const spaCount    = customers.filter(c => c.type === 'spa').length;
+  const paginated   = customers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <>
@@ -114,11 +119,12 @@ export default function WalkInCustomersPage() {
         {loading ? (
           <div style={{ textAlign: 'center', padding: '3rem' }}><Spinner /></div>
         ) : (
+          <>
           <AdminTable headers={['Name', 'Phone', 'Type', 'Notes', 'Registered By', 'Time']} minWidth={600}>
             {customers.length === 0 ? (
               <EmptyRow colSpan={6} message="No walk-in customers for this date / filter" />
             ) : (
-              customers.map(c => (
+              paginated.map(c => (
                 <AdminRow key={c._id}>
                   <AdminTd style={{ fontFamily: A.cinzel, fontSize: '0.78rem', color: A.navy, fontWeight: 600 }}>{c.name}</AdminTd>
                   <AdminTd style={{ fontFamily: A.raleway, fontSize: '0.8rem', color: A.muted }}>{c.phone || '—'}</AdminTd>
@@ -146,6 +152,8 @@ export default function WalkInCustomersPage() {
               ))
             )}
           </AdminTable>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={customers.length} onPage={setPage} />
+          </>
         )}
       </div>
     </>

@@ -201,7 +201,7 @@ export default function KitchenOrdersPage() {
                           : <span className="pay-badge-bill"><FileText size={9}/> Bill</span>
                       )}
                     </div>
-                    <div style={{ fontFamily:A.raleway, fontSize:'0.68rem', color:'rgba(245,236,215,0.5)' }}>{new Date(order.placedAt).toLocaleTimeString()}</div>
+                    <div style={{ fontFamily:A.raleway, fontSize:'0.75rem', color:'rgba(245,236,215,0.5)' }}>{new Date(order.placedAt).toLocaleTimeString()}</div>
                   </div>
                   <StatusPill status={order.status} />
                 </div>
@@ -224,7 +224,7 @@ export default function KitchenOrdersPage() {
                         </button>
                       )}
                       {['pending','accepted'].includes(order.status) && (
-                        <button onClick={()=>{ setCancelTarget(order._id); setCancelReason(''); }} style={{ color:'hsl(0 60% 42%)', border:'1px solid hsl(0 60% 75%)', background:'hsl(0 70% 97%)', fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.35rem 0.75rem', cursor:'pointer' }}>Cancel</button>
+                        <button onClick={()=>{ setCancelTarget(order._id); setCancelReason(''); }} style={{ color:'hsl(0 60% 42%)', border:'1px solid hsl(0 60% 75%)', background:'hsl(0 70% 97%)', fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.35rem 0.75rem', cursor:'pointer' }}>Cancel</button>
                       )}
                     </div>
                   </div>
@@ -237,7 +237,7 @@ export default function KitchenOrdersPage() {
         {/* Completed table */}
         {done.length > 0 && (
           <>
-            <h2 style={{ fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, marginBottom:'1rem' }}>Completed / Cancelled</h2>
+            <h2 style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, marginBottom:'1rem' }}>Completed / Cancelled</h2>
             <AdminTable headers={['Order ID','Customer','Items','Total','Payment','Status','Time']} minWidth={700}>
               {done.map((o:any) => (
                 <AdminRow key={o._id}>
@@ -301,7 +301,7 @@ export default function KitchenOrdersPage() {
                   {/* Hotel guest selector */}
                   {customerMode === 'hotel_guest' && (
                     <div style={{ marginBottom:'1.25rem' }}>
-                      <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Guest (checked-in)</label>
+                      <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Guest (checked-in)</label>
                       <select
                         value={guestId}
                         onChange={e => setGuestId(e.target.value)}
@@ -322,7 +322,7 @@ export default function KitchenOrdersPage() {
                       <p style={{ fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'hsl(270 45% 40%)', marginBottom:'0.75rem' }}>External Walk-in Customer — Cash Only</p>
                       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.75rem' }}>
                         <div>
-                          <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.navy, marginBottom:'0.35rem' }}>Name *</label>
+                          <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.navy, marginBottom:'0.35rem' }}>Name *</label>
                           <input
                             type="text"
                             value={walkInName}
@@ -332,7 +332,7 @@ export default function KitchenOrdersPage() {
                           />
                         </div>
                         <div>
-                          <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.navy, marginBottom:'0.35rem' }}>Phone (optional)</label>
+                          <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.navy, marginBottom:'0.35rem' }}>Phone (optional)</label>
                           <input
                             type="text"
                             value={walkInPhone}
@@ -347,7 +347,7 @@ export default function KitchenOrdersPage() {
 
                   {/* Menu item search */}
                   <div style={{ marginBottom:'1.25rem', position:'relative' }}>
-                    <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Add Item</label>
+                    <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Add Item</label>
                     <input
                       type="text"
                       placeholder="Search menu items…"
@@ -412,7 +412,7 @@ export default function KitchenOrdersPage() {
                         </div>
                       ))}
                       <div style={{ padding:'0.75rem 1rem', background:A.papyrus, display:'flex', justifyContent:'space-between' }}>
-                        <span style={{ fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy }}>Total</span>
+                        <span style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy }}>Total</span>
                         <span style={{ fontFamily:A.cinzel, fontSize:'0.9rem', color:A.gold, fontWeight:700 }}>${total.toFixed(2)}</span>
                       </div>
                     </div>
@@ -420,7 +420,7 @@ export default function KitchenOrdersPage() {
 
                   {/* Notes */}
                   <div style={{ marginBottom:'1.25rem' }}>
-                    <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Order Notes (optional)</label>
+                    <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Order Notes (optional)</label>
                     <textarea
                       rows={2}
                       value={notes}
@@ -433,7 +433,7 @@ export default function KitchenOrdersPage() {
                   {/* Payment method — only for hotel guests */}
                   {customerMode === 'hotel_guest' && (
                     <div style={{ marginBottom:'1.5rem' }}>
-                      <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Payment Method</label>
+                      <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Payment Method</label>
                       <div className="pay-toggle">
                         <button className={payMethod === 'room_bill' ? 'active-bill' : 'inactive'} onClick={()=>setPayMethod('room_bill')}>
                           <FileText size={10} style={{ display:'inline', marginRight:'0.3rem' }} /> Charge to Room Bill
@@ -458,11 +458,11 @@ export default function KitchenOrdersPage() {
 
                   {/* Actions */}
                   <div style={{ display:'flex', gap:'0.75rem' }}>
-                    <button onClick={()=>setShowNew(false)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
+                    <button onClick={()=>setShowNew(false)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
                     <button
                       onClick={submitOrder}
                       disabled={!canSubmit}
-                      style={{ flex:2, background: !canSubmit ? A.muted : 'linear-gradient(135deg,hsl(43 72% 55%),hsl(43 65% 72%))', color:A.navy, fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor: !canSubmit ? 'not-allowed' : 'pointer', fontWeight:700 }}
+                      style={{ flex:2, background: !canSubmit ? A.muted : 'linear-gradient(135deg,hsl(43 72% 55%),hsl(43 65% 72%))', color:A.navy, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor: !canSubmit ? 'not-allowed' : 'pointer', fontWeight:700 }}
                     >
                       {submitting ? 'Placing…' : `Place Order · $${total.toFixed(2)}`}
                     </button>
@@ -479,7 +479,7 @@ export default function KitchenOrdersPage() {
         <div style={{ position:'fixed', inset:0, background:'hsl(220 55% 18% / 0.7)', zIndex:100, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
           <div style={{ background:'#fff', maxWidth:'420px', width:'100%', padding:'2rem', border:`1px solid ${A.border}` }}>
             <h3 style={{ fontFamily:A.cinzel, fontSize:'0.8rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy, marginBottom:'1.25rem' }}>Cancel Order</h3>
-            <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Reason (optional)</label>
+            <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy, marginBottom:'0.5rem' }}>Reason (optional)</label>
             <textarea
               rows={3}
               value={cancelReason}
@@ -488,8 +488,8 @@ export default function KitchenOrdersPage() {
               style={{ width:'100%', padding:'0.625rem 0.75rem', border:`1px solid ${A.border}`, fontFamily:A.raleway, fontSize:'0.85rem', color:A.navy, resize:'none', boxSizing:'border-box', outline:'none', marginBottom:'1.25rem' }}
             />
             <div style={{ display:'flex', gap:'0.75rem' }}>
-              <button onClick={()=>{ setCancelTarget(null); setCancelReason(''); }} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Keep Order</button>
-              <button onClick={cancel} style={{ flex:1, background:'hsl(0 60% 48%)', color:'#fff', fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:600 }}>Yes, Cancel</button>
+              <button onClick={()=>{ setCancelTarget(null); setCancelReason(''); }} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Keep Order</button>
+              <button onClick={cancel} style={{ flex:1, background:'hsl(0 60% 48%)', color:'#fff', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:600 }}>Yes, Cancel</button>
             </div>
           </div>
         </div>

@@ -129,6 +129,52 @@ export async function earlyCheckout(req: Request, res: Response): Promise<void> 
   res.json({ success: true, bill, nightsStayed, policy: reservation.cancellationPolicy });
 }
 
+// Early arrival: guest arrives before their booked checkInDate.
+// actualCheckInDate must be before reservation.checkInDate.
+// Extra nights are added as a separate room line item at the room's pricePerNight.
+export async function earlyArrival(req: Request, res: Response): Promise<void> {
+  const { actualCheckInDate } = req.body;
+  if (!actualCheckInDate) throw new AppError('actualCheckInDate is required', 400);
+
+  const guest = await Guest.findById(req.params.guestId).populate('bill');
+  if (!guest) throw new AppError('Guest not found', 404);
+  if (!guest.isActive) throw new AppError('Guest already checked out', 400);
+
+  const bill = await Bill.findById(guest.bill);
+  if (!bill) throw new AppError('Bill not found', 404);
+  if (bill.status !== 'open') throw new AppError('Bill already processed', 400);
+
+  const reservation = await Reservation.findById(guest.reservation).populate('room', 'name pricePerNight');
+  if (!reservation) throw new AppError('Reservation not found', 404);
+
+  const actual = new Date(actualCheckInDate);
+  actual.setHours(0, 0, 0, 0);
+  const booked = new Date(reservation.checkInDate);
+  booked.setHours(0, 0, 0, 0);
+
+  if (actual >= booked) throw new AppError('actualCheckInDate must be before the booked check-in date', 400);
+
+  const extraNights = Math.round((booked.getTime() - actual.getTime()) / (1000 * 60 * 60 * 24));
+  const room = reservation.room as any;
+  const extraCharge = extraNights * room.pricePerNight;
+
+  bill.lineItems.push({
+    type: 'room',
+    description: `Early arrival: ${room.name} (${extraNights} extra night${extraNights > 1 ? 's' : ''} — arrived ${actual.toLocaleDateString()})`,
+    amount: extraCharge,
+    date: new Date(),
+  } as any);
+
+  reservation.checkInDate = actual;
+  reservation.totalNights = reservation.totalNights + extraNights;
+  await reservation.save();
+
+  (bill as any).recalculate();
+  await bill.save();
+
+  res.json({ success: true, bill, extraNights, extraCharge, policy: reservation.cancellationPolicy });
+}
+
 export async function checkOut(req: Request, res: Response): Promise<void> {
   const guest = await Guest.findById(req.params.guestId).populate('bill');
   if (!guest) throw new AppError('Guest not found', 404);

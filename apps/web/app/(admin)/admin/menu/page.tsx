@@ -4,7 +4,9 @@ import Image from 'next/image';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import { Plus, Edit2, Trash2, X, ToggleLeft, ToggleRight, Leaf } from 'lucide-react';
-import { A, PageHeader, GoldBtn, NavyBtn, adminTableCss } from '../../_adminStyles';
+import { A, PageHeader, GoldBtn, NavyBtn, adminTableCss, Pagination, ConfirmDialog } from '../../_adminStyles';
+
+const PAGE_SIZE = 12;
 
 const CATEGORIES = ['breakfast','lunch','dinner','snacks','beverages','desserts'];
 const empty = { name:'', description:'', category:'breakfast', price:'', preparationTime:'20', isVeg:false, image:'' };
@@ -22,6 +24,9 @@ export default function AdminMenuPage() {
   const [form, setForm] = useState({...empty});
   const [saving, setSaving] = useState(false);
   const [activeCat, setActiveCat] = useState('all');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const fetchData = () => {
     api.get('/menu?all=true')
@@ -46,7 +51,6 @@ export default function AdminMenuPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this menu item?')) return;
     await api.delete(`/menu/${id}`); toast.success('Deleted'); fetchData();
   };
 
@@ -54,7 +58,9 @@ export default function AdminMenuPage() {
     await api.put(`/menu/${item._id}`, { isAvailable: !item.isAvailable }); fetchData();
   };
 
-  const filtered = activeCat === 'all' ? items : items.filter(i => i.category === activeCat);
+  const byCat   = activeCat === 'all' ? items : items.filter(i => i.category === activeCat);
+  const filtered = search ? byCat.filter(i => i.name?.toLowerCase().includes(search.toLowerCase())) : byCat;
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const inputStyle: React.CSSProperties = {
     width:'100%', padding:'0.625rem 0.875rem', border:`1px solid ${A.border}`,
@@ -74,19 +80,35 @@ export default function AdminMenuPage() {
       <div style={{ padding:'2rem', maxWidth:'1280px' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'2rem' }}>
           <PageHeader eyebrow="Manage" title="Menu Items" />
-          <button onClick={openCreate} style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.625rem 1.25rem', border:'none', cursor:'pointer', fontWeight:700 }}>
+          <button onClick={openCreate} style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:A.gradGold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.625rem 1.25rem', border:'none', cursor:'pointer', fontWeight:700 }}>
             <Plus size={14} strokeWidth={2.5} /> Add Item
           </button>
         </div>
 
-        {/* Category filter */}
-        <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap', marginBottom:'1.75rem' }}>
+        {/* Category filter + search */}
+        <div style={{ display:'flex', gap:'0.5rem', flexWrap:'wrap', marginBottom:'1rem', alignItems:'center' }}>
           {['all',...CATEGORIES].map(c => (
-            <button key={c} className="cat-pill" onClick={() => setActiveCat(c)}
+            <button key={c} className="cat-pill" onClick={() => { setActiveCat(c); setPage(1); }}
               style={{ background: activeCat===c ? A.navy : '#fff', color: activeCat===c ? A.gold : A.muted, border: `1px solid ${activeCat===c ? A.navy : A.border}` }}>
               {c === 'all' ? 'All Items' : c}
             </button>
           ))}
+        </div>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'1.75rem', flexWrap:'wrap', gap:'0.5rem' }}>
+          <div style={{ position:'relative' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              style={{ position:'absolute', left:'0.65rem', top:'50%', transform:'translateY(-50%)', color:A.muted, pointerEvents:'none' }}>
+              <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Search menu items…"
+              style={{ padding:'0.45rem 0.75rem 0.45rem 2rem', border:`1px solid ${A.border}`, fontFamily:A.cinzel, fontSize:'0.72rem', color:A.navy, background:'#fff', outline:'none', width:'220px' }}
+            />
+          </div>
+          <span style={{ fontFamily:A.cinzel, fontSize:'0.75rem', color:A.muted }}>{filtered.length} item{filtered.length !== 1 ? 's' : ''}</span>
         </div>
 
         {loading ? (
@@ -95,14 +117,18 @@ export default function AdminMenuPage() {
             <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
           </div>
         ) : (
+          <>
+          {filtered.length === 0 && (
+            <p style={{ fontFamily:A.cinzel, fontSize:'0.75rem', color:A.muted, textAlign:'center', padding:'3rem 0' }}>No items match your search.</p>
+          )}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))', gap:'1.25rem' }}>
-            {filtered.map(item => (
+            {paginated.map(item => (
               <div key={item._id} className="m-card" style={{ opacity: item.isAvailable ? 1 : 0.6 }}>
                 <div style={{ position:'relative', height:'11rem', overflow:'hidden' }}>
                   <Image src={item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400'} alt={item.name} fill style={{ objectFit:'cover' }} />
                   <div style={{ position:'absolute', inset:0, background:'linear-gradient(to top,hsl(220 55% 18%/0.5) 0%,transparent 60%)' }} />
                   <div style={{ position:'absolute', top:'0.75rem', left:'0.75rem', background: CAT_COLOR[item.category] || A.navy, padding:'0.2rem 0.65rem' }}>
-                    <span style={{ fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'#fff' }}>{item.category}</span>
+                    <span style={{ fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.12em', textTransform:'uppercase', color:'#fff' }}>{item.category}</span>
                   </div>
                   {item.isVeg && (
                     <div style={{ position:'absolute', top:'0.75rem', right:'0.75rem', background:'hsl(142 50% 40%)', padding:'0.2rem 0.5rem', display:'flex', alignItems:'center', gap:'0.3rem' }}>
@@ -122,14 +148,14 @@ export default function AdminMenuPage() {
                   </div>
                   <p style={{ fontFamily:A.raleway, fontSize:'0.75rem', color:A.muted, lineHeight:1.5, marginBottom:'1rem', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{item.description}</p>
                   <div style={{ display:'flex', gap:'0.5rem' }}>
-                    <button onClick={() => openEdit(item)} style={{ display:'flex', alignItems:'center', gap:'0.35rem', color:'hsl(210 70% 35%)', border:'1px solid hsl(210 70% 75%)', background:'hsl(210 80% 97%)', fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.3rem 0.65rem', cursor:'pointer' }}>
+                    <button onClick={() => openEdit(item)} style={{ display:'flex', alignItems:'center', gap:'0.35rem', color:'hsl(210 70% 35%)', border:'1px solid hsl(210 70% 75%)', background:'hsl(210 80% 97%)', fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.3rem 0.65rem', cursor:'pointer' }}>
                       <Edit2 size={10} strokeWidth={2} /> Edit
                     </button>
-                    <button onClick={() => handleToggle(item)} style={{ display:'flex', alignItems:'center', gap:'0.35rem', color: item.isAvailable ? 'hsl(38 80% 35%)' : 'hsl(142 50% 30%)', border:`1px solid ${item.isAvailable ? 'hsl(38 80% 70%)' : 'hsl(142 50% 70%)'}`, background: item.isAvailable ? 'hsl(38 90% 95%)' : 'hsl(142 60% 95%)', fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.3rem 0.65rem', cursor:'pointer' }}>
+                    <button onClick={() => handleToggle(item)} style={{ display:'flex', alignItems:'center', gap:'0.35rem', color: item.isAvailable ? 'hsl(38 80% 35%)' : 'hsl(142 50% 30%)', border:`1px solid ${item.isAvailable ? 'hsl(38 80% 70%)' : 'hsl(142 50% 70%)'}`, background: item.isAvailable ? 'hsl(38 90% 95%)' : 'hsl(142 60% 95%)', fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.3rem 0.65rem', cursor:'pointer' }}>
                       {item.isAvailable ? <ToggleRight size={11} /> : <ToggleLeft size={11} />}
                       {item.isAvailable ? 'Disable' : 'Enable'}
                     </button>
-                    <button onClick={() => handleDelete(item._id)} style={{ display:'flex', alignItems:'center', gap:'0.35rem', color:'hsl(0 60% 42%)', border:'1px solid hsl(0 60% 75%)', background:'hsl(0 70% 97%)', fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.3rem 0.65rem', cursor:'pointer', marginLeft:'auto' }}>
+                    <button onClick={() => setDeleteTarget(item._id)} style={{ display:'flex', alignItems:'center', gap:'0.35rem', color:'hsl(0 60% 42%)', border:'1px solid hsl(0 60% 75%)', background:'hsl(0 70% 97%)', fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.3rem 0.65rem', cursor:'pointer', marginLeft:'auto' }}>
                       <Trash2 size={10} strokeWidth={2} />
                     </button>
                   </div>
@@ -137,6 +163,8 @@ export default function AdminMenuPage() {
               </div>
             ))}
           </div>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={setPage} />
+          </>
         )}
       </div>
 
@@ -183,7 +211,7 @@ export default function AdminMenuPage() {
               </div>
               <label style={{ display:'flex', alignItems:'center', gap:'0.625rem', cursor:'pointer' }}>
                 <input type="checkbox" checked={form.isVeg} onChange={e=>setForm({...form,isVeg:e.target.checked})} style={{ accentColor:A.gold, width:'1rem', height:'1rem' }} />
-                <span style={{ fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy }}>Vegetarian / Vegan</span>
+                <span style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.navy }}>Vegetarian / Vegan</span>
               </label>
               <div style={{ display:'flex', gap:'0.75rem', paddingTop:'0.5rem' }}>
                 <NavyBtn onClick={() => setModal(false)}>Cancel</NavyBtn>
@@ -193,6 +221,16 @@ export default function AdminMenuPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Menu Item"
+        message="Are you sure you want to delete this menu item? This action cannot be undone."
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => { if (deleteTarget) { handleDelete(deleteTarget); setDeleteTarget(null); } }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </>
   );
 }

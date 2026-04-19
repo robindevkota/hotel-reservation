@@ -33,7 +33,7 @@ const STATUS_MAP: Record<string,{bg:string;color:string}> = {
 export function StatusPill({ status }: { status: string }) {
   const c = STATUS_MAP[status] || { bg:'hsl(220 20% 92%)', color:'hsl(220 15% 38%)' };
   return (
-    <span style={{ background:c.bg, color:c.color, fontFamily:A.cinzel, fontSize:'0.7rem', letterSpacing:'0.1em', textTransform:'uppercase' as const, padding:'0.3rem 0.8rem', whiteSpace:'nowrap' as const, fontWeight:600 }}>
+    <span style={{ background:c.bg, color:c.color, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.1em', textTransform:'uppercase' as const, padding:'0.3rem 0.8rem', whiteSpace:'nowrap' as const, fontWeight:600 }}>
       {status.replace(/_/g,' ')}
     </span>
   );
@@ -56,7 +56,7 @@ export function AdminTable({ headers, children, minWidth = 700 }: { headers: str
         <thead>
           <tr style={{ background:A.navy }}>
             {headers.map(h => (
-              <th key={h} style={{ textAlign:'left', padding:'0.9rem 1.1rem', fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.13em', textTransform:'uppercase' as const, color:A.gold, fontWeight:700, whiteSpace:'nowrap' as const }}>{h}</th>
+              <th key={h} style={{ textAlign:'left', padding:'0.9rem 1.1rem', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.13em', textTransform:'uppercase' as const, color:A.gold, fontWeight:700, whiteSpace:'nowrap' as const }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -71,7 +71,7 @@ export function AdminRow({ children }: { children: React.ReactNode }) {
 }
 
 export function AdminTd({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <td style={{ padding:'0.9rem 1.1rem', fontFamily:A.raleway, fontSize:'0.9rem', color:A.muted, verticalAlign:'middle', ...style }}>{children}</td>;
+  return <td style={{ padding:'0.9rem 1.1rem', fontFamily:A.raleway, fontSize:'0.95rem', color:A.muted, verticalAlign:'middle', ...style }}>{children}</td>;
 }
 
 export function ActionBtn({ onClick, variant, children }: { onClick: ()=>void; variant: 'confirm'|'checkin'|'cancel'|'danger'|'view'|'complete'; children: React.ReactNode }) {
@@ -84,7 +84,7 @@ export function ActionBtn({ onClick, variant, children }: { onClick: ()=>void; v
     complete: { color:'hsl(270 50% 38%)', border:'1px solid hsl(270 50% 75%)', background:'hsl(270 60% 97%)' },
   };
   return (
-    <button onClick={onClick} style={{ ...styles[variant], fontFamily:A.cinzel, fontSize:'0.67rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.35rem 0.9rem', cursor:'pointer', transition:'opacity 0.2s', fontWeight:600 }}>
+    <button onClick={onClick} style={{ ...styles[variant], fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.4rem 0.9rem', cursor:'pointer', transition:'opacity 0.2s', fontWeight:600 }}>
       {children}
     </button>
   );
@@ -92,7 +92,7 @@ export function ActionBtn({ onClick, variant, children }: { onClick: ()=>void; v
 
 export function GoldBtn({ onClick, children, disabled }: { onClick?: ()=>void; children: React.ReactNode; disabled?: boolean }) {
   return (
-    <button onClick={onClick} disabled={disabled} style={{ background:'linear-gradient(135deg,hsl(43 72% 55%),hsl(43 65% 72%))', color:A.navy, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.625rem 1.5rem', border:'none', cursor:'pointer', fontWeight:700, opacity: disabled ? 0.55 : 1, transition:'opacity 0.2s' }}>
+    <button onClick={onClick} disabled={disabled} style={{ background:'linear-gradient(135deg,hsl(43 72% 55%),hsl(43 65% 72%))', color:A.navy, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.625rem 1.5rem', border:'none', cursor:'pointer', fontWeight:700, opacity: disabled ? 0.55 : 1, transition:'opacity 0.2s' }}>
       {children}
     </button>
   );
@@ -100,7 +100,7 @@ export function GoldBtn({ onClick, children, disabled }: { onClick?: ()=>void; c
 
 export function NavyBtn({ onClick, children }: { onClick?: ()=>void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} style={{ background:A.navy, color:A.goldLight, fontFamily:A.cinzel, fontSize:'0.65rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.625rem 1.5rem', border:`1px solid hsl(43 72% 55%/0.3)`, cursor:'pointer', fontWeight:600, transition:'opacity 0.2s' }}>
+    <button onClick={onClick} style={{ background:A.navy, color:A.goldLight, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', padding:'0.625rem 1.5rem', border:`1px solid hsl(43 72% 55%/0.3)`, cursor:'pointer', fontWeight:600, transition:'opacity 0.2s' }}>
       {children}
     </button>
   );
@@ -117,7 +117,7 @@ export function Spinner() {
 
 export function EmptyRow({ colSpan, message }: { colSpan: number; message: string }) {
   return (
-    <tr><td colSpan={colSpan} style={{ textAlign:'center', padding:'3rem', fontFamily:A.cinzel, fontSize:'0.82rem', color:A.muted, letterSpacing:'0.1em' }}>{message}</td></tr>
+    <tr><td colSpan={colSpan} style={{ textAlign:'center', padding:'3rem', fontFamily:A.cinzel, fontSize:'0.88rem', color:A.muted, letterSpacing:'0.1em' }}>{message}</td></tr>
   );
 }
 
@@ -169,10 +169,10 @@ export interface TableFiltersProps {
 }
 
 const filterInput: React.CSSProperties = {
-  padding: '0.45rem 0.75rem',
+  padding: '0.5rem 0.75rem',
   border: `1px solid hsl(35 25% 82%)`,
   fontFamily: "'Cinzel',serif",
-  fontSize: '0.72rem',
+  fontSize: '0.8rem',
   color: 'hsl(220 55% 18%)',
   background: '#fff',
   outline: 'none',
@@ -238,7 +238,7 @@ export function TableFilters({
 
         {hasActiveFilters && onClear && (
           <button onClick={onClear}
-            style={{ fontFamily: "'Cinzel',serif", fontSize: '0.58rem', letterSpacing: '0.08em', color: 'hsl(220 15% 40%)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+            style={{ fontFamily: "'Cinzel',serif", fontSize: '0.72rem', letterSpacing: '0.08em', color: 'hsl(220 15% 40%)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
             Clear filters
           </button>
         )}
@@ -250,8 +250,8 @@ export function TableFilters({
           {['', ...statusPills.values].map(st => (
             <button key={st} onClick={() => statusPills.onChange(st)}
               style={{
-                fontFamily: "'Cinzel',serif", fontSize: '0.58rem', letterSpacing: '0.08em',
-                textTransform: 'uppercase', padding: '0.28rem 0.65rem', cursor: 'pointer',
+                fontFamily: "'Cinzel',serif", fontSize: '0.7rem', letterSpacing: '0.08em',
+                textTransform: 'uppercase', padding: '0.32rem 0.75rem', cursor: 'pointer',
                 border: `1px solid ${statusPills.active === st ? 'hsl(43 72% 55%)' : 'hsl(35 25% 82%)'}`,
                 background: statusPills.active === st ? 'hsl(43 72% 55% / 0.12)' : 'transparent',
                 color: statusPills.active === st ? 'hsl(220 55% 18%)' : 'hsl(220 15% 40%)',
@@ -261,7 +261,7 @@ export function TableFilters({
             </button>
           ))}
           {resultCount !== undefined && (
-            <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.6rem', color: 'hsl(220 15% 40%)', marginLeft: '0.5rem' }}>
+            <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.72rem', color: 'hsl(220 15% 40%)', marginLeft: '0.5rem' }}>
               {resultCount} result{resultCount !== 1 ? 's' : ''}
             </span>
           )}
@@ -288,9 +288,9 @@ export function Pagination({ page, pageSize, total, onPage, onPageSize, pageSize
 
   const btnStyle = (active: boolean, disabled?: boolean): React.CSSProperties => ({
     fontFamily: "'Cinzel',serif",
-    fontSize: '0.62rem',
+    fontSize: '0.75rem',
     letterSpacing: '0.06em',
-    padding: '0.3rem 0.6rem',
+    padding: '0.35rem 0.65rem',
     border: `1px solid ${active ? 'hsl(43 72% 55%)' : 'hsl(35 25% 82%)'}`,
     background: active ? 'hsl(43 72% 55% / 0.12)' : 'transparent',
     color: active ? 'hsl(220 55% 18%)' : disabled ? 'hsl(220 15% 65%)' : 'hsl(220 15% 40%)',
@@ -308,7 +308,7 @@ export function Pagination({ page, pageSize, total, onPage, onPageSize, pageSize
 
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-      <div style={{ fontFamily: "'Cinzel',serif", fontSize: '0.62rem', color: 'hsl(220 15% 40%)', letterSpacing: '0.05em' }}>
+      <div style={{ fontFamily: "'Cinzel',serif", fontSize: '0.75rem', color: 'hsl(220 15% 40%)', letterSpacing: '0.05em' }}>
         {total === 0 ? 'No results' : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}`}
       </div>
 
@@ -316,7 +316,7 @@ export function Pagination({ page, pageSize, total, onPage, onPageSize, pageSize
         <button onClick={() => onPage(page - 1)} disabled={page <= 1} style={btnStyle(false, page <= 1)}>‹</button>
         {pages.map((p, i) =>
           p === '…'
-            ? <span key={`e${i}`} style={{ fontFamily: "'Cinzel',serif", fontSize: '0.62rem', color: 'hsl(220 15% 55%)', padding: '0 0.2rem' }}>…</span>
+            ? <span key={`e${i}`} style={{ fontFamily: "'Cinzel',serif", fontSize: '0.75rem', color: 'hsl(220 15% 55%)', padding: '0 0.2rem' }}>…</span>
             : <button key={p} onClick={() => onPage(p as number)} style={btnStyle(p === page)}>{p}</button>
         )}
         <button onClick={() => onPage(page + 1)} disabled={page >= totalPages} style={btnStyle(false, page >= totalPages)}>›</button>
@@ -324,13 +324,51 @@ export function Pagination({ page, pageSize, total, onPage, onPageSize, pageSize
 
       {onPageSize && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.6rem', color: 'hsl(220 15% 40%)' }}>Per page:</span>
+          <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.72rem', color: 'hsl(220 15% 40%)' }}>Per page:</span>
           <select value={pageSize} onChange={e => { onPageSize(Number(e.target.value)); onPage(1); }}
             style={{ ...filterInput, width: 70, padding: '0.3rem 0.4rem' }}>
             {pageSizeOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── ConfirmDialog ─────────────────────────────────────────────────────────────
+
+export interface ConfirmDialogProps {
+  open: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', danger = false, onConfirm, onCancel }: ConfirmDialogProps) {
+  if (!open) return null;
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'hsl(220 55% 18% / 0.6)', backdropFilter: 'blur(3px)' }} onClick={onCancel} />
+      <div style={{ position: 'relative', background: '#fff', width: '100%', maxWidth: '26rem', border: `1px solid hsl(35 25% 82%)`, boxShadow: '0 20px 60px hsl(220 55% 8% / 0.3)' }}>
+        <div style={{ background: 'hsl(220 55% 18%)', padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ width: '0.35rem', height: '1.4rem', background: danger ? 'hsl(0 60% 52%)' : 'hsl(43 72% 55%)' }} />
+          <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.78rem', letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'hsl(40 30% 94%)', fontWeight: 600 }}>{title}</span>
+        </div>
+        <div style={{ padding: '1.5rem' }}>
+          <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '1rem', color: 'hsl(220 55% 18%)', lineHeight: 1.6 }}>{message}</p>
+        </div>
+        <div style={{ padding: '0.875rem 1.5rem', borderTop: '1px solid hsl(35 25% 88%)', display: 'flex', justifyContent: 'flex-end', gap: '0.625rem' }}>
+          <button onClick={onCancel} style={{ fontFamily: "'Cinzel',serif", fontSize: '0.75rem', letterSpacing: '0.12em', textTransform: 'uppercase' as const, padding: '0.6rem 1.25rem', border: '1px solid hsl(35 25% 82%)', background: 'transparent', color: 'hsl(220 15% 40%)', cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm} style={{ fontFamily: "'Cinzel',serif", fontSize: '0.75rem', letterSpacing: '0.12em', textTransform: 'uppercase' as const, padding: '0.6rem 1.5rem', border: 'none', background: danger ? 'hsl(0 60% 44%)' : 'hsl(220 55% 18%)', color: danger ? '#fff' : 'hsl(43 72% 55%)', cursor: 'pointer', fontWeight: 700 }}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

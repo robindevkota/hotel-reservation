@@ -3,7 +3,9 @@ import React, { useEffect, useState } from 'react';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
 import { Plus, Edit2, Trash2, X, Tag, ToggleLeft, ToggleRight } from 'lucide-react';
-import { A, PageHeader } from '../../_adminStyles';
+import { A, PageHeader, TableFilters, Pagination, ConfirmDialog } from '../../_adminStyles';
+
+const PAGE_SIZE = 10;
 
 const inputBase: React.CSSProperties = {
   width: '100%', padding: '0.65rem 0.875rem', border: `1px solid ${A.border}`,
@@ -42,6 +44,10 @@ export default function AdminOffersPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
 
   async function fetchData() {
     setLoading(true);
@@ -111,7 +117,6 @@ export default function AdminOffersPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Delete this offer permanently?')) return;
     setDeleting(id);
     try {
       await api.delete(`/offers/${id}`);
@@ -142,6 +147,21 @@ export default function AdminOffersPage() {
 
   const set = (k: keyof typeof form, v: any) => setForm(f => ({ ...f, [k]: v }));
 
+  const filteredOffers = offers.filter(o => {
+    const q = search.toLowerCase();
+    const matchSearch = !q || o.title?.toLowerCase().includes(q) || o.description?.toLowerCase().includes(q);
+    const now = new Date();
+    const live = o.isActive && new Date(o.startDate) <= now && new Date(o.endDate) >= now;
+    const matchStatus =
+      !statusFilter ? true :
+      statusFilter === 'live' ? live :
+      statusFilter === 'scheduled' ? (o.isActive && !live) :
+      statusFilter === 'inactive' ? !o.isActive : true;
+    return matchSearch && matchStatus;
+  });
+  const paginated = filteredOffers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const hasActiveFilters = !!search || !!statusFilter;
+
   return (
     <>
       <style>{`
@@ -157,15 +177,30 @@ export default function AdminOffersPage() {
           </button>
         </div>
 
+        <TableFilters
+          search={{ value: search, onChange: v => { setSearch(v); setPage(1); }, placeholder: 'Search by title or description…' }}
+          selects={[{
+            value: statusFilter,
+            onChange: v => { setStatusFilter(v); setPage(1); },
+            placeholder: 'All statuses',
+            options: [{ value: 'live', label: 'Live' }, { value: 'scheduled', label: 'Scheduled' }, { value: 'inactive', label: 'Inactive' }],
+            width: 160,
+          }]}
+          resultCount={filteredOffers.length}
+          hasActiveFilters={hasActiveFilters}
+          onClear={() => { setSearch(''); setStatusFilter(''); setPage(1); }}
+        />
+
         {loading ? (
           <div style={{ textAlign: 'center', padding: '4rem', fontFamily: A.cinzel, color: A.muted, fontSize: '0.8rem', letterSpacing: '0.15em' }}>Loading…</div>
-        ) : offers.length === 0 ? (
+        ) : filteredOffers.length === 0 ? (
           <div style={{ background: '#fff', border: `1px solid ${A.border}`, padding: '4rem', textAlign: 'center' }}>
             <Tag size={32} color={A.gold} style={{ marginBottom: '1rem' }} />
-            <p style={{ fontFamily: A.cinzel, color: A.muted, fontSize: '0.8rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>No offers yet</p>
-            <p style={{ fontFamily: A.cormo, color: A.muted, fontSize: '1rem', fontStyle: 'italic', marginTop: '0.5rem' }}>Create your first promotional offer above.</p>
+            <p style={{ fontFamily: A.cinzel, color: A.muted, fontSize: '0.8rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>{hasActiveFilters ? 'No offers match your filters' : 'No offers yet'}</p>
+            {!hasActiveFilters && <p style={{ fontFamily: A.cormo, color: A.muted, fontSize: '1rem', fontStyle: 'italic', marginTop: '0.5rem' }}>Create your first promotional offer above.</p>}
           </div>
         ) : (
+          <>
           <div style={{ background: '#fff', border: `1px solid ${A.border}`, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -176,7 +211,7 @@ export default function AdminOffersPage() {
                 </tr>
               </thead>
               <tbody>
-                {offers.map(offer => (
+                {paginated.map(offer => (
                   <tr key={offer._id} className="offer-row">
                     <td style={{ padding: '0.85rem 1rem', borderBottom: `1px solid hsl(35 25% 88%)` }}>
                       <div style={{ fontFamily: A.cinzel, fontSize: '0.75rem', color: A.navy, marginBottom: '0.2rem' }}>{offer.title}</div>
@@ -217,7 +252,7 @@ export default function AdminOffersPage() {
                         <button onClick={() => openEdit(offer)} style={{ background: 'none', border: `1px solid ${A.border}`, cursor: 'pointer', color: A.navy, padding: '0.35rem 0.6rem', display: 'flex', alignItems: 'center' }}>
                           <Edit2 size={13} />
                         </button>
-                        <button onClick={() => handleDelete(offer._id)} disabled={deleting === offer._id} style={{ background: 'none', border: '1px solid hsl(0 60% 82%)', cursor: 'pointer', color: 'hsl(0 60% 46%)', padding: '0.35rem 0.6rem', display: 'flex', alignItems: 'center' }}>
+                        <button onClick={() => setDeleteTarget(offer._id)} disabled={deleting === offer._id} style={{ background: 'none', border: '1px solid hsl(0 60% 82%)', cursor: 'pointer', color: 'hsl(0 60% 46%)', padding: '0.35rem 0.6rem', display: 'flex', alignItems: 'center' }}>
                           <Trash2 size={13} />
                         </button>
                       </div>
@@ -227,6 +262,8 @@ export default function AdminOffersPage() {
               </tbody>
             </table>
           </div>
+          <Pagination page={page} pageSize={PAGE_SIZE} total={filteredOffers.length} onPage={setPage} />
+          </>
         )}
       </div>
 
@@ -315,6 +352,16 @@ export default function AdminOffersPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Offer"
+        message="Are you sure you want to permanently delete this offer? This cannot be undone."
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => { if (deleteTarget) { handleDelete(deleteTarget); setDeleteTarget(null); } }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </>
   );
 }

@@ -99,20 +99,6 @@ export async function createReservation(req: Request, res: Response): Promise<vo
     depositPaid: false,
   });
 
-  // Send confirmation email only for foreign guests (Nepali email sent after deposit verified)
-  if (!isNepali) {
-    sendReservationConfirmation(
-      guest.email,
-      guest.name,
-      reservation.bookingRef,
-      checkIn,
-      checkOut,
-      room.name,
-      roomCharges,
-      cancellationPolicy,
-    ).catch(console.error);
-  }
-
   res.status(201).json({ success: true, reservation, depositAmount, guestType });
 }
 
@@ -123,7 +109,7 @@ export async function listReservations(req: Request, res: Response): Promise<voi
 
   const skip = (Number(page) - 1) * Number(limit);
   const [reservations, total] = await Promise.all([
-    Reservation.find(filter).populate('room', 'name roomNumber type').sort('-createdAt').skip(skip).limit(Number(limit)),
+    Reservation.find(filter).populate('room', 'name roomNumber type pricePerNight').sort('-createdAt').skip(skip).limit(Number(limit)),
     Reservation.countDocuments(filter),
   ]);
   res.json({ success: true, reservations, total, page: Number(page) });
@@ -136,12 +122,24 @@ export async function getReservation(req: AuthRequest, res: Response): Promise<v
 }
 
 export async function confirmReservation(req: Request, res: Response): Promise<void> {
-  const reservation = await Reservation.findById(req.params.id);
+  const reservation = await Reservation.findById(req.params.id).populate('room', 'name');
   if (!reservation) throw new AppError('Reservation not found', 404);
   if (reservation.status !== 'pending') throw new AppError('Can only confirm pending reservations', 400);
 
   reservation.status = 'confirmed';
   await reservation.save();
+
+  sendReservationConfirmation(
+    reservation.guest.email,
+    reservation.guest.name,
+    reservation.bookingRef,
+    reservation.checkInDate,
+    reservation.checkOutDate,
+    (reservation.room as any)?.name ?? 'Your Room',
+    reservation.roomCharges,
+    reservation.cancellationPolicy,
+  ).catch(console.error);
+
   res.json({ success: true, reservation });
 }
 

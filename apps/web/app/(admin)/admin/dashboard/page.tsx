@@ -44,7 +44,7 @@ function StatusPill({ status }: { status: string }) {
 function SectionTitle({ children, href, linkLabel='View All' }: { children: React.ReactNode; href?: string; linkLabel?: string }) {
   return (
     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
-      <h2 style={{ fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, margin:0 }}>{children}</h2>
+      <h2 style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, margin:0 }}>{children}</h2>
       {href && (
         <a href={href} style={{ display:'flex', alignItems:'center', gap:'0.3rem', fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.gold, textDecoration:'none' }}>
           {linkLabel} <ArrowRight size={11} />
@@ -175,7 +175,7 @@ export default function AdminDashboardPage() {
               <div style={{ fontFamily:A.cinzel, fontSize:'1.8rem', fontWeight:700, color:A.navy, lineHeight:1, marginBottom:'0.35rem' }}>
                 {loading ? <span style={{ color:A.borderLight }}>—</span> : value}
               </div>
-              <div style={{ fontFamily:A.cinzel, fontSize:'0.58rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.muted, marginBottom:'0.25rem' }}>{label}</div>
+              <div style={{ fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.muted, marginBottom:'0.25rem' }}>{label}</div>
               {!loading && <div style={{ fontFamily:A.raleway, fontSize:'0.72rem', color:A.muted }}>{sub}</div>}
             </div>
           ))}
@@ -184,7 +184,7 @@ export default function AdminDashboardPage() {
         {/* Inventory Snapshot — food admin only */}
         {scope.showFood && <div style={{ marginBottom:'2.5rem' }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'1rem' }}>
-            <p style={{ fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, margin:0 }}>Inventory Snapshot</p>
+            <p style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, margin:0 }}>Inventory Snapshot</p>
             <a href="/admin/inventory" style={{ display:'flex', alignItems:'center', gap:'0.3rem', fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.gold, textDecoration:'none' }}>
               View Inventory <ArrowRight size={11} />
             </a>
@@ -201,7 +201,7 @@ export default function AdminDashboardPage() {
                 </div>
                 <div>
                   <div style={{ fontFamily:A.cinzel, fontSize:'1.6rem', fontWeight:700, color:A.navy, lineHeight:1 }}>{loading ? '—' : value}</div>
-                  <div style={{ fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.muted, marginTop:'0.25rem' }}>{label}</div>
+                  <div style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.muted, marginTop:'0.25rem' }}>{label}</div>
                 </div>
               </div>
             ))}
@@ -368,7 +368,7 @@ export default function AdminDashboardPage() {
                   <thead>
                     <tr style={{ background:A.navy }}>
                       {['Guest','Room','Check In','Status'].map(h => (
-                        <th key={h} style={{ textAlign:'left', padding:'0.7rem 1rem', fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.14em', textTransform:'uppercase', color:A.gold, fontWeight:600 }}>{h}</th>
+                        <th key={h} style={{ textAlign:'left', padding:'0.7rem 1rem', fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.14em', textTransform:'uppercase', color:A.gold, fontWeight:600 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -404,7 +404,7 @@ export default function AdminDashboardPage() {
                   <thead>
                     <tr style={{ background:A.navy }}>
                       {['Room','Items','Total','Status'].map(h => (
-                        <th key={h} style={{ textAlign:'left', padding:'0.7rem 1rem', fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.14em', textTransform:'uppercase', color:A.gold, fontWeight:600 }}>{h}</th>
+                        <th key={h} style={{ textAlign:'left', padding:'0.7rem 1rem', fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.14em', textTransform:'uppercase', color:A.gold, fontWeight:600 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -450,7 +450,7 @@ export default function AdminDashboardPage() {
                       <div style={{ fontFamily:A.cinzel, fontSize:'1.4rem', fontWeight:700, color:s.color, lineHeight:1, marginBottom:'0.4rem' }}>
                         {loading ? '—' : s.value}
                       </div>
-                      <div style={{ fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.muted }}>{s.label}</div>
+                      <div style={{ fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.muted }}>{s.label}</div>
                     </div>
                   ))}
                 </div>
@@ -472,7 +472,7 @@ export default function AdminDashboardPage() {
                       <div style={{ fontFamily:A.cinzel, fontSize:'1.4rem', fontWeight:700, color:s.color, lineHeight:1, marginBottom:'0.4rem' }}>
                         {loading ? '—' : s.value}
                       </div>
-                      <div style={{ fontFamily:A.cinzel, fontSize:'0.57rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.muted }}>{s.label}</div>
+                      <div style={{ fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.12em', textTransform:'uppercase', color:A.muted }}>{s.label}</div>
                     </div>
                   ))}
                 </div>

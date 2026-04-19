@@ -1358,6 +1358,62 @@ test.describe('Phase 4 — Week 4: Checkout Wave + Room Recycling', () => {
     expect(Array.isArray(wicListD.customers)).toBe(true);
   });
 
+  test('SIM-31 Rania early-arrival — extra nights added to bill, reservation dates updated', async () => {
+    // Find a free room
+    const { data: freeD } = await get('/rooms?available=true', ADMIN);
+    const freeNow: any[] = (freeD.rooms ?? []).filter((r: any) => r.isAvailable === true);
+    if (!freeNow.length) { test.skip(true, 'No free rooms for Rania'); return; }
+
+    const room = freeNow[0];
+    const bookedCheckIn  = simDate(28);
+    const bookedCheckOut = simDate(31);
+
+    // Check in Rania with booked dates
+    const result = await bookAndCheckin(
+      ADMIN, room._id,
+      'Rania Faris', 'rania.sim31@nile.eg',
+      bookedCheckIn, bookedCheckOut,
+    );
+    if (!result) { test.skip(true, 'Rania check-in failed'); return; }
+    G['rania31'] = { ...result, roomId: room._id, roomPrice: room.pricePerNight };
+
+    // Baseline bill — only room charge for 3 booked nights
+    const { data: billBefore } = await get(`/billing/${G['rania31'].guestId}`, ADMIN);
+    const before = billBefore.bill ?? billBefore;
+    const linesBefore = before.lineItems.length;
+    expect(before.roomCharges).toBeCloseTo(3 * room.pricePerNight, 1);
+
+    // Admin records early arrival — 2 days before booked check-in
+    const actualCheckIn = simDate(26); // 2 days earlier
+    const { data: earlyD } = await post(`/checkin/early-arrival/${G['rania31'].guestId}`, { actualCheckInDate: actualCheckIn }, ADMIN);
+    expect(earlyD.success).toBe(true);
+    expect(earlyD.extraNights).toBe(2);
+    expect(earlyD.extraCharge).toBeCloseTo(2 * room.pricePerNight, 1);
+
+    // Bill should have one extra room line item
+    const bill = earlyD.bill;
+    expect(bill.lineItems.length).toBe(linesBefore + 1);
+    const extraItem = bill.lineItems.find((li: any) => li.description?.includes('Early arrival'));
+    expect(extraItem).toBeTruthy();
+    expect(extraItem.type).toBe('room');
+    expect(extraItem.amount).toBeCloseTo(2 * room.pricePerNight, 1);
+
+    // VAT still correct on the expanded bill
+    assertVAT(bill);
+
+    // Reservation dates updated
+    const { data: resD } = await get(`/reservations/${G['rania31'].reservationId}`, ADMIN);
+    const res = resD.reservation;
+    expect(res.totalNights).toBe(5); // 3 booked + 2 extra
+    // Allow ±1 day for UTC/local timezone shift on date storage
+    const storedMs  = new Date(res.checkInDate).getTime();
+    const expectedMs = new Date(actualCheckIn).getTime();
+    expect(Math.abs(storedMs - expectedMs)).toBeLessThanOrEqual(86400000);
+
+    // Cleanup
+    await post(`/checkin/checkout/${G['rania31'].guestId}`, {}, ADMIN).catch(() => {});
+  });
+
   test('SIM-24 Final state — simulation complete, invariants hold', async () => {
     test.setTimeout(60_000);
 
