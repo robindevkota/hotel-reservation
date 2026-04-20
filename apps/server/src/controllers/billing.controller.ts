@@ -40,6 +40,22 @@ export async function getBillByReservation(req: Request, res: Response): Promise
   res.json({ success: true, bill, guestId: guest._id });
 }
 
+export async function toggleVat(req: Request, res: Response): Promise<void> {
+  const guest = await Guest.findById(req.params.guestId);
+  if (!guest) throw new AppError('Guest not found', 404);
+  if (!guest.bill) throw new AppError('No bill for this guest', 404);
+
+  const bill = await Bill.findById(guest.bill);
+  if (!bill) throw new AppError('Bill not found', 404);
+  if (bill.status === 'paid') throw new AppError('Cannot modify a paid bill', 400);
+
+  bill.vatEnabled = req.body.vatEnabled;
+  bill.recalculate();
+  await bill.save();
+
+  res.json({ success: true, bill });
+}
+
 export async function addManualCharge(req: Request, res: Response): Promise<void> {
   const guest = await Guest.findById(req.params.guestId);
   if (!guest) throw new AppError('Guest not found', 404);

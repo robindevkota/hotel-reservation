@@ -134,7 +134,7 @@ export default function AdminBillingPage() {
         <tbody>${rows(chargeItems)}</tbody></table>
       <div class="totals">
         <div class="total-row"><span>Subtotal</span><span>$${b.totalAmount?.toFixed(2)}</span></div>
-        <div class="total-row"><span>Tax (13%)</span><span>$${b.taxAmount?.toFixed(2)}</span></div>
+        ${b.vatEnabled ? `<div class="total-row"><span>VAT (13%)</span><span>$${b.taxAmount?.toFixed(2)}</span></div>` : ''}
         <div class="grand">
           <span class="grand-label">${prepaid ? 'Amount Due' : 'Grand Total'}</span>
           <span class="grand-value">$${b.grandTotal?.toFixed(2)}</span>
@@ -146,6 +146,14 @@ export default function AdminBillingPage() {
 
     const w = window.open('', '_blank', 'width=800,height=900');
     if (w) { w.document.write(html); w.document.close(); }
+  };
+
+  const toggleVat = async (enabled: boolean) => {
+    try {
+      const { data } = await api.patch(`/billing/${selectedGuestId}/vat`, { vatEnabled: enabled });
+      setSelectedBill(data.bill);
+      toast.success(enabled ? 'VAT (13%) applied' : 'VAT removed');
+    } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
   };
 
   const markCash = async (billId: string) => {
@@ -330,15 +338,33 @@ export default function AdminBillingPage() {
 
               {/* Totals */}
               <div style={{ borderTop:`2px solid ${A.border}`, paddingTop:'1rem', marginBottom:'1.5rem' }}>
-                {[
-                  ['Subtotal', `$${selectedBill.totalAmount?.toFixed(2)}`],
-                  ['Tax (13%)', `$${selectedBill.taxAmount?.toFixed(2)}`],
-                ].map(([k,v]) => (
-                  <div key={k} style={{ display:'flex', justifyContent:'space-between', marginBottom:'0.4rem' }}>
-                    <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted }}>{k}</span>
-                    <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.navy }}>{v}</span>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'0.4rem' }}>
+                  <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted }}>Subtotal</span>
+                  <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.navy }}>${selectedBill.totalAmount?.toFixed(2)}</span>
+                </div>
+                {/* VAT toggle */}
+                {selectedBill.status === 'open' && (
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.4rem', padding:'0.5rem 0.75rem', background: selectedBill.vatEnabled ? 'hsl(38 90% 97%)' : A.papyrus, border:`1px solid ${selectedBill.vatEnabled ? A.gold : A.border}` }}>
+                    <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted }}>VAT (13%)</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                      {selectedBill.vatEnabled && (
+                        <span style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.gold }}>${selectedBill.taxAmount?.toFixed(2)}</span>
+                      )}
+                      <button
+                        onClick={() => toggleVat(!selectedBill.vatEnabled)}
+                        style={{ fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.25rem 0.75rem', border:`1px solid ${selectedBill.vatEnabled ? 'hsl(0 60% 70%)' : A.gold}`, background: selectedBill.vatEnabled ? 'hsl(0 70% 97%)' : `${A.gold}22`, color: selectedBill.vatEnabled ? 'hsl(0 60% 42%)' : A.navy, cursor:'pointer' }}
+                      >
+                        {selectedBill.vatEnabled ? 'Remove VAT' : 'Apply VAT'}
+                      </button>
+                    </div>
                   </div>
-                ))}
+                )}
+                {selectedBill.status !== 'open' && selectedBill.vatEnabled && (
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'0.4rem' }}>
+                    <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted }}>VAT (13%)</span>
+                    <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.navy }}>${selectedBill.taxAmount?.toFixed(2)}</span>
+                  </div>
+                )}
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'0.75rem', paddingTop:'0.75rem', borderTop:`1px solid ${A.border}` }}>
                   <span style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>
                     {selectedBill.prepaidAmount > 0 ? 'Amount Due' : 'Grand Total'}
