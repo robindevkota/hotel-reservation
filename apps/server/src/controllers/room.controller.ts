@@ -57,6 +57,11 @@ export async function getRoomById(req: Request, res: Response): Promise<void> {
   res.json({ success: true, room });
 }
 
+export async function getAllQRTokens(req: Request, res: Response): Promise<void> {
+  const rooms = await Room.find({}).select('_id name roomNumber floorNumber type qrToken').lean();
+  res.json({ success: true, rooms });
+}
+
 export async function createRoom(req: Request, res: Response): Promise<void> {
   const token = generateQRToken();
   const room = await Room.create({ ...req.body, qrToken: token });

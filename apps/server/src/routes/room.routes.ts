@@ -15,6 +15,7 @@ router.get('/calendar', ...requireStaff, requireAdmin, rooms.getRoomCalendar);
 router.post('/upload-image', ...requireStaff, requireAdmin, upload.single('image'), rooms.uploadRoomImage);
 router.post('/delete-image', ...requireStaff, requireAdmin, rooms.deleteRoomImage);
 
+router.get('/qr/all', ...requireStaff, requireAdmin, rooms.getAllQRTokens);
 router.get('/:slug', rooms.getRoomBySlug);
 
 router.post('/', ...requireStaff, requireAdmin, rooms.roomValidation, validate, rooms.createRoom);

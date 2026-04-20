@@ -226,19 +226,23 @@ export default function AdminRoomsPage() {
       byFloor[f].push(room);
     }
 
-    // Fetch all qrTokens and generate QR data URLs
+    // Single request to get all qrTokens
+    const { data: qrData } = await api.get('/rooms/qr/all');
+    const tokenMap: Record<string, string> = {};
+    for (const r of qrData.rooms) tokenMap[r._id] = r.qrToken;
+
     const cards: { name: string; roomNumber: string; floor: number; type: string; dataUrl: string }[] = [];
-    for (const room of rooms) {
+    await Promise.all(rooms.map(async (room: any) => {
       try {
-        const { data } = await api.get(`/rooms/${room._id}/qr`);
-        const token = data.room.qrToken;
+        const token = tokenMap[room._id];
+        if (!token) return;
         const dataUrl = await QRCode.toDataURL(`${origin}/qr/${token}`, {
           width: 220, margin: 1,
           color: { dark: '#0D1B3E', light: '#F5ECD7' },
         });
         cards.push({ name: room.name, roomNumber: room.roomNumber, floor: room.floorNumber, type: room.type, dataUrl });
       } catch { /* skip failed room */ }
-    }
+    }));
 
     // Build print HTML grouped by floor
     const floors = [...new Set(cards.map(c => c.floor))].sort((a, b) => a - b);
