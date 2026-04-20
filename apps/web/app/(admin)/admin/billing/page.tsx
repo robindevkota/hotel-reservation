@@ -217,7 +217,16 @@ export default function AdminBillingPage() {
                 <div style={{ fontSize:'0.7rem', color:A.muted }}>{r.guest?.email}</div>
                 <div style={{ fontSize:'0.75rem', color:A.gold, marginTop:'0.1rem', letterSpacing:'0.05em' }}>{r.bookingRef}</div>
               </AdminTd>
-              <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy }}>{r.room?.name || '—'}</AdminTd>
+              <AdminTd>
+                <div style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy, marginBottom:'0.15rem' }}>{r.room?.name || '—'}</div>
+                {(r.room?.floorNumber || r.room?.roomNumber) && (
+                  <div style={{ fontSize:'0.7rem', color:A.muted }}>
+                    {r.room?.floorNumber ? `Floor ${r.room.floorNumber}` : ''}
+                    {r.room?.floorNumber && r.room?.roomNumber ? ' · ' : ''}
+                    {r.room?.roomNumber ? `Room ${r.room.roomNumber}` : ''}
+                  </div>
+                )}
+              </AdminTd>
               <AdminTd>{new Date(r.checkOutDate).toLocaleDateString()}</AdminTd>
               <AdminTd><StatusPill status={r.status} /></AdminTd>
               <AdminTd><ActionBtn variant="view" onClick={() => viewBill(r._id)}>View Bill</ActionBtn></AdminTd>

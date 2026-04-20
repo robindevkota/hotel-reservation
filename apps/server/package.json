@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "seed": "ts-node src/seed.ts",
-    "seed:full": "ts-node seeds/fullSeed.ts"
+    "seed:full": "ts-node seeds/fullSeed.ts",
+    "clear:guests": "ts-node src/clear-guest-data.ts"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

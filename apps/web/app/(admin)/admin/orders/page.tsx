@@ -20,7 +20,10 @@ type CustomerMode = 'hotel_guest' | 'walk_in';
 
 export default function KitchenOrdersPage() {
   const { orders, setOrders, updateOrderStatus } = useOrderStore();
-  useKitchenSocket();
+  const [orderQueue, setOrderQueue] = useState<any[]>([]);
+  const currentAlert = orderQueue[0] ?? null;
+  const dismissAlert = () => setOrderQueue(q => q.slice(1));
+  useKitchenSocket((order) => setOrderQueue(q => [...q, order]));
   const [cancelTarget, setCancelTarget] = useState<string|null>(null);
   const [cancelReason, setCancelReason] = useState('');
 
@@ -469,6 +472,51 @@ export default function KitchenOrdersPage() {
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Order Alert Modal */}
+      {currentAlert && (
+        <div style={{ position:'fixed', inset:0, background:'hsl(220 55% 18% / 0.75)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div style={{ background:'#fff', maxWidth:'400px', width:'100%', border:`2px solid ${A.gold}`, overflow:'hidden' }}>
+            <div style={{ background:A.navy, padding:'1.25rem 1.5rem', textAlign:'center', position:'relative' }}>
+              <div style={{ fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.gold, opacity:0.7, marginBottom:'0.3rem' }}>Kitchen</div>
+              <h3 style={{ fontFamily:A.cinzel, fontSize:'1rem', color:A.gold, margin:0, letterSpacing:'0.1em' }}>New Order Received</h3>
+              {orderQueue.length > 1 && (
+                <div style={{ position:'absolute', top:'1rem', right:'1rem', background:A.gold, color:A.navy, fontFamily:A.cinzel, fontSize:'0.65rem', fontWeight:700, padding:'0.2rem 0.5rem', letterSpacing:'0.05em' }}>
+                  {orderQueue.length} queued
+                </div>
+              )}
+            </div>
+            <div style={{ padding:'1.5rem' }}>
+              <div style={{ marginBottom:'1rem', textAlign:'center' }}>
+                <div style={{ fontFamily:A.cinzel, fontSize:'0.85rem', color:A.navy, marginBottom:'0.25rem' }}>
+                  {currentAlert.walkInCustomer ? currentAlert.walkInCustomer.name : `Room ${currentAlert.room?.roomNumber}`}
+                </div>
+                <div style={{ fontFamily:A.raleway, fontSize:'0.78rem', color:A.muted }}>
+                  {new Date(currentAlert.placedAt).toLocaleTimeString()}
+                </div>
+              </div>
+              <div style={{ border:`1px solid ${A.border}`, marginBottom:'1.25rem' }}>
+                {currentAlert.items?.map((item: any, i: number) => (
+                  <div key={i} style={{ display:'flex', justifyContent:'space-between', padding:'0.5rem 0.875rem', borderBottom: i < currentAlert.items.length - 1 ? `1px solid ${A.border}` : 'none' }}>
+                    <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.navy }}>{item.quantity}× {item.menuItem?.name}</span>
+                    <span style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.gold }}>${(item.unitPrice * item.quantity).toFixed(2)}</span>
+                  </div>
+                ))}
+                <div style={{ padding:'0.5rem 0.875rem', background:A.papyrus, display:'flex', justifyContent:'space-between' }}>
+                  <span style={{ fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.navy }}>Total</span>
+                  <span style={{ fontFamily:A.cinzel, fontSize:'0.85rem', color:A.gold, fontWeight:700 }}>${currentAlert.totalAmount}</span>
+                </div>
+              </div>
+              <button
+                onClick={dismissAlert}
+                style={{ width:'100%', background:A.navy, color:A.gold, fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', padding:'0.875rem', border:'none', cursor:'pointer', fontWeight:700 }}
+              >
+                {orderQueue.length > 1 ? `Acknowledge · ${orderQueue.length - 1} more waiting` : 'Acknowledge'}
+              </button>
             </div>
           </div>
         </div>

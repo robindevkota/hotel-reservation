@@ -273,8 +273,15 @@ export default function GuestsPage() {
                   <div style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy, marginBottom:'0.15rem' }}>{g.name}</div>
                   <div style={{ fontSize:'0.7rem', color:A.muted }}>{g.email}</div>
                 </AdminTd>
-                <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy }}>
-                  {res.room?.name || res.room?.roomNumber || '—'}
+                <AdminTd>
+                  <div style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy, marginBottom:'0.15rem' }}>{res.room?.name || '—'}</div>
+                  {(res.room?.floorNumber || res.room?.roomNumber) && (
+                    <div style={{ fontSize:'0.7rem', color:A.muted }}>
+                      {res.room?.floorNumber ? `Floor ${res.room.floorNumber}` : ''}
+                      {res.room?.floorNumber && res.room?.roomNumber ? ' · ' : ''}
+                      {res.room?.roomNumber ? `Room ${res.room.roomNumber}` : ''}
+                    </div>
+                  )}
                 </AdminTd>
                 <AdminTd>{res.checkInDate ? new Date(res.checkInDate).toLocaleDateString() : '—'}</AdminTd>
                 <AdminTd>{res.checkOutDate ? new Date(res.checkOutDate).toLocaleDateString() : '—'}</AdminTd>

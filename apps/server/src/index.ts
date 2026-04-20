@@ -45,7 +45,7 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
       'https://www.royalsuitesnp.com',
       'https://hotel-reservation-web-eight.vercel.app',
     ].filter(Boolean) as string[]
-  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', process.env.CLIENT_URL].filter(Boolean) as string[];
+  : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000', 'http://127.0.0.1:3001', ...(process.env.CLIENT_URL ? process.env.CLIENT_URL.split(',').map(s => s.trim()) : [])].filter(Boolean) as string[];
 
 app.use(cors({
   origin: (origin, cb) => {
