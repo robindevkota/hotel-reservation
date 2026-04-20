@@ -65,8 +65,6 @@ const BillSchema = new Schema<IBill>(
   { timestamps: true }
 );
 
-const TAX_RATE = 0.13;
-
 BillSchema.methods.recalculate = function () {
   this.roomCharges = this.lineItems
     .filter((i: ILineItem) => i.type === 'room')
@@ -81,12 +79,11 @@ BillSchema.methods.recalculate = function () {
     .filter((i: ILineItem) => i.type === 'other')
     .reduce((s: number, i: ILineItem) => s + i.amount, 0);
 
-  // For non-refundable guests the room was pre-paid at booking.
-  // Exclude it from totalAmount so the guest only owes food/spa/other at checkout.
+  // All prices are VAT-inclusive — no tax added on top.
   const chargeableRoom = Math.max(0, this.roomCharges - (this.prepaidAmount || 0));
   this.totalAmount = parseFloat((chargeableRoom + this.foodCharges + this.spaCharges + this.otherCharges).toFixed(2));
-  this.taxAmount   = parseFloat((this.totalAmount * TAX_RATE).toFixed(2));
-  this.grandTotal  = parseFloat((this.totalAmount + this.taxAmount).toFixed(2));
+  this.taxAmount   = 0;
+  this.grandTotal  = this.totalAmount;
 };
 
 export default mongoose.model<IBill>('Bill', BillSchema);
