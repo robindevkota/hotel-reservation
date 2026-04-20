@@ -251,11 +251,10 @@ test.describe.serial('Full Billing Integration Test', () => {
     
     expect(actualDelta).toBeCloseTo(expectedDelta, 1);
     
-    // Also verify the grand total calculation is correct
-    const expectedTax = Math.round(finalBill.totalAmount * 0.13 * 100) / 100;
-    const expectedGrandTotal = Math.round((finalBill.totalAmount + expectedTax) * 100) / 100;
-    expect(finalBill.taxAmount).toBeCloseTo(expectedTax, 1);
-    expect(finalBill.grandTotal).toBeCloseTo(expectedGrandTotal, 1);
+    // VAT is off by default — grandTotal equals totalAmount, taxAmount is 0
+    expect(finalBill.vatEnabled).toBe(false);
+    expect(finalBill.taxAmount).toBe(0);
+    expect(finalBill.grandTotal).toBeCloseTo(finalBill.totalAmount, 1);
 
     await guestCtx.close();
   });

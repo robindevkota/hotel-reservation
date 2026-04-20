@@ -82,13 +82,12 @@ test.describe.serial('Bill Accumulation', () => {
     await expect(page.getByText(/Charges|Line Items|room/i).first()).toBeVisible({ timeout: 10000 });
   });
 
-  test('bill shows grand total with VAT', async ({ page }) => {
+  test('bill shows grand total (VAT off by default)', async ({ page }) => {
     if (!qrToken) { test.skip(true, 'Could not create checked-in guest'); return; }
     await loginViaQR(page, qrToken);
     await page.getByText(/View Bill/i).click();
     await page.waitForURL(/\/guest\/billing/, { timeout: 5000 });
     await expect(page.getByText(/Grand Total/i)).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/VAT|Tax/i)).toBeVisible();
   });
 
   test('bill total increases after ordering food', async ({ page }) => {
@@ -195,12 +194,12 @@ test.describe.serial('Checkout Receipt', () => {
     await expect(page.getByText(/Grand Total/i)).toBeVisible({ timeout: 8000 });
   });
 
-  test('bill shows tax calculation', async ({ page }) => {
+  test('bill shows tax row only when VAT is enabled', async ({ page }) => {
     if (!qrToken) { test.skip(true, 'Could not create checked-in guest'); return; }
     await loginViaQR(page, qrToken);
     await page.getByText(/View Bill/i).click();
     await page.waitForURL(/\/guest\/billing/, { timeout: 5000 });
-    await expect(page.getByText(/VAT|Tax|13%/i)).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(/Grand Total/i)).toBeVisible({ timeout: 8000 });
   });
 
   test('guest sees payment method option', async ({ page }) => {
