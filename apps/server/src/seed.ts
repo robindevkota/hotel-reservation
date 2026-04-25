@@ -59,6 +59,15 @@ async function seed() {
   console.log('🌱 Seeding database...');
 
   // Clear existing data
+  const DEMO_EMAILS = [
+    'amira.hassan@guest.com','omar.farouk@guest.com','layla.nour@guest.com',
+    'khaled.ali@guest.com','nadia.saleh@guest.com',
+    // standalone reservation demo guests
+    'ibrahim.mansour@guest.com','sara.eldin@guest.com','youssef.gamal@guest.com',
+    'fatima.nasser@guest.com','adel.rashid@guest.com','mona.faris@guest.com',
+    'hassan.zaki@guest.com','dina.kamal@guest.com','tarek.fouad@guest.com',
+    'rania.saber@guest.com',
+  ];
   await Promise.all([
     Room.deleteMany({}),
     RoomCategory.deleteMany({}),
@@ -66,7 +75,8 @@ async function seed() {
     SpaService.deleteMany({}),
     SpaTherapist.deleteMany({}),
     SpaBooking.deleteMany({}),
-    Guest.deleteMany({ email: { $in: ['amira.hassan@guest.com','omar.farouk@guest.com','layla.nour@guest.com','khaled.ali@guest.com','nadia.saleh@guest.com'] } }),
+    Guest.deleteMany({ email: { $in: DEMO_EMAILS } }),
+    Reservation.deleteMany({ 'guest.email': { $in: DEMO_EMAILS } }),
   ]);
 
   // ─── ROOM CATEGORIES ─────────────────────────────────────────────────
@@ -867,6 +877,117 @@ async function seed() {
     }))
   );
   console.log(`✅ ${spaBookings.length} demo spa bookings seeded`);
+
+  // ─── STANDALONE DEMO RESERVATIONS ────────────────────────────────────
+  // 10 reservations spread across past/present/future with varied statuses.
+  // These guests are NOT checked in (no Guest doc), so rooms stay available.
+
+  function bookingRef() {
+    const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    return `RS-${d}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  }
+  function daysFromNow(n: number) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + n);
+    return d;
+  }
+
+  // Pick rooms that aren't occupied by the 5 spa demo guests (rooms[0..4] are occupied)
+  const freeRooms = rooms.slice(5);
+
+  const standaloneResDefs = [
+    // ── FUTURE: pending (online booking, not yet confirmed by staff) ──
+    {
+      name: 'Ibrahim Mansour', email: 'ibrahim.mansour@guest.com', phone: '+20-1001000001',
+      room: freeRooms[0], checkIn: daysFromNow(3), checkOut: daysFromNow(6), nights: 3,
+      status: 'pending' as const, policy: 'flexible' as const, source: 'website' as const,
+      requests: 'High floor if possible',
+    },
+    {
+      name: 'Sara El-Din', email: 'sara.eldin@guest.com', phone: '+20-1001000002',
+      room: freeRooms[1], checkIn: daysFromNow(5), checkOut: daysFromNow(9), nights: 4,
+      status: 'pending' as const, policy: 'non_refundable' as const, source: 'website' as const,
+      requests: 'Late check-in after 22:00',
+    },
+
+    // ── FUTURE: confirmed (staff confirmed, guest arriving soon) ──────
+    {
+      name: 'Youssef Gamal', email: 'youssef.gamal@guest.com', phone: '+20-1001000003',
+      room: freeRooms[2], checkIn: daysFromNow(1), checkOut: daysFromNow(4), nights: 3,
+      status: 'confirmed' as const, policy: 'flexible' as const, source: 'website' as const,
+      requests: 'Baby cot required',
+    },
+    {
+      name: 'Fatima Nasser', email: 'fatima.nasser@guest.com', phone: '+20-1001000004',
+      room: freeRooms[3], checkIn: daysFromNow(2), checkOut: daysFromNow(5), nights: 3,
+      status: 'confirmed' as const, policy: 'non_refundable' as const, paidUpfront: true, source: 'booking_com' as const,
+      requests: '',
+    },
+    {
+      name: 'Adel Rashid', email: 'adel.rashid@guest.com', phone: '+44-7000000005',
+      room: freeRooms[4], checkIn: daysFromNow(7), checkOut: daysFromNow(10), nights: 3,
+      status: 'confirmed' as const, policy: 'flexible' as const, source: 'agoda' as const,
+      requests: 'Honeymoon setup — rose petals and champagne',
+    },
+    {
+      name: 'Mona Faris', email: 'mona.faris@guest.com', phone: '+20-1001000006',
+      room: freeRooms[5], checkIn: daysFromNow(14), checkOut: daysFromNow(17), nights: 3,
+      status: 'confirmed' as const, policy: 'flexible' as const, source: 'website' as const,
+      requests: '',
+    },
+
+    // ── PAST: checked_out (historical stays, good for analytics) ─────
+    {
+      name: 'Hassan Zaki', email: 'hassan.zaki@guest.com', phone: '+20-1001000007',
+      room: freeRooms[6], checkIn: daysFromNow(-10), checkOut: daysFromNow(-7), nights: 3,
+      status: 'checked_out' as const, policy: 'flexible' as const, source: 'website' as const,
+      requests: '',
+    },
+    {
+      name: 'Dina Kamal', email: 'dina.kamal@guest.com', phone: '+20-1001000008',
+      room: freeRooms[7], checkIn: daysFromNow(-6), checkOut: daysFromNow(-3), nights: 3,
+      status: 'checked_out' as const, policy: 'non_refundable' as const, paidUpfront: true, source: 'booking_com' as const,
+      requests: 'Anniversary dinner reservation',
+    },
+
+    // ── PAST: cancelled ───────────────────────────────────────────────
+    {
+      name: 'Tarek Fouad', email: 'tarek.fouad@guest.com', phone: '+20-1001000009',
+      room: freeRooms[8], checkIn: daysFromNow(-5), checkOut: daysFromNow(-2), nights: 3,
+      status: 'cancelled' as const, policy: 'flexible' as const, source: 'website' as const,
+      requests: '',
+    },
+
+    // ── PAST: no_show ─────────────────────────────────────────────────
+    {
+      name: 'Rania Saber', email: 'rania.saber@guest.com', phone: '+20-1001000010',
+      room: freeRooms[9], checkIn: daysFromNow(-3), checkOut: daysFromNow(-1), nights: 2,
+      status: 'no_show' as const, policy: 'flexible' as const, penaltyCharged: freeRooms[9].pricePerNight, source: 'website' as const,
+      requests: '',
+    },
+  ];
+
+  const standaloneRes = await Reservation.insertMany(
+    standaloneResDefs.map(def => ({
+      bookingRef: bookingRef(),
+      guest: { name: def.name, email: def.email, phone: def.phone, idProof: '' },
+      room: def.room._id,
+      checkInDate: def.checkIn,
+      checkOutDate: def.checkOut,
+      numberOfGuests: 2,
+      status: def.status,
+      cancellationPolicy: def.policy,
+      specialRequests: def.requests,
+      totalNights: def.nights,
+      roomCharges: def.room.pricePerNight * def.nights * ((def.policy === 'non_refundable') ? 0.9 : 1),
+      paidUpfront: (def as any).paidUpfront ?? false,
+      penaltyCharged: (def as any).penaltyCharged ?? 0,
+      cancelledAt: def.status === 'cancelled' ? new Date() : undefined,
+      source: def.source,
+      guestType: 'foreign',
+    }))
+  );
+  console.log(`✅ ${standaloneRes.length} standalone demo reservations seeded`);
 
   // ─── DROP OLD ADMIN ───────────────────────────────────────────────────
   const deleted = await User.deleteMany({ email: 'admin@royalsuites.com' });

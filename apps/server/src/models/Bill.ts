@@ -33,6 +33,7 @@ export interface IBill extends Document {
   paymentMethod?: PaymentMethod;
   stripePaymentIntentId: string;
   receiptUrl: string;
+  exchangeRateAtPayment?: number;
 }
 
 const BillSchema = new Schema<IBill>(
@@ -63,6 +64,7 @@ const BillSchema = new Schema<IBill>(
     prepaidAt: { type: Date },
     stripePaymentIntentId: { type: String, default: '' },
     receiptUrl: { type: String, default: '' },
+    exchangeRateAtPayment: { type: Number },
   },
   { timestamps: true }
 );

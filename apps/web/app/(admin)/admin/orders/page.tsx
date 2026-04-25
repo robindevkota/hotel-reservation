@@ -35,9 +35,10 @@ export default function KitchenOrdersPage() {
   const [customerMode, setCustomerMode] = useState<CustomerMode>('hotel_guest');
   const [guestId, setGuestId]           = useState('');
   // Walk-in fields
-  const [walkInName, setWalkInName]     = useState('');
-  const [walkInPhone, setWalkInPhone]   = useState('');
-  const [walkInId, setWalkInId]         = useState(''); // created ID
+  const [walkInName, setWalkInName]               = useState('');
+  const [walkInPhone, setWalkInPhone]             = useState('');
+  const [walkInNationality, setWalkInNationality] = useState<'foreign'|'nepali'>('foreign');
+  const [walkInId, setWalkInId]                   = useState(''); // created ID
   const [lines, setLines]               = useState<OrderLine[]>([]);
   const [notes, setNotes]               = useState('');
   const [payMethod, setPayMethod]       = useState<'room_bill'|'cash'>('room_bill');
@@ -50,7 +51,7 @@ export default function KitchenOrdersPage() {
   const openNew = async () => {
     setShowNew(true);
     setCustomerMode('hotel_guest');
-    setGuestId(''); setWalkInName(''); setWalkInPhone(''); setWalkInId('');
+    setGuestId(''); setWalkInName(''); setWalkInPhone(''); setWalkInNationality('foreign'); setWalkInId('');
     setLines([]); setNotes(''); setPayMethod('room_bill');
     setMenuSearch(''); setMenuOpen(false);
     setLoadingData(true);
@@ -94,6 +95,7 @@ export default function KitchenOrdersPage() {
             name: walkInName.trim(),
             phone: walkInPhone.trim() || undefined,
             type: 'dine_in',
+            nationality: walkInNationality,
           });
           if (!wicData.success) { toast.error('Failed to register walk-in customer'); setSubmitting(false); return; }
           resolvedWalkInId = wicData.customer._id;
@@ -343,6 +345,17 @@ export default function KitchenOrdersPage() {
                             placeholder="+1 555 000 0000"
                             style={{ width:'100%', padding:'0.5rem 0.6rem', border:`1px solid ${A.border}`, fontFamily:A.raleway, fontSize:'0.82rem', color:A.navy, outline:'none', boxSizing:'border-box' }}
                           />
+                        </div>
+                      </div>
+                      <div style={{ marginTop:'0.75rem' }}>
+                        <label style={{ display:'block', fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.navy, marginBottom:'0.35rem' }}>Nationality</label>
+                        <div style={{ display:'flex', border:`1px solid ${A.border}`, overflow:'hidden' }}>
+                          {(['foreign','nepali'] as const).map(n => (
+                            <button key={n} type="button" onClick={() => setWalkInNationality(n)}
+                              style={{ flex:1, padding:'0.45rem', border:'none', cursor:'pointer', fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', background: walkInNationality === n ? A.navy : '#fff', color: walkInNationality === n ? A.gold : A.muted, transition:'background 0.2s' }}>
+                              {n === 'foreign' ? 'Foreign' : 'Nepali'}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     </div>

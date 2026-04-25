@@ -9,7 +9,8 @@ export type StockLogType =
   | 'owner_consumption'
   | 'wastage'
   | 'complimentary'
-  | 'stocktake';
+  | 'stocktake'
+  | 'petty_cash_purchase';
 
 export interface IStockLogLine {
   ingredient: mongoose.Types.ObjectId;
@@ -30,6 +31,10 @@ export interface IStockLog extends Document {
   consumptionReason?: string; // wastage: 'spillage' | 'breakage' | 'expired' | 'other'
   guestId?: mongoose.Types.ObjectId; // complimentary — optional guest link
   variance?: number;          // stocktake: expected − actual (negative = deficit)
+  cashAmount?: number;        // petty_cash_purchase: USD spent from front-desk cash
+  purchasedBy?: string;       // petty_cash_purchase: staff member who made the purchase
+  vendor?: string;            // petty_cash_purchase: where the item was bought
+  approvedBy?: mongoose.Types.ObjectId; // petty_cash_purchase: admin who authorised
   createdAt: Date;
 }
 
@@ -37,7 +42,7 @@ const StockLogSchema = new Schema<IStockLog>(
   {
     type: {
       type: String,
-      enum: ['sale','restock','adjustment','import','staff_consumption','owner_consumption','wastage','complimentary','stocktake'],
+      enum: ['sale','restock','adjustment','import','staff_consumption','owner_consumption','wastage','complimentary','stocktake','petty_cash_purchase'],
       required: true,
     },
     performedBy:        { type: Schema.Types.ObjectId, ref: 'User' },
@@ -57,6 +62,10 @@ const StockLogSchema = new Schema<IStockLog>(
     consumptionReason:  { type: String, enum: ['spillage','breakage','expired','other'] },
     guestId:            { type: Schema.Types.ObjectId, ref: 'Guest' },
     variance:           { type: Number },
+    cashAmount:         { type: Number, min: 0 },
+    purchasedBy:        { type: String },
+    vendor:             { type: String },
+    approvedBy:         { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true }
 );

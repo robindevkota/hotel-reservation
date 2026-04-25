@@ -298,4 +298,64 @@ test.describe.serial('Full Billing Integration Test', () => {
     expect(cashData.bill.paymentMethod).toBe('cash');
     expect(cashData.bill.paidAt).toBeTruthy();
   });
+
+  test('nepali guest billing: isNepali=true, exchangeRate≥100, admin and guest see identical totals', async () => {
+    test.setTimeout(30000);
+    const adminToken = await apiLoginAsAdmin();
+
+    // ── Create a Nepali guest and check them in ──
+    const roomsData = await apiGet('/rooms', adminToken);
+    const activeRes  = await apiGet('/checkin/active', adminToken);
+    const occupiedIds = new Set((activeRes.guests ?? []).map((g: any) => String(g.room)));
+    const room = roomsData.rooms?.find((r: any) => r.isAvailable === true && !occupiedIds.has(String(r._id)));
+    if (!room) { test.skip(true, 'No available room'); return; }
+
+    const checkIn = new Date();
+    checkIn.setFullYear(checkIn.getFullYear() + 300);
+    const checkOut = new Date(checkIn);
+    checkOut.setDate(checkOut.getDate() + 2);
+
+    const resData = await apiPost('/reservations', adminToken, {
+      guest: {
+        name:        `Nepali-Billing-${Date.now()}`,
+        email:       `np-billing-${Date.now()}@test.com`,
+        phone:       '+9771234567890',
+        nationality: 'nepali',
+      },
+      room:           room._id,
+      checkInDate:    checkIn.toISOString(),
+      checkOutDate:   checkOut.toISOString(),
+      numberOfGuests: 1,
+    });
+    if (!resData.reservation?._id) { test.skip(true, `Reservation failed: ${JSON.stringify(resData)}`); return; }
+
+    const reservationId = resData.reservation._id;
+    await apiPatch(`/reservations/${reservationId}/confirm`, adminToken);
+    const ciData = await apiPost(`/checkin/${reservationId}`, adminToken, {});
+    if (!ciData.success) { test.skip(true, `Check-in failed: ${JSON.stringify(ciData)}`); return; }
+
+    // Get guest token via QR
+    const qrData = await apiGet(`/qr/verify/${ciData.qrToken}`);
+    if (!qrData.token) { test.skip(true, `QR failed: ${JSON.stringify(qrData)}`); return; }
+    const guestToken = qrData.token;
+
+    // ── Guest portal: /billing/my ──
+    const guestBilling = await apiGet('/billing/my', guestToken);
+    expect(guestBilling.success).toBe(true);
+    expect(guestBilling.isNepali).toBe(true);
+    expect(typeof guestBilling.exchangeRate).toBe('number');
+    expect(guestBilling.exchangeRate).toBeGreaterThanOrEqual(100); // NPR rate always ≥ 100
+
+    // ── Admin billing: /billing/reservation/:id ──
+    const adminBilling = await apiGet(`/billing/reservation/${reservationId}`, adminToken);
+    expect(adminBilling.success).toBe(true);
+    expect(adminBilling.isNepali).toBe(true);
+
+    // Both views must agree on rate and raw USD total
+    expect(adminBilling.exchangeRate).toBe(guestBilling.exchangeRate);
+    expect(adminBilling.bill.grandTotal).toBeCloseTo(guestBilling.bill.grandTotal, 2);
+
+    // ── Cleanup: checkout ──
+    await apiPost(`/checkin/checkout/${ciData.guest._id}`, adminToken, {}).catch(() => {});
+  });
 });

@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '../../../../store/authStore';
 import {
   Package2, AlertTriangle, AlertOctagon, Plus, Edit2, Trash2, X,
   RefreshCw, ShoppingCart, Upload, ChevronDown, Warehouse,
@@ -67,18 +68,19 @@ interface InventoryAnalytics {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const TABS = [
-  { key: 'overview',     label: 'Overview',     Icon: BarChart3 },
-  { key: 'ingredients',  label: 'Ingredients',  Icon: Warehouse },
-  { key: 'recipes',      label: 'Recipes',      Icon: UtensilsCrossed },
-  { key: 'logs',         label: 'Stock Log',    Icon: ClipboardList },
-  { key: 'variance',     label: 'Stock Check',  Icon: TrendingDown },
-  { key: 'analytics',   label: 'Analytics',    Icon: LineChartIcon },
+const ALL_TABS = [
+  { key: 'overview',     label: 'Overview',     Icon: BarChart3,      depts: ['food'] },
+  { key: 'ingredients',  label: 'Ingredients',  Icon: Warehouse,      depts: ['food'] },
+  { key: 'recipes',      label: 'Recipes',      Icon: UtensilsCrossed,depts: ['food'] },
+  { key: 'logs',         label: 'Stock Log',    Icon: ClipboardList,  depts: ['food'] },
+  { key: 'variance',     label: 'Stock Check',  Icon: TrendingDown,   depts: ['food'] },
+  { key: 'analytics',    label: 'Analytics',    Icon: LineChartIcon,  depts: ['food'] },
+  { key: 'expenses',     label: 'Expenses',     Icon: ShoppingCart,   depts: ['food', 'front_desk'] },
 ] as const;
-type Tab = typeof TABS[number]['key'];
+type Tab = typeof ALL_TABS[number]['key'];
 
 const UNITS = ['kg','g','litre','ml','piece','packet','bottle'];
-const CATEGORIES = ['kitchen','bar','general'];
+const CATEGORIES = ['kitchen','bar','general','housekeeping'];
 const CONSUME_TYPES = ['staff_consumption','owner_consumption','wastage','complimentary'];
 const CONSUME_TYPE_LABELS: Record<string, string> = {
   staff_consumption: 'Staff drink',
@@ -114,7 +116,12 @@ function StatusBadge({ status }: { status: 'ok' | 'low' | 'out' }) {
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
-  const [tab, setTab] = useState<Tab>('overview');
+  const { user } = useAuthStore();
+  const dept = (user as any)?.department as string | null;
+  const role = (user as any)?.role as string;
+  const isFrontDesk = dept === 'front_desk' && role !== 'super_admin';
+  const TABS = ALL_TABS.filter(t => role === 'super_admin' || (t.depts as readonly string[]).includes(dept ?? ''));
+  const [tab, setTab] = useState<Tab>(isFrontDesk ? 'expenses' : 'overview');
 
   // Data
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -191,6 +198,15 @@ export default function InventoryPage() {
   const [stocktakeLines, setStocktakeLines] = useState<{ ingredientId: string; actualQty: string }[]>([]);
   const [stocktakeSaving, setStocktakeSaving] = useState(false);
 
+  // Petty cash modal
+  const [pettyCashModal, setPettyCashModal] = useState(false);
+  const [pettyCashForm, setPettyCashForm] = useState({ ingredientId: '', qty: '', cashAmount: '', purchasedBy: '', vendor: '', note: '' });
+  const [pettyCashSaving, setPettyCashSaving] = useState(false);
+  interface PettyCashEntry { date: string; ingredientName: string; cashAmount: number; purchasedBy: string; vendor?: string }
+  interface ExpensesData { totalCash: number; count: number; byCategory: { category: string; totalCash: number; count: number }[]; recent: PettyCashEntry[] }
+  const [expensesData, setExpensesData] = useState<ExpensesData | null>(null);
+  const [expensesLoading, setExpensesLoading] = useState(false);
+
   // ── Fetchers ────────────────────────────────────────────────────────────────
 
   const fetchStats = () => {
@@ -234,7 +250,15 @@ export default function InventoryPage() {
     }).catch(() => {}).finally(() => setAnalyticsLoading(false));
   };
 
+  const fetchExpenses = () => {
+    setExpensesLoading(true);
+    api.get('/inventory/analytics').then(({ data }) => {
+      setExpensesData(data.operationalExpenses || null);
+    }).catch(() => {}).finally(() => setExpensesLoading(false));
+  };
+
   useEffect(() => {
+    if (isFrontDesk) { fetchExpenses(); fetchIngredients(); return; }
     fetchStats();
     fetchIngredients();
   }, []);
@@ -244,6 +268,7 @@ export default function InventoryPage() {
     if (tab === 'logs') fetchLogs();
     if (tab === 'variance') fetchVariance();
     if (tab === 'analytics') fetchAnalytics();
+    if (tab === 'expenses') fetchExpenses();
   }, [tab]);
 
   // ── Ingredient handlers ──────────────────────────────────────────────────────
@@ -368,6 +393,34 @@ export default function InventoryPage() {
     finally { setConsumeSaving(false); }
   };
 
+  // ── Petty cash handler ────────────────────────────────────────────────────────
+
+  const openPettyCashModal = () => {
+    setPettyCashForm({ ingredientId: '', qty: '', cashAmount: '', purchasedBy: '', vendor: '', note: '' });
+    setPettyCashModal(true);
+  };
+  const doPettyCash = async () => {
+    if (!pettyCashForm.ingredientId) { toast.error('Select an item'); return; }
+    if (!pettyCashForm.qty || Number(pettyCashForm.qty) <= 0) { toast.error('Enter a valid quantity'); return; }
+    if (!pettyCashForm.cashAmount || Number(pettyCashForm.cashAmount) <= 0) { toast.error('Enter cash amount spent'); return; }
+    if (!pettyCashForm.purchasedBy.trim()) { toast.error('Enter who made the purchase'); return; }
+    setPettyCashSaving(true);
+    try {
+      await api.post('/inventory/petty-cash', {
+        ingredientId: pettyCashForm.ingredientId,
+        qty: Number(pettyCashForm.qty),
+        cashAmount: Number(pettyCashForm.cashAmount),
+        purchasedBy: pettyCashForm.purchasedBy.trim(),
+        vendor: pettyCashForm.vendor.trim() || undefined,
+        note: pettyCashForm.note.trim() || undefined,
+      });
+      toast.success('Expense recorded');
+      setPettyCashModal(false);
+      fetchExpenses();
+    } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
+    finally { setPettyCashSaving(false); }
+  };
+
   // ── Stocktake handler ─────────────────────────────────────────────────────────
 
   const openStocktakeModal = () => {
@@ -402,23 +455,30 @@ export default function InventoryPage() {
       <div style={{ padding: '2rem 2.5rem', maxWidth: '1400px' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
-          <PageHeader eyebrow="Kitchen & Bar" title="Inventory" />
+          <PageHeader eyebrow={isFrontDesk ? 'Front Desk' : 'Kitchen & Bar'} title={isFrontDesk ? 'Expenses' : 'Inventory'} />
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button onClick={() => setImportModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fff', color: A.navy, fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.7rem 1.25rem', border: `1px solid ${A.border}`, cursor: 'pointer', fontWeight: 600 }}>
-              <Upload size={14} strokeWidth={2} /> Import Excel
-            </button>
-            <button onClick={openConsumeModal} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fff', color: 'hsl(270 50% 38%)', fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.7rem 1.25rem', border: '1px solid hsl(270 50% 75%)', cursor: 'pointer', fontWeight: 600 }}>
-              <FlaskConical size={14} strokeWidth={2} /> Record Usage
-            </button>
-            <button onClick={openStocktakeModal} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fff', color: 'hsl(210 70% 35%)', fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.7rem 1.25rem', border: '1px solid hsl(210 70% 75%)', cursor: 'pointer', fontWeight: 600 }}>
-              <ClipboardCheck size={14} strokeWidth={2} /> Count Stock
-            </button>
-            {tab === 'ingredients' && (
+            {!isFrontDesk && (<>
+              <button onClick={() => setImportModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fff', color: A.navy, fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.7rem 1.25rem', border: `1px solid ${A.border}`, cursor: 'pointer', fontWeight: 600 }}>
+                <Upload size={14} strokeWidth={2} /> Import Excel
+              </button>
+              <button onClick={openConsumeModal} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fff', color: 'hsl(270 50% 38%)', fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.7rem 1.25rem', border: '1px solid hsl(270 50% 75%)', cursor: 'pointer', fontWeight: 600 }}>
+                <FlaskConical size={14} strokeWidth={2} /> Record Usage
+              </button>
+              <button onClick={openStocktakeModal} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#fff', color: 'hsl(210 70% 35%)', fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.7rem 1.25rem', border: '1px solid hsl(210 70% 75%)', cursor: 'pointer', fontWeight: 600 }}>
+                <ClipboardCheck size={14} strokeWidth={2} /> Count Stock
+              </button>
+            </>)}
+            {tab === 'expenses' && (
+              <button onClick={openPettyCashModal} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: A.gradGold, color: A.navy, fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.18em', textTransform: 'uppercase', padding: '0.7rem 1.5rem', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+                <Plus size={14} strokeWidth={2.5} /> Log Expense
+              </button>
+            )}
+            {tab === 'ingredients' && !isFrontDesk && (
               <button onClick={openCreateIng} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: A.gradGold, color: A.navy, fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.18em', textTransform: 'uppercase', padding: '0.7rem 1.5rem', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
                 <Plus size={14} strokeWidth={2.5} /> Add Ingredient
               </button>
             )}
-            {tab === 'recipes' && (
+            {tab === 'recipes' && !isFrontDesk && (
               <button onClick={openCreateRec} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: A.gradGold, color: A.navy, fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.18em', textTransform: 'uppercase', padding: '0.7rem 1.5rem', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
                 <Plus size={14} strokeWidth={2.5} /> Add Recipe
               </button>
@@ -426,8 +486,8 @@ export default function InventoryPage() {
           </div>
         </div>
 
-        {/* Stat cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem', marginBottom: '2rem' }}>
+        {/* Stat cards — food/super_admin only */}
+        {!isFrontDesk && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem', marginBottom: '2rem' }}>
           {[
             { label: 'Total Ingredients', value: totalIngredients, Icon: Package2,     iconColor: A.gold,              bg: '#fff',                  border: A.border },
             { label: 'Low Stock Alerts',  value: lowStockCount,    Icon: AlertTriangle, iconColor: 'hsl(38 80% 45%)',   bg: 'hsl(38 90% 96%)',       border: 'hsl(38 80% 78%)' },
@@ -443,7 +503,7 @@ export default function InventoryPage() {
               </div>
             </div>
           ))}
-        </div>
+        </div>}
 
         {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: `1px solid ${A.border}`, marginBottom: '2rem' }}>
@@ -835,7 +895,126 @@ export default function InventoryPage() {
             )}
           </div>
         )}
+        {/* ── EXPENSES TAB ──────────────────────────────────────────────────── */}
+        {tab === 'expenses' && (
+          <div>
+            {expensesLoading || !expensesData ? (
+              <div style={{ textAlign: 'center', padding: '3rem' }}>
+                <div style={{ width: '1.75rem', height: '1.75rem', border: `2px solid ${A.gold}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
+              </div>
+            ) : (
+              <>
+                {/* Summary cards */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem', marginBottom: '2rem' }}>
+                  {[
+                    { label: 'Total Spent',     value: `$${expensesData.totalCash.toFixed(2)}`,   color: 'hsl(0 60% 38%)',   bg: 'hsl(0 60% 97%)',   border: 'hsl(0 60% 80%)' },
+                    { label: 'Transactions',    value: expensesData.count,                         color: A.navy,             bg: '#fff',             border: A.border },
+                    { label: 'Top Category',    value: expensesData.byCategory.sort((a,b) => b.totalCash - a.totalCash)[0]?.category ?? '—', color: A.navy, bg: A.papyrus, border: A.border },
+                  ].map(({ label, value, color, bg, border }) => (
+                    <div key={label} style={{ background: bg, border: `1px solid ${border}`, padding: '1.1rem 1.25rem' }}>
+                      <div style={{ fontFamily: A.cinzel, fontSize: '1.6rem', fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+                      <div style={{ fontFamily: A.cinzel, fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: A.muted, marginTop: '0.3rem' }}>{label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* By category breakdown */}
+                {expensesData.byCategory.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(10rem,1fr))', gap: '0.75rem', marginBottom: '2rem' }}>
+                    {expensesData.byCategory.map(c => (
+                      <div key={c.category} style={{ background: '#fff', border: `1px solid ${A.border}`, padding: '0.875rem 1rem' }}>
+                        <div style={{ fontFamily: A.cinzel, fontSize: '0.58rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: A.muted, marginBottom: '0.35rem' }}>{c.category}</div>
+                        <div style={{ fontFamily: A.cinzel, fontSize: '1.1rem', fontWeight: 700, color: A.navy }}>${c.totalCash.toFixed(2)}</div>
+                        <div style={{ fontFamily: A.raleway, fontSize: '0.72rem', color: A.muted }}>{c.count} purchase{c.count !== 1 ? 's' : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Recent purchases table */}
+                <p style={{ fontFamily: A.cinzel, fontSize: '0.68rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: A.navy, marginBottom: '1rem' }}>Recent Purchases</p>
+                <AdminTable headers={['Date', 'Item', 'Cash Spent', 'Purchased By', 'Vendor']} minWidth={600}>
+                  {expensesData.recent.length === 0 && <EmptyRow colSpan={5} message="No expenses logged yet — click Log Expense to add one" />}
+                  {expensesData.recent.map((e, i) => (
+                    <AdminRow key={i}>
+                      <AdminTd style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{e.date}</AdminTd>
+                      <AdminTd><span style={{ fontFamily: A.cinzel, fontSize: '0.82rem', color: A.navy, fontWeight: 600 }}>{e.ingredientName}</span></AdminTd>
+                      <AdminTd><span style={{ fontFamily: A.cinzel, fontWeight: 700, color: 'hsl(0 60% 38%)' }}>${e.cashAmount.toFixed(2)}</span></AdminTd>
+                      <AdminTd style={{ fontSize: '0.82rem' }}>{e.purchasedBy}</AdminTd>
+                      <AdminTd style={{ fontSize: '0.78rem', color: A.muted }}>{e.vendor || '—'}</AdminTd>
+                    </AdminRow>
+                  ))}
+                </AdminTable>
+
+                <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                  <button onClick={fetchExpenses} style={{ fontFamily: A.cinzel, fontSize: '0.62rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: A.gold, background: 'none', border: `1px solid ${A.gold}50`, padding: '0.45rem 1rem', cursor: 'pointer' }}>
+                    <RefreshCw size={11} strokeWidth={2} style={{ display: 'inline', marginRight: '0.4rem', verticalAlign: 'middle' }} />
+                    Refresh
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* ── Petty Cash Modal ─────────────────────────────────────────────────── */}
+      {pettyCashModal && (
+        <Modal title="Log Expense" onClose={() => setPettyCashModal(false)}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <p style={{ fontFamily: A.raleway, fontSize: '0.82rem', color: A.muted, margin: 0 }}>
+              Record cash spent from the front desk to purchase hotel or kitchen supplies.
+            </p>
+            <div>
+              <FieldLabel>Item Purchased *</FieldLabel>
+              <div style={{ position: 'relative' }}>
+                <select className="inv-input" style={{ ...inputBase, paddingRight: '2rem', appearance: 'none' }}
+                  value={pettyCashForm.ingredientId}
+                  onChange={e => setPettyCashForm({ ...pettyCashForm, ingredientId: e.target.value })}>
+                  <option value="">Select item...</option>
+                  {ingredients.map(ing => (
+                    <option key={ing._id} value={ing._id}>{ing.name} ({ing.category}) — {ing.unit}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} color={A.muted} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <FieldLabel>Quantity Bought *</FieldLabel>
+                <input className="inv-input" style={inputBase} type="number" min="0.001" step="any"
+                  value={pettyCashForm.qty} onChange={e => setPettyCashForm({ ...pettyCashForm, qty: e.target.value })} placeholder="e.g. 2" />
+              </div>
+              <div>
+                <FieldLabel>Cash Spent (USD) *</FieldLabel>
+                <input className="inv-input" style={inputBase} type="number" min="0.01" step="0.01"
+                  value={pettyCashForm.cashAmount} onChange={e => setPettyCashForm({ ...pettyCashForm, cashAmount: e.target.value })} placeholder="e.g. 12.50" />
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div>
+                <FieldLabel>Purchased By *</FieldLabel>
+                <input className="inv-input" style={inputBase}
+                  value={pettyCashForm.purchasedBy} onChange={e => setPettyCashForm({ ...pettyCashForm, purchasedBy: e.target.value })} placeholder="Staff member name" />
+              </div>
+              <div>
+                <FieldLabel>Vendor / Shop (optional)</FieldLabel>
+                <input className="inv-input" style={inputBase}
+                  value={pettyCashForm.vendor} onChange={e => setPettyCashForm({ ...pettyCashForm, vendor: e.target.value })} placeholder="e.g. Local Market" />
+              </div>
+            </div>
+            <div>
+              <FieldLabel>Note (optional)</FieldLabel>
+              <input className="inv-input" style={inputBase}
+                value={pettyCashForm.note} onChange={e => setPettyCashForm({ ...pettyCashForm, note: e.target.value })} placeholder="Any extra detail" />
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', paddingTop: '0.25rem' }}>
+              <NavyBtn onClick={() => setPettyCashModal(false)}>Cancel</NavyBtn>
+              <GoldBtn onClick={doPettyCash} disabled={pettyCashSaving}>{pettyCashSaving ? 'Saving...' : 'Record Expense'}</GoldBtn>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* ── Ingredient Modal ─────────────────────────────────────────────────── */}
       {ingModal && (

@@ -100,6 +100,21 @@ function Btn({ children, onClick, variant = 'primary', disabled, small }: any) {
 
 // ── main page ─────────────────────────────────────────────────────────────────
 
+// Format a USD price for display based on nationality
+function fmtPrice(usdAmount: number, nationality: 'foreign' | 'nepali', rate: number): string {
+  if (nationality === 'nepali') {
+    return `Rs. ${Math.round(usdAmount * rate).toLocaleString('en-IN')}`;
+  }
+  return `$${usdAmount.toFixed(2)}`;
+}
+
+// Resolve nationality from a booking (hotel guest or walk-in customer)
+function bookingNationality(b: any): 'foreign' | 'nepali' {
+  if (b.guest?.nationality) return b.guest.nationality;
+  if (b.walkInCustomer?.nationality) return b.walkInCustomer.nationality;
+  return 'foreign';
+}
+
 export default function AdminSpaPage() {
   const [tab, setTab]             = useState<Tab>('Schedule');
   const [scheduleDate, setScheduleDate] = useState(todayStr());
@@ -108,6 +123,7 @@ export default function AdminSpaPage() {
   const [therapists, setTherapists] = useState<any[]>([]);
   const [services, setServices]   = useState<any[]>([]);
   const [loading, setLoading]     = useState(false);
+  const [exchangeRate, setExchangeRate] = useState(135);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const autoRefreshRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -168,6 +184,11 @@ export default function AdminSpaPage() {
 
   useEffect(() => { fetchSchedule(); }, [fetchSchedule]);
   useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    api.get('/settings/exchange-rate').then(({ data }) => {
+      if (data.rate) setExchangeRate(data.rate);
+    }).catch(() => {});
+  }, []);
 
   // Auto-refresh every 30s when toggled on
   useEffect(() => {
@@ -604,24 +625,25 @@ export default function AdminSpaPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
                 <thead>
                   <tr style={{ background: A.navy }}>
-                    {['Guest','Service','Therapist','Date','Time','Status','Walk-in','Actions'].map(h => (
+                    {['Guest','Service','Therapist','Date','Time','Price','Status','Walk-in','Actions'].map(h => (
                       <th key={h} style={{ fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: A.gold, padding: '0.75rem 1rem', textAlign: 'left', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredBookings.length === 0 ? (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', padding: '2rem', fontFamily: A.cinzel, color: A.muted, fontSize: '0.75rem' }}>No bookings match the current filters</td></tr>
+                    <tr><td colSpan={9} style={{ textAlign: 'center', padding: '2rem', fontFamily: A.cinzel, color: A.muted, fontSize: '0.75rem' }}>No bookings match the current filters</td></tr>
                   ) : filteredBookings.slice((bkPage - 1) * bkPageSize, bkPage * bkPageSize).map((b: any, i) => (
                     <tr key={b._id} style={{ background: i % 2 === 0 ? '#fff' : A.papyrus, borderBottom: `1px solid ${A.border}` }}>
                       <td style={{ padding: '0.75rem 1rem' }}>
-                        <div style={{ fontFamily: A.cinzel, fontSize: '0.75rem', color: A.navy, fontWeight: 600 }}>{b.guest?.name}</div>
-                        <div style={{ fontFamily: A.cinzel, fontSize: '0.65rem', color: A.muted }}>{b.guest?.email}</div>
+                        <div style={{ fontFamily: A.cinzel, fontSize: '0.75rem', color: A.navy, fontWeight: 600 }}>{b.guest?.name || b.walkInCustomer?.name}</div>
+                        <div style={{ fontFamily: A.cinzel, fontSize: '0.65rem', color: A.muted }}>{b.guest?.email || (b.walkInCustomer ? 'Walk-in' : '')}</div>
                       </td>
                       <td style={{ padding: '0.75rem 1rem', fontFamily: A.cinzel, fontSize: '0.72rem', color: A.navy }}>{b.service?.name}</td>
                       <td style={{ padding: '0.75rem 1rem', fontFamily: A.cinzel, fontSize: '0.72rem', color: b.therapist ? A.navy : A.muted }}>{b.therapist?.name || '—'}</td>
                       <td style={{ padding: '0.75rem 1rem', fontFamily: A.cinzel, fontSize: '0.72rem' }}>{new Date(b.date).toLocaleDateString()}</td>
                       <td style={{ padding: '0.75rem 1rem', fontFamily: A.cinzel, fontSize: '0.72rem' }}>{b.scheduledStart} – {b.scheduledEnd}</td>
+                      <td style={{ padding: '0.75rem 1rem', fontFamily: A.cinzel, fontSize: '0.72rem', color: A.gold, fontWeight: 600 }}>{fmtPrice(b.price, bookingNationality(b), exchangeRate)}</td>
                       <td style={{ padding: '0.75rem 1rem' }}><StatusPill status={b.status} /></td>
                       <td style={{ padding: '0.75rem 1rem', textAlign: 'center' }}>
                         {b.isWalkIn && <span style={{ fontFamily: A.cinzel, fontSize: '0.58rem', color: A.gold, letterSpacing: '0.08em' }}>Walk-in</span>}
@@ -733,6 +755,7 @@ export default function AdminSpaPage() {
         <Modal title="Booking Details" onClose={() => setSelectedBooking(null)}>
           <BookingDetailModal
             booking={selectedBooking}
+            exchangeRate={exchangeRate}
             onArrive={() => doArrive(selectedBooking._id)}
             onStatus={(s: string) => doStatus(selectedBooking._id, s)}
             onComplete={(method: 'room_bill' | 'cash') => doComplete(selectedBooking._id, method)}
@@ -777,19 +800,19 @@ export default function AdminSpaPage() {
 
 // ── Booking Detail Modal ──────────────────────────────────────────────────────
 
-function BookingDetailModal({ booking: b, onArrive, onStatus, onComplete }: any) {
+function BookingDetailModal({ booking: b, exchangeRate, onArrive, onStatus, onComplete }: any) {
   const sc = STATUS_COLORS[b.status] || STATUS_COLORS.pending;
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
         {[
-          ['Guest', b.guest?.name],
+          ['Guest', b.guest?.name || b.walkInCustomer?.name],
           ['Service', b.service?.name],
           ['Therapist', b.therapist?.name || '—'],
           ['Date', new Date(b.date).toDateString()],
           ['Scheduled', `${b.scheduledStart} – ${b.scheduledEnd}`],
           ['Actual', b.actualStart ? `${b.actualStart} – ${b.actualEnd}` : '—'],
-          ['Price', `NPR ${b.price}`],
+          ['Price', fmtPrice(b.price, bookingNationality(b), exchangeRate)],
           ['Walk-in', b.isWalkIn ? 'Yes' : 'No'],
           ...(b.status === 'completed' ? [['Paid Via', b.spaPaymentMethod === 'cash' ? 'Cash (at desk)' : 'Room Bill']] : []),
         ].map(([k, v]) => (
@@ -812,11 +835,11 @@ function BookingDetailModal({ booking: b, onArrive, onStatus, onComplete }: any)
         {b.status === 'arrived' && (
           <Btn variant="primary" onClick={() => onStatus('in_progress')}><Sparkles size={13} /> Start Session</Btn>
         )}
+        {['arrived','in_progress'].includes(b.status) && !b.walkInCustomer && (
+          <Btn variant="green" onClick={() => onComplete('room_bill')}><CheckCircle size={13} /> Complete → Bill</Btn>
+        )}
         {['arrived','in_progress'].includes(b.status) && (
-          <>
-            <Btn variant="green" onClick={() => onComplete('room_bill')}><CheckCircle size={13} /> Complete → Bill</Btn>
-            <Btn variant="ghost" onClick={() => onComplete('cash')}><CheckCircle size={13} /> Complete → Cash</Btn>
-          </>
+          <Btn variant="ghost" onClick={() => onComplete('cash')}><CheckCircle size={13} /> Complete → Cash</Btn>
         )}
         {['pending','confirmed'].includes(b.status) && (
           <Btn variant="ghost" onClick={() => onStatus('confirmed')}>
@@ -842,10 +865,11 @@ function WalkInModal({ services, therapists, prefill, date, onClose, onSaved }: 
     therapistId: prefill?.therapistId || '', note: '',
   });
   // External walk-in fields
-  const [wicName, setWicName]   = useState('');
-  const [wicPhone, setWicPhone] = useState('');
-  const [guests, setGuests]     = useState<any[]>([]);
-  const [saving, setSaving]     = useState(false);
+  const [wicName, setWicName]             = useState('');
+  const [wicPhone, setWicPhone]           = useState('');
+  const [wicNationality, setWicNationality] = useState<'foreign' | 'nepali'>('foreign');
+  const [guests, setGuests]               = useState<any[]>([]);
+  const [saving, setSaving]               = useState(false);
 
   useEffect(() => {
     api.get('/checkin/active').then(({ data }) => setGuests(data.guests || []));
@@ -871,6 +895,7 @@ function WalkInModal({ services, therapists, prefill, date, onClose, onSaved }: 
           name: wicName.trim(),
           phone: wicPhone.trim() || undefined,
           type: 'spa',
+          nationality: wicNationality,
         });
         if (!wicData.success) { toast.error('Failed to register walk-in customer'); return; }
         walkInCustomerId = wicData.customer._id;
@@ -936,6 +961,17 @@ function WalkInModal({ services, therapists, prefill, date, onClose, onSaved }: 
             <Field label="Phone (optional)">
               <input type="text" value={wicPhone} onChange={e => setWicPhone(e.target.value)} placeholder="+1 555 000 0000" style={inputStyle} />
             </Field>
+          </div>
+          <div style={{ marginTop: '0.75rem' }}>
+            <label style={{ fontFamily: A.cinzel, fontSize: '0.62rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: A.navy, display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>Nationality</label>
+            <div style={{ display: 'flex', border: `1px solid ${A.border}`, overflow: 'hidden' }}>
+              {(['foreign', 'nepali'] as const).map(n => (
+                <button key={n} type="button" onClick={() => setWicNationality(n)}
+                  style={{ flex: 1, padding: '0.5rem', border: 'none', cursor: 'pointer', fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', background: wicNationality === n ? A.navy : '#fff', color: wicNationality === n ? A.gold : A.muted, transition: 'background 0.2s' }}>
+                  {n === 'foreign' ? 'Foreign' : 'Nepali'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

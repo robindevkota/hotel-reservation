@@ -7,7 +7,7 @@ import { useAuthStore } from '../../store/authStore';
 import {
   LayoutDashboard, CalendarCheck, BedDouble, UtensilsCrossed,
   Flower2, Users, BookOpen, Receipt, LogOut, Menu, UserCircle,
-  Package2, ShieldPlus, Bell, X, ChevronRight, Tag, UserPlus, GitMerge, SlidersHorizontal,
+  Package2, ShieldPlus, Bell, X, ChevronRight, Tag, UserPlus, GitMerge, SlidersHorizontal, FileBarChart2,
 } from 'lucide-react';
 import { getSocket, connectSocket } from '../../lib/socket';
 import type { Order } from '../../store/orderStore';
@@ -185,11 +185,12 @@ const NAV = [
   { href: '/admin/billing',      label: 'Billing',      icon: Receipt,         departments: ['front_desk'] },
   { href: '/admin/orders',       label: 'Kitchen Board',icon: UtensilsCrossed, departments: ['food'] },
   { href: '/admin/menu',         label: 'Menu',         icon: BookOpen,        departments: ['food'] },
-  { href: '/admin/inventory',    label: 'Inventory',    icon: Package2,        departments: ['food'] },
+  { href: '/admin/inventory',    label: 'Inventory',    icon: Package2,        departments: ['food', 'front_desk'] },
   { href: '/admin/spa',              label: 'Spa Schedule',  icon: Flower2,    departments: ['spa'] },
   { href: '/admin/walkin-customers', label: 'Walk-in Log',   icon: UserPlus,   departments: ['food','spa'] },
   { href: '/admin/channels',          label: 'Channels',      icon: GitMerge,          departments: ['__super_admin__'] },
   { href: '/admin/offers',           label: 'Offers',        icon: Tag,               departments: ['__super_admin__'] },
+  { href: '/admin/audit',            label: 'Audit Report',  icon: FileBarChart2,     departments: ['__super_admin__'] },
   { href: '/admin/settings',         label: 'Settings',      icon: SlidersHorizontal, departments: ['__super_admin__'] },
   { href: '/admin/profile',      label: 'Profile',      icon: UserCircle,      departments: null },
   { href: '/register',           label: 'Add Admin',    icon: ShieldPlus,      departments: ['__super_admin__'] },
@@ -242,8 +243,9 @@ function Sidebar({ collapsed }: { collapsed: boolean }) {
       <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '0.75rem 0' }}>
         {visible.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href);
+          const displayLabel = href === '/admin/inventory' && dept === 'front_desk' ? 'Expenses' : label;
           return (
-            <Link key={href} href={href} title={collapsed ? label : undefined} style={{
+            <Link key={href} href={href} title={collapsed ? displayLabel : undefined} style={{
               display: 'flex', alignItems: 'center', gap: '0.75rem',
               padding: collapsed ? '0.75rem 0' : '0.7rem 1rem',
               justifyContent: collapsed ? 'center' : 'flex-start',
@@ -259,7 +261,7 @@ function Sidebar({ collapsed }: { collapsed: boolean }) {
             onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.color = GOLD; (e.currentTarget as HTMLElement).style.background = 'rgba(201,168,76,0.07)'; } }}
             onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.color = CREAM; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}>
               <Icon size={17} strokeWidth={active ? 2.2 : 1.6} style={{ flexShrink: 0 }} />
-              {!collapsed && <span>{label}</span>}
+              {!collapsed && <span>{displayLabel}</span>}
             </Link>
           );
         })}

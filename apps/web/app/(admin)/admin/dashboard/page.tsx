@@ -79,10 +79,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 interface Analytics {
   scope: { showRooms: boolean; showFood: boolean; showSpa: boolean };
   isSuperAdmin: boolean;
+  exchangeRate: number;
   kpis: {
     totalRooms: number; availableRooms: number; occupancyRate: number;
     checkedIn: number; pending: number; confirmed: number;
-    totalRevenue: number; pendingOrders: number; totalReservations: number;
+    totalRevenue: number; totalRevenueNpr: number;
+    operationalExpenses: number; operationalExpensesNpr: number;
+    netRevenue: number; netRevenueNpr: number;
+    pendingOrders: number; totalReservations: number;
   };
   charts: {
     reservationsTrend: { date: string; reservations: number }[];
@@ -90,13 +94,14 @@ interface Analytics {
     statusBreakdown: { name: string; value: number; color: string }[];
     roomTypeRevenue: { type: string; revenue: number; bookings: number }[];
     revenueBySection: { section: string; revenue: number; color: string }[];
+    walkInBreakdown: { category: string; count: number; color: string }[];
   };
   recent: {
     reservations: any[];
     orders: any[];
   };
-  orderStats: { total: number; delivered: number; pending: number; totalRevenue: number };
-  spaStats: { total: number; confirmed: number; completed: number; revenue: number };
+  orderStats: { total: number; delivered: number; pending: number; totalRevenue: number; cashRevenue: number; walkInCount: number };
+  spaStats: { total: number; confirmed: number; completed: number; revenue: number; cashRevenue: number; walkInCount: number };
 }
 
 export default function AdminDashboardPage() {
@@ -126,15 +131,19 @@ export default function AdminDashboardPage() {
   const kpis = data?.kpis;
   const scope = data?.scope ?? { showRooms: true, showFood: true, showSpa: true };
 
+  const fmt = (usd: number) => `$${usd.toLocaleString()}`;
+  const fmtNpr = (npr: number) => `Rs. ${npr.toLocaleString()}`;
+
   const allStatCards = [
-    { label:'Total Reservations', value: kpis?.totalReservations ?? '—', Icon: CalendarCheck, color: A.gold,  bg: A.goldDim, sub: `${kpis?.confirmed ?? 0} confirmed`, show: scope.showRooms },
-    { label:'Guests Checked In',  value: kpis?.checkedIn ?? '—',         Icon: UserCheck,     color: A.green, bg: 'hsl(142 60% 40% / 0.1)', sub: `${kpis?.occupancyRate ?? 0}% occupancy`, show: scope.showRooms },
-    { label:'Available Rooms',    value: kpis?.availableRooms ?? '—',    Icon: BedDouble,     color: A.gold,  bg: A.goldDim, sub: `of ${kpis?.totalRooms ?? 0} total`, show: scope.showRooms },
-    { label:'Pending Guests',     value: kpis?.pending ?? '—',           Icon: Clock3,        color: A.amber, bg: 'hsl(38 90% 45% / 0.1)',  sub: 'awaiting check-in', show: scope.showRooms },
-    { label:'Pending Orders',     value: kpis?.pendingOrders ?? '—',     Icon: ShoppingCart,  color: A.amber, bg: 'hsl(38 90% 45% / 0.1)',  sub: `${data?.orderStats.total ?? 0} total orders`, show: scope.showFood },
-    { label:'Order Revenue',      value: data ? `$${data.orderStats.totalRevenue.toLocaleString()}` : '—', Icon: TrendingUp, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: 'from delivered orders', show: (data?.isSuperAdmin ?? false) && scope.showFood },
-    { label:'Spa Bookings',       value: data?.spaStats.total ?? '—',    Icon: Users,         color: A.green, bg: 'hsl(142 60% 40% / 0.1)', sub: `${data?.spaStats.completed ?? 0} completed`, show: scope.showSpa },
-    { label:'Total Revenue',      value: kpis ? `$${kpis.totalRevenue.toLocaleString()}` : '—', Icon: DollarSign, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: 'from paid bills', show: data?.isSuperAdmin ?? true },
+    { label:'Total Reservations', value: kpis?.totalReservations ?? '—', Icon: CalendarCheck, color: A.gold,  bg: A.goldDim, sub: `${kpis?.confirmed ?? 0} confirmed`, show: scope.showRooms, sub2: '' },
+    { label:'Guests Checked In',  value: kpis?.checkedIn ?? '—',         Icon: UserCheck,     color: A.green, bg: 'hsl(142 60% 40% / 0.1)', sub: `${kpis?.occupancyRate ?? 0}% occupancy`, show: scope.showRooms, sub2: '' },
+    { label:'Available Rooms',    value: kpis?.availableRooms ?? '—',    Icon: BedDouble,     color: A.gold,  bg: A.goldDim, sub: `of ${kpis?.totalRooms ?? 0} total`, show: scope.showRooms, sub2: '' },
+    { label:'Pending Guests',     value: kpis?.pending ?? '—',           Icon: Clock3,        color: A.amber, bg: 'hsl(38 90% 45% / 0.1)',  sub: 'awaiting check-in', show: scope.showRooms, sub2: '' },
+    { label:'Pending Orders',     value: kpis?.pendingOrders ?? '—',     Icon: ShoppingCart,  color: A.amber, bg: 'hsl(38 90% 45% / 0.1)',  sub: `${data?.orderStats.total ?? 0} total orders`, show: scope.showFood, sub2: '' },
+    { label:'Order Revenue',      value: data ? fmt(data.orderStats.totalRevenue) : '—', Icon: TrendingUp, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: 'from delivered orders', show: (data?.isSuperAdmin ?? false) && scope.showFood, sub2: '' },
+    { label:'Spa Bookings',       value: data?.spaStats.total ?? '—',    Icon: Users,         color: A.green, bg: 'hsl(142 60% 40% / 0.1)', sub: `${data?.spaStats.completed ?? 0} completed`, show: scope.showSpa, sub2: '' },
+    { label:'Total Revenue',      value: kpis ? fmt(kpis.totalRevenue) : '—', Icon: DollarSign, color: A.blue, bg: 'hsl(210 80% 45% / 0.1)', sub: kpis ? fmtNpr(kpis.totalRevenueNpr) : '', show: data?.isSuperAdmin ?? true, sub2: `1 USD = Rs. ${data?.exchangeRate ?? '—'}` },
+    { label:'Net Revenue',        value: kpis ? fmt(kpis.netRevenue) : '—', Icon: TrendingUp, color: A.green, bg: 'hsl(142 60% 40% / 0.1)', sub: kpis ? fmtNpr(kpis.netRevenueNpr) : '', show: data?.isSuperAdmin ?? false, sub2: `after Rs. ${kpis?.operationalExpensesNpr?.toLocaleString() ?? 0} expenses` },
   ];
   const statCards = allStatCards.filter(c => c.show);
 
@@ -165,7 +174,7 @@ export default function AdminDashboardPage() {
 
         {/* KPI Cards */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'1.25rem', marginBottom:'2.5rem' }}>
-          {statCards.map(({ label, value, Icon, color, bg, sub }) => (
+          {statCards.map(({ label, value, Icon, color, bg, sub, sub2 }) => (
             <div key={label} className="stat-card">
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'1rem' }}>
                 <div style={{ width:'2.5rem', height:'2.5rem', background:bg, display:'flex', alignItems:'center', justifyContent:'center' }}>
@@ -176,7 +185,8 @@ export default function AdminDashboardPage() {
                 {loading ? <span style={{ color:A.borderLight }}>—</span> : value}
               </div>
               <div style={{ fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.muted, marginBottom:'0.25rem' }}>{label}</div>
-              {!loading && <div style={{ fontFamily:A.raleway, fontSize:'0.72rem', color:A.muted }}>{sub}</div>}
+              {!loading && sub && <div style={{ fontFamily:A.raleway, fontSize:'0.75rem', color:A.gold, fontWeight:600 }}>{sub}</div>}
+              {!loading && sub2 && <div style={{ fontFamily:A.raleway, fontSize:'0.68rem', color:A.muted, marginTop:'0.1rem' }}>{sub2}</div>}
             </div>
           ))}
         </div>
@@ -356,6 +366,34 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
+        {/* Walk-in vs In-house Breakdown — food/spa admins + superadmin */}
+        {(scope.showFood || scope.showSpa) && (data?.charts.walkInBreakdown ?? []).length > 0 && (
+          <div className="chart-card" style={{ marginBottom:'2.5rem' }}>
+            <SectionTitle>Walk-in vs In-house Customers</SectionTitle>
+            {loading ? <Spinner /> : (
+              <div style={{ display:'flex', flexDirection:'column', gap:'0.75rem' }}>
+                {(data?.charts.walkInBreakdown ?? []).map((w, i) => {
+                  const total = (data?.charts.walkInBreakdown ?? [])
+                    .filter(x => x.category.startsWith(w.category.split('—')[0]))
+                    .reduce((s, x) => s + x.count, 0);
+                  const pct = total > 0 ? Math.round((w.count / total) * 100) : 0;
+                  return (
+                    <div key={i}>
+                      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'0.3rem' }}>
+                        <span style={{ fontFamily:A.raleway, fontSize:'0.75rem', color:A.muted }}>{w.category}</span>
+                        <span style={{ fontFamily:A.cinzel, fontSize:'0.75rem', color:A.navy, fontWeight:600 }}>{w.count} <span style={{ color:A.muted, fontWeight:400 }}>({pct}%)</span></span>
+                      </div>
+                      <div style={{ height:'8px', background:A.borderLight, position:'relative' }}>
+                        <div style={{ position:'absolute', left:0, top:0, height:'100%', width:`${pct}%`, background:w.color, transition:'width 0.4s' }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Tables Row */}
         <div style={{ display:'grid', gridTemplateColumns: scope.showRooms && scope.showFood ? '1fr 1fr' : '1fr', gap:'2rem' }}>
 
@@ -439,11 +477,12 @@ export default function AdminDashboardPage() {
             {scope.showFood && (
               <div className="chart-card">
                 <SectionTitle href="/admin/orders">Order Summary</SectionTitle>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'1rem' }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:'1rem' }}>
                   {[
                     { label:'Total',     value: data?.orderStats.total ?? '—',                                              color: A.navy,  show: true },
                     { label:'Delivered', value: data?.orderStats.delivered ?? '—',                                          color: A.green, show: true },
                     { label:'Pending',   value: data?.orderStats.pending ?? '—',                                            color: A.amber, show: true },
+                    { label:'Walk-in',   value: data?.orderStats.walkInCount ?? '—',                                        color: 'hsl(38 80% 45%)', show: true },
                     { label:'Revenue',   value: data ? `$${data.orderStats.totalRevenue.toLocaleString()}` : '—',           color: A.gold,  show: data?.isSuperAdmin ?? false },
                   ].filter(s => s.show).map(s => (
                     <div key={s.label} style={{ textAlign:'center', padding:'1rem', background:A.papyrus }}>
@@ -461,11 +500,12 @@ export default function AdminDashboardPage() {
             {scope.showSpa && (
               <div className="chart-card">
                 <SectionTitle href="/admin/spa">Spa Summary</SectionTitle>
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'1rem' }}>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:'1rem' }}>
                   {[
                     { label:'Total',     value: data?.spaStats.total ?? '—',                                      color: A.navy,  show: true },
                     { label:'Confirmed', value: data?.spaStats.confirmed ?? '—',                                  color: A.blue,  show: true },
                     { label:'Completed', value: data?.spaStats.completed ?? '—',                                  color: A.green, show: true },
+                    { label:'Walk-in',   value: data?.spaStats.walkInCount ?? '—',                                color: 'hsl(38 80% 45%)', show: true },
                     { label:'Revenue',   value: data ? `$${data.spaStats.revenue.toLocaleString()}` : '—',        color: A.gold,  show: data?.isSuperAdmin ?? false },
                   ].filter(s => s.show).map(s => (
                     <div key={s.label} style={{ textAlign:'center', padding:'1rem', background:A.papyrus }}>
@@ -481,6 +521,7 @@ export default function AdminDashboardPage() {
 
           </div>
         )}
+
       </div>
     </>
   );

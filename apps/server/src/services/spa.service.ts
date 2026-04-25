@@ -230,7 +230,8 @@ export async function getDaySchedule(date: Date): Promise<TherapistSchedule[]> {
   const allBookings = await SpaBooking.find({
     date: { $gte: gte, $lt: lt },
   })
-    .populate('guest', 'name email')
+    .populate('guest', 'name email nationality')
+    .populate('walkInCustomer', 'name phone nationality')
     .populate('service', 'name duration category')
     .populate('therapist', 'name')
     .sort({ scheduledStart: 1 }) as ISpaBooking[];

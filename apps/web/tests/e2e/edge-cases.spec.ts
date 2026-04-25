@@ -25,6 +25,10 @@
  *  P. Spa payment method — cash vs room_bill on complete, addedToBill guard, restaurant dining on bill
  *  Q. Admin order flow — admin creates order for checked-in guest, cash vs room_bill, bill guard
  *  R. Walk-in customer flow — external dine_in + spa walk-ins, revenue in analytics, access control
+ *  T. Expenses role access — requireDepartment guard on petty-cash: front_desk+food allowed, spa denied
+ *  U. Nationality billing — nepali guest sees NPR (isNepali=true, exchangeRate≥1), foreign guest sees USD
+ *     (isNepali=false, exchangeRate=1); admin billing endpoint matches guest portal for same reservation;
+ *     audit bills carry isWalkIn=false; dashboard analytics include walkInBreakdown chart data
  */
 
 import { test, expect } from '@playwright/test';
@@ -1869,6 +1873,136 @@ test.describe('J. Inventory Guards', () => {
     expect(r.status).toBe(403);
   });
 
+  // ── Petty Cash Purchase ───────────────────────────────────────────────────
+
+  test('J-43 petty cash purchase restocks ingredient and logs cashAmount', async () => {
+    const token = await apiLoginAsAdmin();
+    const ing = (await createTestIngredient(token, { stock: 0, category: 'housekeeping' })).ingredient;
+
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ingredientId: ing._id, qty: 5, cashAmount: 12.50, purchasedBy: 'Ali', vendor: 'Local Market' }),
+    });
+    const data = await r.json();
+    expect(r.status).toBe(200);
+    expect(data.success).toBe(true);
+
+    // Stock increased
+    const list = await fetch(`${API_URL}/inventory/ingredients`, { headers: { Authorization: `Bearer ${token}` } });
+    const items = (await list.json()).ingredients;
+    const updated = items.find((i: any) => i._id === ing._id);
+    expect(updated.stock).toBe(5);
+
+    // Log entry created with correct type and cashAmount
+    const logs = await fetch(`${API_URL}/inventory/logs?type=petty_cash_purchase`, { headers: { Authorization: `Bearer ${token}` } });
+    const logsData = await logs.json();
+    const entry = logsData.logs.find((l: any) => l.lines?.[0]?.ingredientName === ing.name);
+    expect(entry).toBeTruthy();
+    expect(entry.cashAmount).toBe(12.5);
+    expect(entry.purchasedBy).toBe('Ali');
+    expect(entry.vendor).toBe('Local Market');
+  });
+
+  test('J-44 petty cash purchase with missing purchasedBy is rejected', async () => {
+    const token = await apiLoginAsAdmin();
+    const ing = (await createTestIngredient(token, { stock: 0 })).ingredient;
+
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ingredientId: ing._id, qty: 5, cashAmount: 10 }),
+    });
+    expect(r.status).toBe(422);
+  });
+
+  test('J-45 petty cash purchase with cashAmount = 0 is rejected', async () => {
+    const token = await apiLoginAsAdmin();
+    const ing = (await createTestIngredient(token, { stock: 0 })).ingredient;
+
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ingredientId: ing._id, qty: 5, cashAmount: 0, purchasedBy: 'Ali' }),
+    });
+    expect(r.status).toBe(422);
+  });
+
+  test('J-46 petty cash purchase with qty = 0 is rejected', async () => {
+    const token = await apiLoginAsAdmin();
+    const ing = (await createTestIngredient(token, { stock: 10 })).ingredient;
+
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ingredientId: ing._id, qty: 0, cashAmount: 10, purchasedBy: 'Ali' }),
+    });
+    expect(r.status).toBe(422);
+  });
+
+  test('J-47 petty cash purchase on non-existent ingredient returns 404', async () => {
+    const token = await apiLoginAsAdmin();
+
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ingredientId: '507f1f77bcf86cd799439011', qty: 2, cashAmount: 5, purchasedBy: 'Ali' }),
+    });
+    expect(r.status).toBe(404);
+  });
+
+  test('J-48 unauthenticated cannot log petty cash purchase', async () => {
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ingredientId: '507f1f77bcf86cd799439011', qty: 2, cashAmount: 5, purchasedBy: 'Ali' }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  test('J-49 housekeeping category ingredient is accepted and filterable', async () => {
+    const token = await apiLoginAsAdmin();
+
+    const cr = await fetch(`${API_URL}/inventory/ingredients`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: `Sanitiser-${Date.now()}`, unit: 'bottle', stock: 10, costPrice: 3, lowStockThreshold: 2, category: 'housekeeping' }),
+    });
+    expect(cr.status).toBe(201);
+    const ing = (await cr.json()).ingredient;
+    expect(ing.category).toBe('housekeeping');
+
+    // Category filter works
+    const list = await fetch(`${API_URL}/inventory/ingredients?category=housekeeping`, { headers: { Authorization: `Bearer ${token}` } });
+    const items = (await list.json()).ingredients;
+    expect(items.some((i: any) => i._id === ing._id)).toBe(true);
+    expect(items.every((i: any) => i.category === 'housekeeping')).toBe(true);
+  });
+
+  test('J-50 inventory analytics includes operationalExpenses after petty cash purchase', async () => {
+    const token = await apiLoginAsAdmin();
+    const ing = (await createTestIngredient(token, { stock: 0 })).ingredient;
+
+    // Record a petty cash purchase
+    await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ingredientId: ing._id, qty: 3, cashAmount: 7.25, purchasedBy: 'Sara' }),
+    });
+
+    const r = await fetch(`${API_URL}/inventory/analytics`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await r.json();
+    expect(data.success).toBe(true);
+    expect(data.operationalExpenses).toBeTruthy();
+    expect(data.operationalExpenses.count).toBeGreaterThanOrEqual(1);
+    expect(data.operationalExpenses.totalCash).toBeGreaterThanOrEqual(7.25);
+    // Recent entries present
+    expect(data.operationalExpenses.recent.length).toBeGreaterThanOrEqual(1);
+    const entry = data.operationalExpenses.recent.find((e: any) => e.purchasedBy === 'Sara');
+    expect(entry).toBeTruthy();
+    expect(entry.cashAmount).toBe(7.25);
+  });
+
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3567,11 +3701,11 @@ test.describe('Q. Admin Order Flow', () => {
 // R-10  Unauthenticated access to GET /walkin-customers rejected (401)
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function createWalkIn(token: string, name: string, type: 'dine_in' | 'spa', phone?: string) {
+async function createWalkIn(token: string, name: string, type: 'dine_in' | 'spa', phone?: string, nationality: 'foreign' | 'nepali' = 'foreign') {
   const r = await fetch(`${API_URL}/walkin-customers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({ name, type, phone }),
+    body: JSON.stringify({ name, type, phone, nationality }),
   });
   return r.json();
 }
@@ -3801,4 +3935,373 @@ test.describe('R. Walk-in Customer Flow', () => {
     expect(r.status).toBe(401);
   });
 
+  test('R-11 nepali walk-in customer: nationality stored as nepali', async () => {
+    const token = await apiLoginAsAdmin();
+    const d = await createWalkIn(token, `NepaliWalkIn${Date.now()}`, 'dine_in', '+977-9800000001', 'nepali');
+    expect(d.success).toBe(true);
+    expect(d.customer.nationality).toBe('nepali');
+  });
+
+  test('R-12 foreign walk-in customer: nationality defaults to foreign', async () => {
+    const token = await apiLoginAsAdmin();
+    // createWalkIn without explicit nationality — server default kicks in
+    const r = await fetch(`${API_URL}/walkin-customers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ name: `ForeignWalkIn${Date.now()}`, type: 'spa' }),
+    });
+    const d = await r.json();
+    expect(d.success).toBe(true);
+    expect(d.customer.nationality).toBe('foreign');
+  });
+
+  test('R-13 spa walk-in booking: walkInCustomer.nationality returned in GET /spa/bookings', async () => {
+    const token = await apiLoginAsAdmin();
+
+    const svcs = (await get('/spa/services')).services ?? [];
+    const svc = svcs.find((s: any) => s.isAvailable);
+    if (!svc) { test.skip(true, 'No spa service'); return; }
+
+    const wic = await createWalkIn(token, `NepaliSpaWalkIn${Date.now()}`, 'spa', undefined, 'nepali');
+    expect(wic.success).toBe(true);
+
+    const bkR = await fetch(`${API_URL}/spa/walkin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({
+        walkInCustomerId: wic.customer._id,
+        service: svc._id,
+        date: pSpaDate(),
+        startTime: '10:00',
+      }),
+    });
+    const bkD = await bkR.json();
+    if (!bkD.success) { test.skip(true, 'Spa slot taken'); return; }
+
+    // Fetch all bookings and find this one — walkInCustomer.nationality must be populated
+    const allBk = await get('/spa/bookings', token);
+    const found = (allBk.bookings ?? []).find((b: any) => b._id === bkD.booking._id);
+    expect(found).toBeTruthy();
+    expect(found.walkInCustomer?.nationality).toBe('nepali');
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T. EXPENSES ROLE ACCESS — department-scoped petty cash route access control
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// T-01  super_admin can POST /inventory/petty-cash (bypasses department check)
+// T-02  front_desk admin can POST /inventory/petty-cash (allowed department)
+// T-03  food admin can POST /inventory/petty-cash (allowed department)
+// T-04  spa admin cannot POST /inventory/petty-cash (wrong department → 403)
+// T-05  front_desk admin can read GET /inventory/ingredients (no dept guard on this route)
+// T-06  front_desk admin hits POST /inventory/sell — no dept guard, gets 404 not 403
+// T-07  guest token cannot POST /inventory/petty-cash (requireStaff blocks → 403)
+// T-08  front_desk admin can GET /inventory/analytics and sees operationalExpenses
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Create an admin user under super_admin and return their access token */
+async function createDeptAdmin(
+  superToken: string,
+  dept: 'front_desk' | 'food' | 'spa',
+): Promise<string> {
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const email = `test-${dept}-${suffix}@royalsuites-test.com`;
+  const password = 'TestAdmin@123';
+
+  const regR = await fetch(`${API_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${superToken}` },
+    body: JSON.stringify({ name: `Test ${dept} Admin`, email, password, department: dept }),
+  });
+  const regD = await regR.json();
+  if (!regD.success) throw new Error(`Register failed for ${dept}: ${JSON.stringify(regD)}`);
+
+  const loginR = await fetch(`${API_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const loginD = await loginR.json();
+  if (!loginD.accessToken) throw new Error(`Login failed for ${dept}: ${JSON.stringify(loginD)}`);
+  return loginD.accessToken;
+}
+
+test.describe('T. Expenses Role Access', () => {
+
+  test('T-01 super_admin can POST /inventory/petty-cash (no department restriction)', async () => {
+    const token = await apiLoginAsAdmin();
+    const ing = (await post('/inventory/ingredients', {
+      name: `HK-T01-${Date.now()}`, unit: 'bottle', stock: 0,
+      costPrice: 2, lowStockThreshold: 1, category: 'housekeeping',
+    }, token)).ingredient;
+
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ingredientId: ing._id, qty: 2, cashAmount: 5, purchasedBy: 'SuperAdmin' }),
+    });
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.success).toBe(true);
+  });
+
+  test('T-02 front_desk admin can POST /inventory/petty-cash', async () => {
+    const superToken = await apiLoginAsAdmin();
+    const fdToken = await createDeptAdmin(superToken, 'front_desk');
+
+    const ing = (await post('/inventory/ingredients', {
+      name: `HK-T02-${Date.now()}`, unit: 'bottle', stock: 0,
+      costPrice: 2, lowStockThreshold: 1, category: 'housekeeping',
+    }, superToken)).ingredient;
+
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${fdToken}` },
+      body: JSON.stringify({ ingredientId: ing._id, qty: 3, cashAmount: 8, purchasedBy: 'FD Staff' }),
+    });
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.success).toBe(true);
+  });
+
+  test('T-03 food admin can POST /inventory/petty-cash', async () => {
+    const superToken = await apiLoginAsAdmin();
+    const foodToken = await createDeptAdmin(superToken, 'food');
+
+    const ing = (await post('/inventory/ingredients', {
+      name: `KIT-T03-${Date.now()}`, unit: 'kg', stock: 0,
+      costPrice: 5, lowStockThreshold: 1, category: 'kitchen',
+    }, superToken)).ingredient;
+
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${foodToken}` },
+      body: JSON.stringify({ ingredientId: ing._id, qty: 2, cashAmount: 10, purchasedBy: 'Chef Ali' }),
+    });
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.success).toBe(true);
+  });
+
+  test('T-04 spa admin cannot POST /inventory/petty-cash (wrong department → 403)', async () => {
+    const superToken = await apiLoginAsAdmin();
+    const spaToken = await createDeptAdmin(superToken, 'spa');
+
+    const ing = (await post('/inventory/ingredients', {
+      name: `GEN-T04-${Date.now()}`, unit: 'pc', stock: 0,
+      costPrice: 1, lowStockThreshold: 1,
+    }, superToken)).ingredient;
+
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${spaToken}` },
+      body: JSON.stringify({ ingredientId: ing._id, qty: 1, cashAmount: 3, purchasedBy: 'Spa Staff' }),
+    });
+    expect(r.status).toBe(403);
+    const d = await r.json();
+    expect(d.success).toBe(false);
+  });
+
+  test('T-05 front_desk admin can read GET /inventory/ingredients (no dept guard on this route)', async () => {
+    const superToken = await apiLoginAsAdmin();
+    const fdToken = await createDeptAdmin(superToken, 'front_desk');
+
+    const r = await fetch(`${API_URL}/inventory/ingredients`, {
+      headers: { Authorization: `Bearer ${fdToken}` },
+    });
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.success).toBe(true);
+    expect(Array.isArray(d.ingredients)).toBe(true);
+  });
+
+  test('T-06 front_desk admin POST /inventory/sell with bad recipeId gets 404 not 403 (no dept guard)', async () => {
+    const superToken = await apiLoginAsAdmin();
+    const fdToken = await createDeptAdmin(superToken, 'front_desk');
+
+    // sell has no requireDepartment — front_desk admin IS admin and passes requireAdmin
+    // A non-existent recipeId gives 404/400; absence of 403 proves no dept block
+    const r = await fetch(`${API_URL}/inventory/sell`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${fdToken}` },
+      body: JSON.stringify({ recipeId: '507f1f77bcf86cd799439011', servings: 1 }),
+    });
+    expect(r.status).not.toBe(403);
+  });
+
+  test('T-07 guest token cannot POST /inventory/petty-cash (requireStaff blocks → 403)', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const r = await fetch(`${API_URL}/inventory/petty-cash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${g.guestToken}` },
+      body: JSON.stringify({ ingredientId: '507f1f77bcf86cd799439011', qty: 1, cashAmount: 5, purchasedBy: 'Hacker' }),
+    });
+    expect(r.status).toBe(403);
+    const d = await r.json();
+    expect(d.success).toBe(false);
+  });
+
+  test('T-08 front_desk admin can GET /inventory/analytics and sees operationalExpenses', async () => {
+    const superToken = await apiLoginAsAdmin();
+    const fdToken = await createDeptAdmin(superToken, 'front_desk');
+
+    const r = await fetch(`${API_URL}/inventory/analytics`, {
+      headers: { Authorization: `Bearer ${fdToken}` },
+    });
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.success).toBe(true);
+    expect(d.operationalExpenses).toBeDefined();
+    expect(typeof d.operationalExpenses.totalCash).toBe('number');
+    expect(typeof d.operationalExpenses.count).toBe('number');
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// U. Nationality billing — dual-currency display and admin/guest consistency
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('U. Nationality Billing', () => {
+  // Helper: create a checked-in guest with a given nationality, return tokens + IDs
+  async function makeNationalityGuest(adminToken: string, nationality: 'nepali' | 'american') {
+    const allRooms = (await get('/rooms', adminToken)).rooms ?? [];
+    const activeRes = await get('/checkin/active', adminToken).catch(() => ({}));
+    const occupiedIds = new Set(((activeRes as any).guests ?? []).map((g: any) => String(g.room)));
+    const room = allRooms.find((r: any) => r.isAvailable === true && !occupiedIds.has(String(r._id)));
+    if (!room) throw new Error('No available room for nationality guest');
+
+    const yearBase = 700 + Math.floor(Math.random() * 200);
+    const checkIn  = daysFromNow(yearBase, 0);
+    const checkOut = daysFromNow(yearBase, 2);
+
+    const res = await post('/reservations', {
+      guest: {
+        name:        `Nat-${nationality}-${Date.now()}`,
+        email:       `nat-${nationality}-${Date.now()}@test.com`,
+        phone:       '+10000000001',
+        nationality,
+      },
+      room: room._id,
+      checkInDate:  checkIn,
+      checkOutDate: checkOut,
+      numberOfGuests: 1,
+    }, adminToken);
+
+    if (!res.success) throw new Error(`Reservation failed: ${JSON.stringify(res)}`);
+    await patch(`/reservations/${res.reservation._id}/confirm`, {}, adminToken);
+    const ci = await post(`/checkin/${res.reservation._id}`, {}, adminToken);
+    if (!ci.success) throw new Error(`Check-in failed: ${JSON.stringify(ci)}`);
+
+    const qr = await get(`/qr/verify/${ci.qrToken}`);
+    if (!qr.success || !qr.token) throw new Error(`QR verify failed: ${JSON.stringify(qr)}`);
+
+    _createdGuestIds.push(ci.guest._id);
+    _createdReservationIds.push(res.reservation._id);
+
+    return {
+      guestToken:    qr.token,
+      guestId:       ci.guest._id,
+      reservationId: res.reservation._id,
+      billId:        ci.bill._id,
+    };
+  }
+
+  test('U-01 nepali guest /billing/my returns isNepali=true and exchangeRate ≥ 100', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    let g: Awaited<ReturnType<typeof makeNationalityGuest>>;
+    try {
+      g = await makeNationalityGuest(adminToken, 'nepali');
+    } catch (e) {
+      test.skip(true, `Setup failed: ${e}`);
+      return;
+    }
+
+    const billing = await get('/billing/my', g.guestToken);
+    expect(billing.success).toBe(true);
+    expect(billing.isNepali).toBe(true);
+    // exchangeRate should be the current NPR rate — always well above 1
+    expect(typeof billing.exchangeRate).toBe('number');
+    expect(billing.exchangeRate).toBeGreaterThanOrEqual(100);
+  });
+
+  test('U-02 foreign guest /billing/my returns isNepali=false and exchangeRate=1', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    let g: Awaited<ReturnType<typeof makeNationalityGuest>>;
+    try {
+      g = await makeNationalityGuest(adminToken, 'american');
+    } catch (e) {
+      test.skip(true, `Setup failed: ${e}`);
+      return;
+    }
+
+    const billing = await get('/billing/my', g.guestToken);
+    expect(billing.success).toBe(true);
+    expect(billing.isNepali).toBe(false);
+    expect(billing.exchangeRate).toBe(1);
+  });
+
+  test('U-03 admin /billing/reservation/:id matches guest portal isNepali for same reservation', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    let g: Awaited<ReturnType<typeof makeNationalityGuest>>;
+    try {
+      g = await makeNationalityGuest(adminToken, 'nepali');
+    } catch (e) {
+      test.skip(true, `Setup failed: ${e}`);
+      return;
+    }
+
+    // Guest view
+    const guestBilling = await get('/billing/my', g.guestToken);
+    expect(guestBilling.success).toBe(true);
+
+    // Admin view — uses reservation ID
+    const adminBilling = await get(`/billing/reservation/${g.reservationId}`, adminToken);
+    expect(adminBilling.success).toBe(true);
+
+    // Both must agree on isNepali and exchangeRate
+    expect(adminBilling.isNepali).toBe(guestBilling.isNepali);
+    expect(adminBilling.exchangeRate).toBe(guestBilling.exchangeRate);
+    // And the raw USD totals must match
+    expect(adminBilling.bill.grandTotal).toBeCloseTo(guestBilling.bill.grandTotal, 2);
+  });
+
+  test('U-04 audit transactions include isWalkIn flag and bills are always isWalkIn=false', async () => {
+    const adminToken = await apiLoginAsAdmin();
+
+    const audit = await get('/analytics/audit?limit=20', adminToken);
+    expect(audit.success).toBe(true);
+    expect(Array.isArray(audit.transactions)).toBe(true);
+
+    // Bills in the audit should always carry isWalkIn=false
+    const billTxns = audit.transactions.filter((t: any) => t.category === 'Room Bill');
+    if (billTxns.length > 0) {
+      for (const txn of billTxns) {
+        expect(txn.isWalkIn).toBe(false);
+      }
+    }
+  });
+
+  test('U-05 dashboard analytics include walkInBreakdown chart when food/spa data exists', async () => {
+    const adminToken = await apiLoginAsAdmin();
+
+    const analytics = await get('/analytics/dashboard', adminToken);
+    expect(analytics.success).toBe(true);
+
+    // walkInBreakdown must be an array (may be empty if no walk-in data)
+    expect(Array.isArray(analytics.charts?.walkInBreakdown)).toBe(true);
+
+    // If there are walk-in entries, each entry must have the expected shape
+    for (const entry of (analytics.charts?.walkInBreakdown ?? [])) {
+      expect(typeof entry.category).toBe('string');
+      expect(typeof entry.count).toBe('number');
+      expect(entry.count).toBeGreaterThan(0);
+      expect(typeof entry.color).toBe('string');
+    }
+  });
 });

@@ -4,7 +4,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { AppError } from '../middleware/errorHandler';
 
 export async function createWalkInCustomer(req: AuthRequest, res: Response): Promise<void> {
-  const { name, phone, type, notes } = req.body;
+  const { name, phone, type, nationality, notes } = req.body;
 
   if (!name?.trim()) throw new AppError('name is required', 400);
   if (!['dine_in', 'spa'].includes(type)) throw new AppError('type must be dine_in or spa', 400);
@@ -13,6 +13,7 @@ export async function createWalkInCustomer(req: AuthRequest, res: Response): Pro
     name: name.trim(),
     phone: phone?.trim() || undefined,
     type,
+    nationality: ['foreign', 'nepali'].includes(nationality) ? nationality : 'foreign',
     notes: notes?.trim() || '',
     createdBy: req.user!._id,
   });

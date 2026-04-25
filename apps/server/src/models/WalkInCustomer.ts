@@ -6,6 +6,7 @@ export interface IWalkInCustomer extends Document {
   name: string;
   phone?: string;
   type: WalkInType;
+  nationality: 'foreign' | 'nepali';
   notes?: string;
   createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -13,10 +14,11 @@ export interface IWalkInCustomer extends Document {
 
 const WalkInCustomerSchema = new Schema<IWalkInCustomer>(
   {
-    name:      { type: String, required: true, trim: true },
-    phone:     { type: String, trim: true },
-    type:      { type: String, enum: ['dine_in', 'spa'], required: true },
-    notes:     { type: String, default: '' },
+    name:        { type: String, required: true, trim: true },
+    phone:       { type: String, trim: true },
+    type:        { type: String, enum: ['dine_in', 'spa'], required: true },
+    nationality: { type: String, enum: ['foreign', 'nepali'], default: 'foreign' },
+    notes:       { type: String, default: '' },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true }

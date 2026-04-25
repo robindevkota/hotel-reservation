@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as inv from '../controllers/inventory.controller';
 import { requireStaff } from '../middleware/auth.middleware';
-import { requireAdmin } from '../middleware/role.middleware';
+import { requireAdmin, requireDepartment } from '../middleware/role.middleware';
 import { validate } from '../middleware/validate.middleware';
 
 const router = Router();
@@ -27,6 +27,8 @@ router.post('/consume',                     ...requireStaff, requireAdmin, inv.c
 router.post('/stocktake',                   ...requireStaff, requireAdmin, inv.stocktake);
 router.get('/variance',                     ...requireStaff, requireAdmin, inv.varianceReport);
 router.get('/logs',                         ...requireStaff, requireAdmin, inv.getLogs);
+// front_desk buys housekeeping/hotel supplies; food buys kitchen ingredients — both can log petty cash
+router.post('/petty-cash',                  ...requireStaff, requireAdmin, requireDepartment('front_desk', 'food'), inv.pettyCashValidation, validate, inv.pettyCashPurchase);
 router.post('/import',                      ...requireStaff, requireAdmin, upload.single('file'), inv.importExcel);
 
 export default router;

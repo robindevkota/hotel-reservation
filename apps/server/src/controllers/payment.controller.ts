@@ -52,6 +52,7 @@ export async function stripeWebhook(req: Request, res: Response): Promise<void> 
       bill.status = 'paid';
       bill.paidAt = new Date();
       bill.paymentMethod = 'stripe';
+      bill.exchangeRateAtPayment = await getUsdToNprRate();
       await bill.save();
 
       // Generate PDF receipt
@@ -96,6 +97,7 @@ export async function cashPayment(req: Request, res: Response): Promise<void> {
   bill.status = 'paid';
   bill.paidAt = new Date();
   bill.paymentMethod = 'cash';
+  bill.exchangeRateAtPayment = await getUsdToNprRate();
   await bill.save();
 
   await Payment.create({

@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export type IngredientUnit = 'kg' | 'g' | 'litre' | 'ml' | 'piece' | 'packet' | 'bottle';
-export type IngredientCategory = 'kitchen' | 'bar' | 'general';
+export type IngredientCategory = 'kitchen' | 'bar' | 'general' | 'housekeeping';
 
 export interface IIngredient extends Document {
   name: string;
@@ -20,7 +20,7 @@ const IngredientSchema = new Schema<IIngredient>(
     stock:             { type: Number, required: true, min: 0, default: 0 },
     costPrice:         { type: Number, required: true, min: 0 },
     lowStockThreshold: { type: Number, required: true, min: 0 },
-    category:          { type: String, enum: ['kitchen','bar','general'], default: 'general' },
+    category:          { type: String, enum: ['kitchen','bar','general','housekeeping'], default: 'general' },
     isActive:          { type: Boolean, default: true },
   },
   { timestamps: true }

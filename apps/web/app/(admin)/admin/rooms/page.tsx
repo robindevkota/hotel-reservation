@@ -11,7 +11,7 @@ import {
   CheckCircle, XCircle, CalendarDays, UserPlus,
   ChevronLeft, ChevronRight, BedDouble, CalendarCheck, DoorOpen,
   Upload, Loader2, Sparkles, Shield, Sunrise, Palmtree, Tag,
-  Maximize2,
+  Maximize2, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { A, PageHeader, TableFilters, Pagination } from '../../_adminStyles';
 
@@ -67,6 +67,7 @@ export default function AdminRoomsPage() {
   const [qrModal, setQrModal] = useState<any>(null);
   const [step, setStep] = useState(1);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [toggleConfirm, setToggleConfirm] = useState<any>(null);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -201,6 +202,15 @@ export default function AdminRoomsPage() {
 
   const handleDelete = async (id: string) => {
     await api.delete(`/rooms/${id}`); toast.success('Room deleted'); setDeleteConfirm(null); fetchRooms();
+  };
+
+  const handleToggleAvailability = async (room: any) => {
+    try {
+      await api.put(`/rooms/${room._id}`, { isAvailable: !room.isAvailable });
+      toast.success(room.isAvailable ? 'Room marked unavailable' : 'Room marked available');
+      fetchRooms();
+      fetchTodayAvail();
+    } catch { toast.error('Failed to update room'); }
   };
 
   const handleQR = async (room: any) => {
@@ -470,6 +480,8 @@ export default function AdminRoomsPage() {
                 {pagedRooms.map(room => {
                 const cat = categories.find(c => c.slug === (room.categorySlug || room.type));
                 const CatIcon = cat ? (ICON_MAP[cat.icon]?.Icon || Tag) : Tag;
+                const liveStatus = todayAvail.find((r: any) => r._id === room._id)?.availabilityStatus;
+                const toggleBlocked = liveStatus === 'reserved' || liveStatus === 'occupied';
                 return (
                   <div key={room._id} className="rm-card">
                     {/* Image */}
@@ -511,6 +523,18 @@ export default function AdminRoomsPage() {
                       </button>
                       <button className="act-btn" onClick={() => handleQR(room)} style={{ color:'hsl(43 65% 35%)', borderColor:'hsl(43 65% 70%)', background:'hsl(43 80% 97%)' }}>
                         <QrCode size={10} strokeWidth={2} /> QR
+                      </button>
+                      <button className="act-btn"
+                        onClick={() => !toggleBlocked && setToggleConfirm(room)}
+                        title={toggleBlocked ? `Cannot change — room is ${liveStatus}` : room.isAvailable ? 'Mark as unavailable' : 'Mark as available'}
+                        style={toggleBlocked
+                          ? { color:'hsl(220 10% 55%)', borderColor:'hsl(220 10% 78%)', background:'hsl(220 10% 96%)', cursor:'not-allowed', opacity:0.55 }
+                          : room.isAvailable
+                            ? { color:'hsl(142 50% 30%)', borderColor:'hsl(142 50% 65%)', background:'hsl(142 50% 95%)' }
+                            : { color:'hsl(30 10% 38%)', borderColor:'hsl(30 10% 65%)', background:'hsl(30 15% 95%)' }}>
+                        {room.isAvailable
+                          ? <><ToggleRight size={11} strokeWidth={2} /> Available</>
+                          : <><ToggleLeft size={11} strokeWidth={2} /> Unavailable</>}
                       </button>
                       <button className="act-btn" onClick={() => setDeleteConfirm(room._id)} style={{ color:'hsl(0 60% 42%)', borderColor:'hsl(0 60% 75%)', background:'hsl(0 70% 97%)', marginLeft:'auto' }}>
                         <Trash2 size={10} strokeWidth={2} /> Delete
@@ -1187,6 +1211,33 @@ export default function AdminRoomsPage() {
               <button onClick={() => setDeleteConfirm(null)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
               <button onClick={() => handleDelete(deleteConfirm)} style={{ flex:1, background:'hsl(0 60% 48%)', color:'#fff', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:700 }}>
                 <XCircle size={12} style={{ display:'inline',marginRight:'0.4rem' }} strokeWidth={2} />Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Toggle Availability Confirm ── */}
+      {toggleConfirm && (
+        <div style={{ position:'fixed', inset:0, zIndex:300, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div style={{ position:'absolute', inset:0, background:'hsl(220 55% 18%/0.7)', backdropFilter:'blur(6px)' }} onClick={() => setToggleConfirm(null)} />
+          <div style={{ position:'relative', background:'#fff', padding:'2rem', maxWidth:'22rem', width:'100%', border:`1px solid ${A.border}`, textAlign:'center' }}>
+            <div style={{ display:'flex', justifyContent:'center', color: toggleConfirm.isAvailable ? 'hsl(30 10% 45%)' : 'hsl(142 50% 38%)', marginBottom:'1rem' }}>
+              {toggleConfirm.isAvailable ? <ToggleLeft size={32} strokeWidth={1.5} /> : <ToggleRight size={32} strokeWidth={1.5} />}
+            </div>
+            <h3 style={{ fontFamily:A.cinzel, fontSize:'0.9rem', color:A.navy, marginBottom:'0.5rem' }}>
+              {toggleConfirm.isAvailable ? 'Mark as Unavailable?' : 'Mark as Available?'}
+            </h3>
+            <p style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted, marginBottom:'1.5rem' }}>
+              {toggleConfirm.isAvailable
+                ? `Room #${toggleConfirm.roomNumber} will be hidden from customers and cannot be reserved.`
+                : `Room #${toggleConfirm.roomNumber} will be visible to customers and open for reservations.`}
+            </p>
+            <div style={{ display:'flex', gap:'0.75rem' }}>
+              <button onClick={() => setToggleConfirm(null)} style={{ flex:1, background:'#fff', color:A.muted, fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:`1px solid ${A.border}`, cursor:'pointer' }}>Cancel</button>
+              <button onClick={() => { handleToggleAvailability(toggleConfirm); setToggleConfirm(null); }}
+                style={{ flex:1, background: toggleConfirm.isAvailable ? 'hsl(30 10% 40%)' : 'hsl(142 50% 38%)', color:'#fff', fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.75rem', border:'none', cursor:'pointer', fontWeight:700 }}>
+                {toggleConfirm.isAvailable ? 'Confirm' : 'Confirm'}
               </button>
             </div>
           </div>

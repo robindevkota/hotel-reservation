@@ -320,7 +320,7 @@ export async function getVarianceReport(since?: Date): Promise<{
     for (const log of logs) {
       for (const line of log.lines) {
         if (String(line.ingredient) !== id) continue;
-        if (log.type === 'restock' || log.type === 'import') restocked += line.delta;
+        if (log.type === 'restock' || log.type === 'import' || log.type === 'petty_cash_purchase') restocked += line.delta;
         else if (log.type === 'sale') sold += Math.abs(line.delta);
         else if (log.type === 'staff_consumption' || log.type === 'owner_consumption' || log.type === 'complimentary') consumed += Math.abs(line.delta);
         else if (log.type === 'wastage') wastage += Math.abs(line.delta);
@@ -387,6 +387,14 @@ export async function getInventoryAnalytics(): Promise<{
   usageBreakdown: {
     sold: number; staffConsumed: number; ownerConsumed: number;
     wastage: number; complimentary: number;
+  };
+
+  // Petty cash operational expenses (all time)
+  operationalExpenses: {
+    totalCash: number;
+    count: number;
+    byCategory: { category: string; totalCash: number; count: number }[];
+    recent: { date: string; ingredientName: string; cashAmount: number; purchasedBy: string; vendor?: string }[];
   };
 
   // Sold vs consumed trend — last 30 days, grouped by day
@@ -481,6 +489,40 @@ export async function getInventoryAnalytics(): Promise<{
     gifted:   parseFloat(v.gifted.toFixed(2)),
   }));
 
+  // ── Petty cash operational expenses ──────────────────────────────────────
+  const pettyCashLogs = logs.filter(l => l.type === 'petty_cash_purchase');
+  const pettyCashTotal = parseFloat(pettyCashLogs.reduce((s, l) => s + ((l as any).cashAmount || 0), 0).toFixed(2));
+
+  // Group by ingredient category
+  const pettyCatMap: Record<string, { totalCash: number; count: number }> = {};
+  for (const log of pettyCashLogs) {
+    const ingId = log.lines[0]?.ingredient ? String(log.lines[0].ingredient) : '';
+    const ing = ingredientMap.get(ingId);
+    const cat = ing?.category ?? 'general';
+    if (!pettyCatMap[cat]) pettyCatMap[cat] = { totalCash: 0, count: 0 };
+    pettyCatMap[cat].totalCash = parseFloat((pettyCatMap[cat].totalCash + ((log as any).cashAmount || 0)).toFixed(2));
+    pettyCatMap[cat].count++;
+  }
+  const byCategoryPetty = Object.entries(pettyCatMap).map(([category, v]) => ({ category, ...v }));
+
+  const recentPetty = pettyCashLogs
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 10)
+    .map(l => ({
+      date: new Date(l.createdAt).toISOString().split('T')[0],
+      ingredientName: l.lines[0]?.ingredientName ?? '',
+      cashAmount: (l as any).cashAmount || 0,
+      purchasedBy: (l as any).purchasedBy || '',
+      vendor: (l as any).vendor,
+    }));
+
+  const operationalExpenses = {
+    totalCash: pettyCashTotal,
+    count: pettyCashLogs.length,
+    byCategory: byCategoryPetty,
+    recent: recentPetty,
+  };
+
   return {
     totalStockCost,
     totalExpectedRevenue: parseFloat(totalExpectedRevenue.toFixed(2)),
@@ -489,8 +531,55 @@ export async function getInventoryAnalytics(): Promise<{
     bySection,
     topIngredientsByValue,
     usageBreakdown,
+    operationalExpenses,
     trend,
   };
+}
+
+// ── Petty cash purchase (restock item paid from front-desk cash) ─────────────
+
+export async function executePettyCashPurchase(opts: {
+  ingredientId: string;
+  qty: number;
+  cashAmount: number;
+  purchasedBy: string;
+  vendor?: string;
+  userId?: string;
+  approvedBy?: string;
+  note?: string;
+}): Promise<void> {
+  const { ingredientId, qty, cashAmount, purchasedBy, vendor, userId, approvedBy, note } = opts;
+
+  const ingredient = await Ingredient.findById(ingredientId);
+  if (!ingredient) throw new AppError('Ingredient not found', 404);
+  if (!ingredient.isActive) throw new AppError('Ingredient is inactive', 400);
+  if (qty <= 0) throw new AppError('qty must be positive', 400);
+  if (cashAmount <= 0) throw new AppError('cashAmount must be positive', 400);
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const newStock = parseFloat((ingredient.stock + qty).toFixed(4));
+    await Ingredient.findByIdAndUpdate(ingredient._id, { stock: newStock }, { session });
+
+    await StockLog.create([{
+      type: 'petty_cash_purchase',
+      performedBy: userId ? new mongoose.Types.ObjectId(userId) : undefined,
+      approvedBy: approvedBy ? new mongoose.Types.ObjectId(approvedBy) : undefined,
+      lines: [{ ingredient: ingredient._id, ingredientName: ingredient.name, unit: ingredient.unit, delta: qty }],
+      cashAmount,
+      purchasedBy,
+      vendor: vendor || undefined,
+      note: note || `Petty cash purchase: ${qty} ${ingredient.unit} of ${ingredient.name} for $${cashAmount}${vendor ? ` from ${vendor}` : ''} by ${purchasedBy}`,
+    }], { session });
+
+    await session.commitTransaction();
+  } catch (err) {
+    await session.abortTransaction();
+    throw err;
+  } finally {
+    session.endSession();
+  }
 }
 
 // ── Excel import ─────────────────────────────────────────────────────────────

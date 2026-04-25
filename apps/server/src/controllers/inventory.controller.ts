@@ -12,6 +12,7 @@ import {
   executeStocktake,
   getVarianceReport,
   getInventoryAnalytics,
+  executePettyCashPurchase,
   parseExcelImport,
 } from '../services/inventory.service';
 
@@ -23,7 +24,7 @@ export const ingredientValidation = [
   body('stock').isFloat({ min: 0 }),
   body('costPrice').isFloat({ min: 0 }),
   body('lowStockThreshold').isFloat({ min: 0 }),
-  body('category').optional().isIn(['kitchen','bar','general']),
+  body('category').optional().isIn(['kitchen','bar','general','housekeeping']),
 ];
 
 export async function listIngredients(req: AuthRequest, res: Response): Promise<void> {
@@ -190,6 +191,28 @@ export async function getLogs(req: AuthRequest, res: Response): Promise<void> {
 export async function analytics(_req: Request, res: Response): Promise<void> {
   const data = await getInventoryAnalytics();
   res.json({ success: true, ...data });
+}
+
+// ── Petty Cash Purchase ───────────────────────────────────────────────────────
+
+export const pettyCashValidation = [
+  body('ingredientId').isMongoId(),
+  body('qty').isFloat({ min: 0.001 }),
+  body('cashAmount').isFloat({ min: 0.01 }),
+  body('purchasedBy').trim().notEmpty(),
+  body('vendor').optional().trim(),
+  body('approvedBy').optional().isMongoId(),
+  body('note').optional().trim(),
+];
+
+export async function pettyCashPurchase(req: AuthRequest, res: Response): Promise<void> {
+  const { ingredientId, qty, cashAmount, purchasedBy, vendor, approvedBy, note } = req.body;
+  await executePettyCashPurchase({
+    ingredientId, qty: Number(qty), cashAmount: Number(cashAmount),
+    purchasedBy, vendor, approvedBy, note,
+    userId: req.user?._id?.toString(),
+  });
+  res.json({ success: true, message: `Petty cash purchase logged: $${cashAmount}` });
 }
 
 // ── Excel Import ─────────────────────────────────────────────────────────────

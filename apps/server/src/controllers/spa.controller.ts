@@ -27,7 +27,14 @@ export const spaBookingValidation = [
 
 export const walkInValidation = [
   body('service').isMongoId(),
-  body('guestId').isMongoId(),
+  body('guestId').optional().isMongoId(),
+  body('walkInCustomerId').optional().isMongoId(),
+  body().custom((_val, { req }) => {
+    if (!req.body.guestId && !req.body.walkInCustomerId) {
+      throw new Error('Provide either guestId or walkInCustomerId');
+    }
+    return true;
+  }),
   body('date').isISO8601(),
   body('startTime').matches(/^\d{2}:\d{2}$/),
   body('therapistId').optional().isMongoId(),
@@ -297,8 +304,8 @@ export async function getMyBookings(req: AuthRequest, res: Response): Promise<vo
 
 export async function getAllBookings(_req: Request, res: Response): Promise<void> {
   const bookings = await SpaBooking.find()
-    .populate('guest', 'name email room')
-    .populate('walkInCustomer', 'name phone type')
+    .populate('guest', 'name email room nationality')
+    .populate('walkInCustomer', 'name phone type nationality')
     .populate('service', 'name duration')
     .populate('therapist', 'name')
     .sort('-date');
