@@ -1,11 +1,13 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import api from '../../../../lib/api';
 import { useOrderStore } from '../../../../store/orderStore';
 import { useKitchenSocket } from '../../../../hooks/useSocket';
 import toast from 'react-hot-toast';
-import { ChefHat, ArrowRight, Plus, X, Banknote, FileText, UserPlus } from 'lucide-react';
+import { ChefHat, ArrowRight, Plus, X, Banknote, FileText, UserPlus, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { A, StatusPill, PageHeader, AdminTable, AdminRow, AdminTd, Spinner, adminTableCss } from '../../_adminStyles';
+
+const DONE_PAGE_SIZE = 15;
 
 const TRANSITIONS: Record<string,string> = { pending:'accepted', accepted:'preparing', preparing:'ready', ready:'delivering', delivering:'delivered' };
 const NEXT_LABEL: Record<string,string>  = { pending:'Accept', accepted:'Start Cooking', preparing:'Mark Ready', ready:'Send Out', delivering:'Delivered' };
@@ -26,6 +28,12 @@ export default function KitchenOrdersPage() {
   useKitchenSocket((order) => setOrderQueue(q => [...q, order]));
   const [cancelTarget, setCancelTarget] = useState<string|null>(null);
   const [cancelReason, setCancelReason] = useState('');
+
+  // Completed table filters + pagination
+  const [doneSearch,  setDoneSearch]  = useState('');
+  const [doneStatus,  setDoneStatus]  = useState<'all'|'delivered'|'cancelled'>('all');
+  const [donePayment, setDonePayment] = useState<'all'|'cash'|'room_bill'>('all');
+  const [donePage,    setDonePage]    = useState(1);
 
   // New order modal
   const [showNew, setShowNew]           = useState(false);
@@ -137,8 +145,30 @@ export default function KitchenOrdersPage() {
     finally { setCancelTarget(null); setCancelReason(''); }
   };
 
-  const active = orders.filter(o => STATUS_ORDER.includes(o.status));
-  const done   = orders.filter(o => ['delivered','cancelled'].includes(o.status));
+  const active   = orders.filter(o => STATUS_ORDER.includes(o.status));
+  const doneAll  = orders.filter(o => ['delivered','cancelled'].includes(o.status));
+
+  const doneFiltered = useMemo(() => {
+    const q = doneSearch.toLowerCase().trim();
+    return doneAll.filter((o: any) => {
+      if (doneStatus  !== 'all' && o.status !== doneStatus)              return false;
+      if (donePayment !== 'all' && o.orderPaymentMethod !== donePayment) return false;
+      if (q) {
+        const room     = (o.room?.roomNumber ?? '').toLowerCase();
+        const customer = (o.walkInCustomer?.name ?? '').toLowerCase();
+        const id       = String(o._id).slice(-6).toUpperCase();
+        if (!room.includes(q) && !customer.includes(q) && !id.includes(q.toUpperCase())) return false;
+      }
+      return true;
+    });
+  }, [doneAll, doneSearch, doneStatus, donePayment]);
+
+  const doneTotalPages = Math.max(1, Math.ceil(doneFiltered.length / DONE_PAGE_SIZE));
+  const donePage_      = Math.min(donePage, doneTotalPages);
+  const donePageItems  = doneFiltered.slice((donePage_ - 1) * DONE_PAGE_SIZE, donePage_ * DONE_PAGE_SIZE);
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setDonePage(1); }, [doneSearch, doneStatus, donePayment]);
 
   const canSubmit = !submitting && lines.length > 0 &&
     (customerMode === 'hotel_guest' ? !!guestId : !!walkInName.trim());
@@ -165,6 +195,13 @@ export default function KitchenOrdersPage() {
         .pay-badge-bill{display:inline-flex;align-items:center;gap:0.25rem;background:hsl(220 55% 92%);color:hsl(220 55% 28%);font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.2rem 0.5rem;}
         .pay-badge-cash{display:inline-flex;align-items:center;gap:0.25rem;background:hsl(142 40% 90%);color:hsl(142 45% 28%);font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.2rem 0.5rem;}
         .walkin-badge{display:inline-flex;align-items:center;gap:0.25rem;background:hsl(270 40% 92%);color:hsl(270 45% 35%);font-family:'Cinzel',serif;font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;padding:0.2rem 0.5rem;}
+        .filter-bar{display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:1rem;}
+        .filter-input{padding:0.5rem 0.75rem 0.5rem 2rem;border:1px solid hsl(35 25% 82%);font-family:'Raleway',sans-serif;font-size:0.82rem;color:hsl(220 55% 18%);outline:none;background:#fff;width:200px;}
+        .filter-select{padding:0.5rem 0.75rem;border:1px solid hsl(35 25% 82%);font-family:'Cinzel',serif;font-size:0.62rem;letter-spacing:0.08em;text-transform:uppercase;color:hsl(220 55% 18%);outline:none;background:#fff;cursor:pointer;}
+        .pg-btn{display:flex;align-items:center;justify-content:center;width:2rem;height:2rem;border:1px solid hsl(35 25% 82%);background:#fff;cursor:pointer;color:hsl(220 55% 18%);transition:background 0.2s;}
+        .pg-btn:hover:not(:disabled){background:hsl(38 40% 92%);}
+        .pg-btn:disabled{opacity:0.35;cursor:not-allowed;}
+        .pg-info{font-family:'Cinzel',serif;font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;color:hsl(220 15% 40%);white-space:nowrap;}
       `}</style>
       <div style={{ padding:'2rem', maxWidth:'1280px' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'2rem' }}>
@@ -239,33 +276,120 @@ export default function KitchenOrdersPage() {
           </div>
         )}
 
-        {/* Completed table */}
-        {done.length > 0 && (
+        {/* Completed / Cancelled table with filters + pagination */}
+        {doneAll.length > 0 && (
           <>
-            <h2 style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, marginBottom:'1rem' }}>Completed / Cancelled</h2>
-            <AdminTable headers={['Order ID','Customer','Items','Total','Payment','Status','Time']} minWidth={700}>
-              {done.map((o:any) => (
-                <AdminRow key={o._id}>
-                  <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.muted }}>#{String(o._id).slice(-6).toUpperCase()}</AdminTd>
-                  <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy }}>
-                    {o.walkInCustomer ? (
-                      <span>{o.walkInCustomer.name} <span className="walkin-badge" style={{ marginLeft:'0.25rem' }}><UserPlus size={8}/> Walk-in</span></span>
-                    ) : (
-                      `Room ${o.room?.roomNumber}`
-                    )}
-                  </AdminTd>
-                  <AdminTd>{o.items?.length}</AdminTd>
-                  <AdminTd style={{ fontFamily:A.cinzel, color:A.gold }}>${o.totalAmount}</AdminTd>
-                  <AdminTd>
-                    {o.orderPaymentMethod === 'cash'
-                      ? <span className="pay-badge-cash"><Banknote size={9}/> Cash</span>
-                      : <span className="pay-badge-bill"><FileText size={9}/> Bill</span>}
-                  </AdminTd>
-                  <AdminTd><StatusPill status={o.status} /></AdminTd>
-                  <AdminTd>{new Date(o.placedAt).toLocaleTimeString()}</AdminTd>
-                </AdminRow>
-              ))}
-            </AdminTable>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.875rem', flexWrap:'wrap', gap:'0.5rem' }}>
+              <h2 style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.18em', textTransform:'uppercase', color:A.navy, margin:0 }}>
+                Completed / Cancelled
+                <span style={{ fontFamily:A.raleway, fontSize:'0.72rem', color:A.muted, fontWeight:400, letterSpacing:0, textTransform:'none', marginLeft:'0.5rem' }}>
+                  ({doneFiltered.length} {doneFiltered.length !== doneAll.length ? `of ${doneAll.length}` : 'total'})
+                </span>
+              </h2>
+            </div>
+
+            {/* Filter bar */}
+            <div className="filter-bar">
+              {/* Search */}
+              <div style={{ position:'relative' }}>
+                <Search size={13} style={{ position:'absolute', left:'0.6rem', top:'50%', transform:'translateY(-50%)', color:A.muted, pointerEvents:'none' }} />
+                <input
+                  className="filter-input"
+                  type="text"
+                  placeholder="Room, name, order ID…"
+                  value={doneSearch}
+                  onChange={e => setDoneSearch(e.target.value)}
+                />
+              </div>
+              {/* Status */}
+              <select className="filter-select" value={doneStatus} onChange={e => setDoneStatus(e.target.value as any)}>
+                <option value="all">All statuses</option>
+                <option value="delivered">Delivered</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              {/* Payment */}
+              <select className="filter-select" value={donePayment} onChange={e => setDonePayment(e.target.value as any)}>
+                <option value="all">All payments</option>
+                <option value="cash">Cash</option>
+                <option value="room_bill">Room Bill</option>
+              </select>
+              {/* Clear */}
+              {(doneSearch || doneStatus !== 'all' || donePayment !== 'all') && (
+                <button
+                  onClick={() => { setDoneSearch(''); setDoneStatus('all'); setDonePayment('all'); }}
+                  style={{ background:'none', border:`1px solid ${A.border}`, color:A.muted, fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.5rem 0.875rem', cursor:'pointer' }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {donePageItems.length === 0 ? (
+              <div style={{ textAlign:'center', padding:'3rem 2rem', background:'#fff', border:`1px solid ${A.border}` }}>
+                <p style={{ fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.muted }}>No orders match the current filters</p>
+              </div>
+            ) : (
+              <>
+                <AdminTable headers={['Order ID','Customer','Items','Total','Payment','Status','Time']} minWidth={700}>
+                  {donePageItems.map((o:any) => (
+                    <AdminRow key={o._id}>
+                      <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.muted }}>#{String(o._id).slice(-6).toUpperCase()}</AdminTd>
+                      <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.navy }}>
+                        {o.walkInCustomer ? (
+                          <span>{o.walkInCustomer.name} <span className="walkin-badge" style={{ marginLeft:'0.25rem' }}><UserPlus size={8}/> Walk-in</span></span>
+                        ) : (
+                          `Room ${o.room?.roomNumber}`
+                        )}
+                      </AdminTd>
+                      <AdminTd>{o.items?.length}</AdminTd>
+                      <AdminTd style={{ fontFamily:A.cinzel, color:A.gold }}>${o.totalAmount}</AdminTd>
+                      <AdminTd>
+                        {o.orderPaymentMethod === 'cash'
+                          ? <span className="pay-badge-cash"><Banknote size={9}/> Cash</span>
+                          : <span className="pay-badge-bill"><FileText size={9}/> Bill</span>}
+                      </AdminTd>
+                      <AdminTd><StatusPill status={o.status} /></AdminTd>
+                      <AdminTd style={{ whiteSpace:'nowrap' }}>
+                        {new Date(o.placedAt).toLocaleDateString()} {new Date(o.placedAt).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}
+                      </AdminTd>
+                    </AdminRow>
+                  ))}
+                </AdminTable>
+
+                {/* Pagination */}
+                {doneTotalPages > 1 && (
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'0.5rem', marginTop:'1rem' }}>
+                    <span className="pg-info">Page {donePage_} of {doneTotalPages}</span>
+                    <button className="pg-btn" disabled={donePage_ <= 1} onClick={() => setDonePage(p => p - 1)}>
+                      <ChevronLeft size={14} />
+                    </button>
+                    {Array.from({ length: doneTotalPages }, (_, i) => i + 1)
+                      .filter(p => p === 1 || p === doneTotalPages || Math.abs(p - donePage_) <= 1)
+                      .reduce<(number|'…')[]>((acc, p, i, arr) => {
+                        if (i > 0 && (p as number) - (arr[i-1] as number) > 1) acc.push('…');
+                        acc.push(p);
+                        return acc;
+                      }, [])
+                      .map((p, i) => p === '…' ? (
+                        <span key={`ellipsis-${i}`} className="pg-info" style={{ padding:'0 0.25rem' }}>…</span>
+                      ) : (
+                        <button
+                          key={p}
+                          className="pg-btn"
+                          onClick={() => setDonePage(p as number)}
+                          style={{ background: p === donePage_ ? A.navy : '#fff', color: p === donePage_ ? A.gold : A.navy, fontFamily:A.cinzel, fontSize:'0.65rem', fontWeight: p === donePage_ ? 700 : 400 }}
+                        >
+                          {p}
+                        </button>
+                      ))
+                    }
+                    <button className="pg-btn" disabled={donePage_ >= doneTotalPages} onClick={() => setDonePage(p => p + 1)}>
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </>
         )}
       </div>
