@@ -4,6 +4,7 @@ export type ReservationStatus = 'pending' | 'confirmed' | 'checked_in' | 'checke
 export type CancellationPolicy = 'flexible' | 'non_refundable';
 export type GuestType = 'foreign' | 'nepali';
 export type PaymentMethod = 'stripe' | 'phonepay';
+export type BookingSource = 'website' | 'booking_com' | 'agoda' | 'other';
 
 export interface IReservation extends Document {
   bookingRef: string;
@@ -13,7 +14,7 @@ export interface IReservation extends Document {
     phone: string;
     idProof: string;
   };
-  room: mongoose.Types.ObjectId;
+  room: mongoose.Types.ObjectId | null;
   checkInDate: Date;
   checkOutDate: Date;
   numberOfGuests: number;
@@ -33,6 +34,7 @@ export interface IReservation extends Document {
   depositPaid: boolean;
   phonepayTransactionId: string;
   depositPaidAt: Date;
+  source: BookingSource;
   createdAt: Date;
 }
 
@@ -45,7 +47,7 @@ const ReservationSchema = new Schema<IReservation>(
       phone: { type: String, required: true, trim: true },
       idProof: { type: String, default: '' },
     },
-    room: { type: Schema.Types.ObjectId, ref: 'Room', required: true },
+    room: { type: Schema.Types.ObjectId, ref: 'Room', required: false, default: null },
     checkInDate: { type: Date, required: true },
     checkOutDate: { type: Date, required: true },
     numberOfGuests: { type: Number, required: true, min: 1 },
@@ -72,6 +74,7 @@ const ReservationSchema = new Schema<IReservation>(
     depositPaid: { type: Boolean, default: false },
     phonepayTransactionId: { type: String, default: '' },
     depositPaidAt: { type: Date },
+    source: { type: String, enum: ['website', 'booking_com', 'agoda', 'other'], default: 'website' },
   },
   { timestamps: true }
 );

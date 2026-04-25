@@ -12,6 +12,7 @@ import rateLimit from 'express-rate-limit';
 import { connectDB } from './config/db';
 import { initSocket } from './services/socket.service';
 import { errorHandler } from './middleware/errorHandler';
+import { syncAllChannels } from './services/ical.service';
 
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -29,6 +30,7 @@ import inventoryRoutes from './routes/inventory.routes';
 import categoryRoutes from './routes/category.routes';
 import offerRoutes from './routes/offer.routes';
 import walkInCustomerRoutes from './routes/walkInCustomer.routes';
+import channelRoutes from './routes/channel.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -99,6 +101,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/room-categories', categoryRoutes);
 app.use('/api/offers', offerRoutes);
 app.use('/api/walkin-customers', walkInCustomerRoutes);
+app.use('/api/channels', channelRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 
@@ -111,4 +114,11 @@ connectDB().then(() => {
   server.listen(PORT, () => {
     console.log(`🏰 Royal Suites server running on port ${PORT}`);
   });
+
+  // Poll OTA iCal feeds every 20 minutes
+  const SYNC_INTERVAL = 20 * 60 * 1000;
+  setTimeout(() => {
+    syncAllChannels();
+    setInterval(syncAllChannels, SYNC_INTERVAL);
+  }, 10000); // wait 10s for DB to settle after boot
 });

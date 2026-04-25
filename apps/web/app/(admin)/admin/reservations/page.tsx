@@ -6,6 +6,29 @@ import { Filter, BedDouble, Search, X } from 'lucide-react';
 import { A, StatusPill, PageHeader, AdminTable, AdminRow, AdminTd, ActionBtn, Spinner, EmptyRow, adminTableCss } from '../../_adminStyles';
 
 const STATUSES = ['','pending','confirmed','checked_in','checked_out','cancelled'];
+const SOURCES = ['','website','booking_com','agoda','other'];
+
+const SOURCE_LABELS: Record<string, string> = {
+  website:     'Royal Suites',
+  booking_com: 'Booking.com',
+  agoda:       'Agoda',
+  other:       'Other',
+};
+const SOURCE_COLORS: Record<string, { bg: string; color: string; border: string }> = {
+  website:     { bg: '#FBF6E9', color: '#8B6914', border: '#C9A84C' },
+  booking_com: { bg: '#EFF6FF', color: '#1D4ED8', border: '#93C5FD' },
+  agoda:       { bg: '#FEF2F2', color: '#B91C1C', border: '#FCA5A5' },
+  other:       { bg: '#F0FDF4', color: '#15803D', border: '#86EFAC' },
+};
+
+function SourceBadge({ source }: { source: string }) {
+  const s = SOURCE_COLORS[source] || SOURCE_COLORS.other;
+  return (
+    <span style={{ display:'inline-block', fontFamily:'Cinzel, serif', fontSize:'0.65rem', letterSpacing:'0.08em', textTransform:'uppercase', padding:'0.2rem 0.5rem', background:s.bg, color:s.color, border:`1px solid ${s.border}`, whiteSpace:'nowrap' }}>
+      {SOURCE_LABELS[source] || source}
+    </span>
+  );
+}
 
 // ── Add Second Room Modal ─────────────────────────────────────────────────────
 function AddRoomModal({ reservation, onClose, onDone }: { reservation: any; onClose: () => void; onDone: () => void }) {
@@ -130,6 +153,7 @@ export default function ReservationsPage() {
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [addRoomTarget, setAddRoomTarget] = useState<any | null>(null);
+  const [sourceFilter, setSourceFilter] = useState('');
 
   const fetchData = () => {
     setLoading(true);
@@ -139,16 +163,18 @@ export default function ReservationsPage() {
   };
 
   useEffect(() => { fetchData(); }, [filter]);
-  useEffect(() => { setPage(1); }, [search, filter]);
+  useEffect(() => { setPage(1); }, [search, filter, sourceFilter]);
 
   const q = search.trim().toLowerCase();
-  const filtered = q
-    ? reservations.filter(r =>
-        r.guest?.name?.toLowerCase().includes(q) ||
-        r.guest?.email?.toLowerCase().includes(q) ||
-        r.bookingRef?.toLowerCase().includes(q)
-      )
-    : reservations;
+  const filtered = reservations.filter(r => {
+    if (sourceFilter && r.source !== sourceFilter) return false;
+    if (!q) return true;
+    return (
+      r.guest?.name?.toLowerCase().includes(q) ||
+      r.guest?.email?.toLowerCase().includes(q) ||
+      r.bookingRef?.toLowerCase().includes(q)
+    );
+  });
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -204,12 +230,19 @@ export default function ReservationsPage() {
                 {STATUSES.map(s => <option key={s} value={s}>{s ? s.replace('_', ' ') : 'All Statuses'}</option>)}
               </select>
             </div>
+            <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', background:'#fff', border:`1px solid ${A.border}`, padding:'0.5rem 0.875rem' }}>
+              <Filter size={13} color={A.gold} strokeWidth={1.8} />
+              <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
+                style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.1em', textTransform:'uppercase', color:A.navy, background:'transparent', border:'none', outline:'none', cursor:'pointer' }}>
+                {SOURCES.map(s => <option key={s} value={s}>{s ? SOURCE_LABELS[s] : 'All Sources'}</option>)}
+              </select>
+            </div>
           </div>
         </div>
 
-        <AdminTable headers={['Guest','Room','Check-In','Check-Out','Nights','Total','Status','Actions']} minWidth={960}>
+        <AdminTable headers={['Guest','Room','Check-In','Check-Out','Nights','Total','Source','Status','Actions']} minWidth={1080}>
           {loading ? <Spinner />
-          : paginated.length === 0 ? <EmptyRow colSpan={8} message="No reservations found" />
+          : paginated.length === 0 ? <EmptyRow colSpan={9} message="No reservations found" />
           : paginated.map((r: any) => (
             <AdminRow key={r._id}>
               <AdminTd>
@@ -222,6 +255,7 @@ export default function ReservationsPage() {
               <AdminTd>{new Date(r.checkOutDate).toLocaleDateString()}</AdminTd>
               <AdminTd style={{ fontFamily:A.cinzel, color:A.gold }}>{r.totalNights}</AdminTd>
               <AdminTd style={{ fontFamily:A.cinzel, color:A.gold }}>${r.roomCharges?.toLocaleString()}</AdminTd>
+              <AdminTd><SourceBadge source={r.source || 'website'} /></AdminTd>
               <AdminTd><StatusPill status={r.status} /></AdminTd>
               <AdminTd>
                 <div style={{ display:'flex', gap:'0.4rem', flexWrap:'wrap' }}>
