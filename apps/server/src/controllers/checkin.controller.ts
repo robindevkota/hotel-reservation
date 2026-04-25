@@ -23,6 +23,9 @@ export async function checkIn(req: Request, res: Response): Promise<void> {
   // linkedToGuestId links this new guest doc back to the primary guest (second-room walk-in)
   const { linkedToGuestId } = req.body;
 
+  // Carry nationality from reservation guestType
+  const nationality = reservation.guestType === 'nepali' ? 'nepali' : 'foreign';
+
   // Create Guest
   const guest = await Guest.create({
     reservation: reservation._id,
@@ -30,6 +33,7 @@ export async function checkIn(req: Request, res: Response): Promise<void> {
     name: reservation.guest.name,
     email: reservation.guest.email,
     phone: reservation.guest.phone,
+    nationality,
     qrSessionToken,
     qrSessionExpiry,
     isActive: true,
@@ -72,9 +76,6 @@ export async function listActiveGuests(req: Request, res: Response): Promise<voi
 }
 
 // Early checkout: guest departs before their booked checkout date.
-// nightsStayed must be >= 1 and < reservation.totalNights.
-// Flexible policy: room line item is trimmed to actual nights stayed.
-// Non-refundable: hotel keeps the full pre-paid amount — no bill adjustment.
 export async function earlyCheckout(req: Request, res: Response): Promise<void> {
   const { nightsStayed } = req.body;
   if (!Number.isInteger(nightsStayed) || nightsStayed < 1) {
@@ -98,8 +99,6 @@ export async function earlyCheckout(req: Request, res: Response): Promise<void> 
 
   const room = reservation.room as any;
 
-  // Flexible: adjust the room line item down to actual nights stayed.
-  // Non-refundable: guest pre-paid in full — no bill change, just proceed to checkout.
   if (reservation.cancellationPolicy === 'flexible') {
     const adjustedRoomCharge = nightsStayed * room.pricePerNight;
     const roomItem = bill.lineItems.find((li: any) => li.type === 'room');
@@ -109,17 +108,14 @@ export async function earlyCheckout(req: Request, res: Response): Promise<void> 
     }
   }
 
-  // Update reservation to reflect actual stay
   reservation.totalNights = nightsStayed;
   reservation.checkOutDate = new Date();
   await reservation.save();
 
-  // Finalise bill
   bill.status = 'pending_payment';
   (bill as any).recalculate();
   await bill.save();
 
-  // Mark guest inactive
   guest.isActive = false;
   guest.checkOutTime = new Date();
   await guest.save();
@@ -130,8 +126,6 @@ export async function earlyCheckout(req: Request, res: Response): Promise<void> 
 }
 
 // Early arrival: guest arrives before their booked checkInDate.
-// actualCheckInDate must be before reservation.checkInDate.
-// Extra nights are added as a separate room line item at the room's pricePerNight.
 export async function earlyArrival(req: Request, res: Response): Promise<void> {
   const { actualCheckInDate } = req.body;
   if (!actualCheckInDate) throw new AppError('actualCheckInDate is required', 400);
@@ -175,6 +169,69 @@ export async function earlyArrival(req: Request, res: Response): Promise<void> {
   res.json({ success: true, bill, extraNights, extraCharge, policy: reservation.cancellationPolicy });
 }
 
+// Stay extension: add extra nights to a currently checked-in guest's stay.
+export async function extendStay(req: Request, res: Response): Promise<void> {
+  const { extraNights } = req.body;
+  if (!Number.isInteger(extraNights) || extraNights < 1) {
+    throw new AppError('extraNights must be a positive integer', 400);
+  }
+
+  const guest = await Guest.findById(req.params.guestId);
+  if (!guest) throw new AppError('Guest not found', 404);
+  if (!guest.isActive) throw new AppError('Guest already checked out', 400);
+
+  const bill = await Bill.findById(guest.bill);
+  if (!bill) throw new AppError('Bill not found', 404);
+  if (bill.status !== 'open') throw new AppError('Bill already processed', 400);
+
+  const reservation = await Reservation.findById(guest.reservation).populate('room', 'name pricePerNight');
+  if (!reservation) throw new AppError('Reservation not found', 404);
+
+  const room = reservation.room as any;
+  const currentCheckOut = new Date(reservation.checkOutDate);
+  const newCheckOut = new Date(currentCheckOut);
+  newCheckOut.setDate(newCheckOut.getDate() + extraNights);
+
+  // Check no other confirmed/checked_in reservation blocks the extended dates
+  const conflict = await Reservation.findOne({
+    room: room._id,
+    _id: { $ne: reservation._id },
+    status: { $in: ['confirmed', 'checked_in'] },
+    checkInDate: { $lt: newCheckOut },
+    checkOutDate: { $gt: currentCheckOut },
+  });
+  if (conflict) {
+    throw new AppError(
+      `Room is already booked from ${new Date(conflict.checkInDate).toLocaleDateString()} — cannot extend stay`,
+      409
+    );
+  }
+
+  const extraCharge = extraNights * room.pricePerNight;
+
+  bill.lineItems.push({
+    type: 'room',
+    description: `Stay extension: ${room.name} (${extraNights} extra night${extraNights > 1 ? 's' : ''})`,
+    amount: extraCharge,
+    date: new Date(),
+  } as any);
+
+  reservation.checkOutDate = newCheckOut;
+  reservation.totalNights = reservation.totalNights + extraNights;
+  await reservation.save();
+
+  // Extend QR session expiry to new checkout day end
+  const newExpiry = new Date(newCheckOut);
+  newExpiry.setHours(23, 59, 59, 999);
+  guest.qrSessionExpiry = newExpiry;
+  await guest.save();
+
+  (bill as any).recalculate();
+  await bill.save();
+
+  res.json({ success: true, bill, extraNights, extraCharge, newCheckOut });
+}
+
 export async function checkOut(req: Request, res: Response): Promise<void> {
   const guest = await Guest.findById(req.params.guestId).populate('bill');
   if (!guest) throw new AppError('Guest not found', 404);
@@ -184,17 +241,14 @@ export async function checkOut(req: Request, res: Response): Promise<void> {
   if (!bill) throw new AppError('Bill not found', 404);
   if (bill.status !== 'open') throw new AppError('Bill already processed', 400);
 
-  // Lock bill
   bill.status = 'pending_payment';
   (bill as any).recalculate();
   await bill.save();
 
-  // Mark guest inactive
   guest.isActive = false;
   guest.checkOutTime = new Date();
   await guest.save();
 
-  // Update reservation + mark room available again
   await Reservation.findByIdAndUpdate(guest.reservation, { status: 'checked_out' });
   await Room.findByIdAndUpdate(guest.room, { isAvailable: true });
 

@@ -22,11 +22,15 @@ export interface Bill {
 export function useBilling(isGuest: boolean) {
   const [bill, setBill] = useState<Bill | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isNepali, setIsNepali] = useState(false);
+  const [exchangeRate, setExchangeRate] = useState(1);
 
   const fetchBill = async () => {
     try {
-      const { data } = await api.get(isGuest ? '/billing/my' : '/billing/my');
+      const { data } = await api.get('/billing/my');
       setBill(data.bill);
+      setIsNepali(data.isNepali || false);
+      setExchangeRate(data.exchangeRate || 1);
     } catch {
       // guest may not have a bill yet
     } finally {
@@ -45,5 +49,5 @@ export function useBilling(isGuest: boolean) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { bill, loading, refetch: fetchBill };
+  return { bill, loading, refetch: fetchBill, isNepali, exchangeRate };
 }

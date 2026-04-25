@@ -2,8 +2,16 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
-import { X, Plus, DollarSign, Search, Printer } from 'lucide-react';
+import { X, Plus, DollarSign, Search, Printer, Percent, Tag } from 'lucide-react';
 import { A, StatusPill, PageHeader, AdminTable, AdminRow, AdminTd, ActionBtn, GoldBtn, Spinner, EmptyRow, adminTableCss } from '../../_adminStyles';
+
+// Format an amount for display — NPR or USD
+function fmt(amount: number, isNepali: boolean, rate: number): string {
+  if (isNepali) {
+    return `Rs. ${(amount * rate).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  }
+  return `$${amount.toFixed(2)}`;
+}
 
 export default function AdminBillingPage() {
   const [reservations, setReservations] = useState<any[]>([]);
@@ -12,10 +20,20 @@ export default function AdminBillingPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
-  const [selectedBill, setSelectedBill] = useState<any>(null);
+
+  // Bill modal state
+  const [selectedBill, setSelectedBill]     = useState<any>(null);
   const [selectedGuestId, setSelectedGuestId] = useState<string>('');
-  const [chargeForm, setChargeForm] = useState({ description: '', amount: '' });
-  const [paying, setPaying] = useState(false);
+  const [isNepali, setIsNepali]             = useState(false);
+  const [exchangeRate, setExchangeRate]     = useState(1);
+  const [chargeForm, setChargeForm]         = useState({ description: '', amount: '' });
+  const [paying, setPaying]                 = useState(false);
+
+  // Discount state
+  const [discountSettings, setDiscountSettings] = useState<{ discountEnabled: boolean; discountAppliesTo: { room: boolean; food: boolean; spa: boolean }; maxDiscountPercentage: number; maxDiscountCash: number } | null>(null);
+  const [discountType, setDiscountType]     = useState<'cash' | 'percentage'>('cash');
+  const [discountValue, setDiscountValue]   = useState('');
+  const [applyingDiscount, setApplyingDiscount] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -27,7 +45,6 @@ export default function AdminBillingPage() {
         ...(inHouse.data.reservations || []),
         ...(checkedOut.data.reservations || []),
       ];
-      // Sort: checked_in first (open bills), then checked_out (awaiting payment)
       all.sort((a, b) => {
         if (a.status === b.status) return 0;
         return a.status === 'checked_in' ? -1 : 1;
@@ -37,7 +54,19 @@ export default function AdminBillingPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  // Fetch discount settings once
+  useEffect(() => {
+    fetchData();
+    api.get('/settings/discount')
+      .then(({ data }) => {
+        setDiscountSettings(data);
+        // Auto-select the mode superadmin has enabled
+        if ((data.maxDiscountCash ?? 0) > 0) setDiscountType('cash');
+        else if ((data.maxDiscountPercentage ?? 0) > 0) setDiscountType('percentage');
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => { setPage(1); }, [search, statusFilter]);
 
   const q = search.trim().toLowerCase();
@@ -57,9 +86,20 @@ export default function AdminBillingPage() {
       const { data } = await api.get(`/billing/reservation/${reservationId}`);
       setSelectedBill(data.bill);
       setSelectedGuestId(data.guestId);
+      setIsNepali(data.isNepali || false);
+      setExchangeRate(data.exchangeRate || 1);
+      setDiscountValue('');
     } catch(e: any) {
       toast.error(e.response?.data?.message || 'No bill found for this reservation');
     }
+  };
+
+  const refreshBill = async () => {
+    if (!selectedGuestId) return;
+    const { data } = await api.get(`/billing/${selectedGuestId}`);
+    setSelectedBill(data.bill);
+    setIsNepali(data.isNepali || false);
+    setExchangeRate(data.exchangeRate || 1);
   };
 
   const addCharge = async () => {
@@ -68,9 +108,27 @@ export default function AdminBillingPage() {
       await api.post(`/billing/${selectedGuestId}/add`, { description: chargeForm.description, amount: Number(chargeForm.amount) });
       toast.success('Charge added');
       setChargeForm({ description: '', amount: '' });
-      const { data } = await api.get(`/billing/${selectedGuestId}`);
-      setSelectedBill(data.bill);
+      await refreshBill();
     } catch(e:any) { toast.error(e.response?.data?.message || 'Failed'); }
+  };
+
+  const applyDiscount = async () => {
+    if (!discountValue || isNaN(Number(discountValue)) || Number(discountValue) <= 0) {
+      toast.error('Enter a valid discount value');
+      return;
+    }
+    setApplyingDiscount(true);
+    try {
+      await api.post(`/billing/${selectedGuestId}/discount`, {
+        discountType,
+        value: Number(discountValue),
+      });
+      toast.success('Discount applied');
+      setDiscountValue('');
+      await refreshBill();
+    } catch(e: any) {
+      toast.error(e.response?.data?.message || 'Failed to apply discount');
+    } finally { setApplyingDiscount(false); }
   };
 
   const printBill = () => {
@@ -80,12 +138,14 @@ export default function AdminBillingPage() {
     const prepaid = b.prepaidAmount > 0;
     const chargeItems = prepaid ? allItems.filter((i:any) => i.type !== 'room') : allItems;
     const prepaidItems = prepaid ? allItems.filter((i:any) => i.type === 'room') : [];
+    const currency = isNepali ? 'NPR' : 'USD';
+    const fmtAmt = (v: number) => isNepali ? `Rs. ${(v * exchangeRate).toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : `$${v.toFixed(2)}`;
 
     const rows = (items: any[]) => items.map((i:any) => `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e8dcc8;">${i.description}</td>
         <td style="padding:8px 12px;border-bottom:1px solid #e8dcc8;text-transform:capitalize;color:#888;">${i.type.replace('_',' ')}</td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e8dcc8;text-align:right;font-weight:600;">$${i.amount.toFixed(2)}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e8dcc8;text-align:right;font-weight:600;">${fmtAmt(i.amount)}</td>
       </tr>`).join('');
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -116,7 +176,7 @@ export default function AdminBillingPage() {
       </style></head><body>
       <div class="header">
         <div class="logo">ROYAL SUITES</div>
-        <div class="sub">LUXURY HOTEL &amp; SPA</div>
+        <div class="sub">LUXURY HOTEL &amp; SPA · ${currency}</div>
       </div>
       <div class="guest-row">
         <div><div class="label">Guest</div><div class="value" style="font-size:16px;font-weight:bold;">${b.guest?.name || '—'}</div></div>
@@ -133,11 +193,11 @@ export default function AdminBillingPage() {
       <table><thead><tr><td>Description</td><td>Type</td><td style="text-align:right;">Amount</td></tr></thead>
         <tbody>${rows(chargeItems)}</tbody></table>
       <div class="totals">
-        <div class="total-row"><span>Subtotal</span><span>$${b.totalAmount?.toFixed(2)}</span></div>
-        ${b.vatEnabled ? `<div class="total-row"><span>VAT (13%)</span><span>$${b.taxAmount?.toFixed(2)}</span></div>` : ''}
+        <div class="total-row"><span>Subtotal</span><span>${fmtAmt(b.totalAmount)}</span></div>
+        ${b.vatEnabled ? `<div class="total-row"><span>VAT (13%)</span><span>${fmtAmt(b.taxAmount)}</span></div>` : ''}
         <div class="grand">
           <span class="grand-label">${prepaid ? 'Amount Due' : 'Grand Total'}</span>
-          <span class="grand-value">$${b.grandTotal?.toFixed(2)}</span>
+          <span class="grand-value">${fmtAmt(b.grandTotal)}</span>
         </div>
       </div>
       <div class="footer">Royal Suites · Thank you for your stay · noreply@royalsuitesnp.com</div>
@@ -173,6 +233,18 @@ export default function AdminBillingPage() {
     fontFamily: A.raleway, fontSize: '0.82rem', color: A.navy,
     background: '#fff', boxSizing: 'border-box',
   };
+
+  // NPR/USD amount display
+  const F = (v: number) => fmt(v, isNepali, exchangeRate);
+
+  // Which categories are eligible for discount
+  const discountCategories = discountSettings?.discountAppliesTo
+    ? [
+        discountSettings.discountAppliesTo.room && 'room',
+        discountSettings.discountAppliesTo.food && 'food',
+        discountSettings.discountAppliesTo.spa && 'spa',
+      ].filter(Boolean).join(', ')
+    : '';
 
   return (
     <>
@@ -242,7 +314,6 @@ export default function AdminBillingPage() {
           ))}
         </AdminTable>
 
-        {/* Pagination */}
         {!loading && totalPages > 1 && (
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:'1.25rem', paddingTop:'1rem', borderTop:`1px solid ${A.border}` }}>
             <span style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.08em', color:A.muted }}>
@@ -276,10 +347,17 @@ export default function AdminBillingPage() {
             {/* Modal header */}
             <div style={{ background:A.navy, padding:'1.25rem 1.5rem', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
-                <p style={{ fontFamily:A.cormo, color:A.gold, fontSize:'0.8rem', letterSpacing:'0.2em', textTransform:'uppercase', marginBottom:'0.2rem' }}>Guest Bill</p>
+                <p style={{ fontFamily:A.cormo, color:A.gold, fontSize:'0.8rem', letterSpacing:'0.2em', textTransform:'uppercase', marginBottom:'0.2rem' }}>
+                  Guest Bill {isNepali && <span style={{ fontSize:'0.65rem', letterSpacing:'0.1em', opacity:0.8 }}>· NPR</span>}
+                </p>
                 <h3 style={{ fontFamily:A.cinzel, fontSize:'1.1rem', color:'rgba(245,236,215,0.9)' }}>{selectedBill.guest?.name}</h3>
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
+                {isNepali && (
+                  <span style={{ fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.12em', textTransform:'uppercase', background:'hsl(205 70% 30%)', color:'#fff', padding:'0.25rem 0.6rem', border:'1px solid hsl(205 70% 55%)' }}>
+                    Nepali
+                  </span>
+                )}
                 <button onClick={printBill} title="Print Bill"
                   style={{ display:'flex', alignItems:'center', gap:'0.4rem', background:'transparent', border:`1px solid ${A.gold}`, color:A.gold, fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.4rem 0.875rem', cursor:'pointer' }}>
                   <Printer size={13} strokeWidth={1.8} /> Print
@@ -309,13 +387,13 @@ export default function AdminBillingPage() {
                         <div style={{ fontFamily:A.raleway, fontSize:'0.8rem', color:'hsl(142 40% 30%)' }}>{item.description}</div>
                         <div style={{ fontFamily:A.raleway, fontSize:'0.75rem', color:'hsl(142 30% 50%)' }}>Non-refundable — paid at booking</div>
                       </div>
-                      <span style={{ fontFamily:A.cinzel, fontSize:'0.85rem', color:'hsl(142 40% 30%)', whiteSpace:'nowrap', marginLeft:'1rem' }}>${item.amount.toFixed(2)}</span>
+                      <span style={{ fontFamily:A.cinzel, fontSize:'0.85rem', color:'hsl(142 40% 30%)', whiteSpace:'nowrap', marginLeft:'1rem' }}>{F(item.amount)}</span>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* In-stay charges (food / spa / other — always due at checkout) */}
+              {/* Line items */}
               <div style={{ background:A.papyrus, border:`1px solid ${A.border}`, marginBottom:'1.25rem' }}>
                 {selectedBill.prepaidAmount > 0 && (
                   <div style={{ background:A.navy, padding:'0.5rem 1rem' }}>
@@ -327,10 +405,12 @@ export default function AdminBillingPage() {
                   : selectedBill.lineItems?.filter((i:any) => selectedBill.prepaidAmount > 0 ? i.type !== 'room' : true).map((item:any, i:number, arr:any[]) => (
                     <div key={i} className="line-item" style={{ display:'flex', justifyContent:'space-between', padding:'0.75rem 1rem', borderBottom: i < arr.length - 1 ? `1px solid ${A.border}` : 'none' }}>
                       <div>
-                        <div style={{ fontFamily:A.raleway, fontSize:'0.8rem', color:A.navy }}>{item.description}</div>
+                        <div style={{ fontFamily:A.raleway, fontSize:'0.8rem', color: item.amount < 0 ? 'hsl(142 50% 28%)' : A.navy }}>{item.description}</div>
                         <div style={{ fontFamily:A.raleway, fontSize:'0.75rem', color:A.muted, textTransform:'capitalize' }}>{item.type.replace('_',' ')}</div>
                       </div>
-                      <span style={{ fontFamily:A.cinzel, fontSize:'0.85rem', color:A.navy, whiteSpace:'nowrap', marginLeft:'1rem' }}>${item.amount.toFixed(2)}</span>
+                      <span style={{ fontFamily:A.cinzel, fontSize:'0.85rem', color: item.amount < 0 ? 'hsl(142 50% 28%)' : A.navy, whiteSpace:'nowrap', marginLeft:'1rem' }}>
+                        {item.amount < 0 ? `−${F(Math.abs(item.amount))}` : F(item.amount)}
+                      </span>
                     </div>
                   ))
                 }
@@ -340,15 +420,14 @@ export default function AdminBillingPage() {
               <div style={{ borderTop:`2px solid ${A.border}`, paddingTop:'1rem', marginBottom:'1.5rem' }}>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'0.4rem' }}>
                   <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted }}>Subtotal</span>
-                  <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.navy }}>${selectedBill.totalAmount?.toFixed(2)}</span>
+                  <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.navy }}>{F(selectedBill.totalAmount)}</span>
                 </div>
-                {/* VAT toggle */}
                 {selectedBill.status === 'open' && (
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'0.4rem', padding:'0.5rem 0.75rem', background: selectedBill.vatEnabled ? 'hsl(38 90% 97%)' : A.papyrus, border:`1px solid ${selectedBill.vatEnabled ? A.gold : A.border}` }}>
                     <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted }}>VAT (13%)</span>
                     <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
                       {selectedBill.vatEnabled && (
-                        <span style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.gold }}>${selectedBill.taxAmount?.toFixed(2)}</span>
+                        <span style={{ fontFamily:A.cinzel, fontSize:'0.78rem', color:A.gold }}>{F(selectedBill.taxAmount)}</span>
                       )}
                       <button
                         onClick={() => toggleVat(!selectedBill.vatEnabled)}
@@ -362,14 +441,14 @@ export default function AdminBillingPage() {
                 {selectedBill.status !== 'open' && selectedBill.vatEnabled && (
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'0.4rem' }}>
                     <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.muted }}>VAT (13%)</span>
-                    <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.navy }}>${selectedBill.taxAmount?.toFixed(2)}</span>
+                    <span style={{ fontFamily:A.raleway, fontSize:'0.82rem', color:A.navy }}>{F(selectedBill.taxAmount)}</span>
                   </div>
                 )}
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:'0.75rem', paddingTop:'0.75rem', borderTop:`1px solid ${A.border}` }}>
                   <span style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>
                     {selectedBill.prepaidAmount > 0 ? 'Amount Due' : 'Grand Total'}
                   </span>
-                  <span style={{ fontFamily:A.cinzel, fontSize:'1.5rem', fontWeight:700, color:A.gold }}>${selectedBill.grandTotal?.toFixed(2)}</span>
+                  <span style={{ fontFamily:A.cinzel, fontSize:'1.5rem', fontWeight:700, color:A.gold }}>{F(selectedBill.grandTotal)}</span>
                 </div>
               </div>
 
@@ -380,7 +459,6 @@ export default function AdminBillingPage() {
                     <Plus size={13} color={A.gold} strokeWidth={2} />
                     <span style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>Add Charge to Bill</span>
                   </div>
-                  {/* Quick-fill presets */}
                   <div style={{ display:'flex', gap:'0.4rem', flexWrap:'wrap', marginBottom:'0.625rem' }}>
                     {[
                       { label: 'Restaurant Dining', desc: 'Restaurant dining charge' },
@@ -396,11 +474,72 @@ export default function AdminBillingPage() {
                   </div>
                   <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:'0.625rem' }}>
                     <input className="bill-input" style={inputStyle} placeholder="Description" value={chargeForm.description} onChange={e => setChargeForm({...chargeForm, description:e.target.value})} />
-                    <input className="bill-input" style={{...inputStyle, width:'6rem'}} type="number" placeholder="$0" value={chargeForm.amount} onChange={e => setChargeForm({...chargeForm, amount:e.target.value})} />
+                    <input className="bill-input" style={{...inputStyle, width:'6rem'}} type="number" placeholder={isNepali ? 'Rs. 0' : '$0'} value={chargeForm.amount} onChange={e => setChargeForm({...chargeForm, amount:e.target.value})} />
                   </div>
                   <button onClick={() => addCharge()} style={{ marginTop:'0.625rem', display:'flex', alignItems:'center', gap:'0.4rem', color:'hsl(210 70% 35%)', border:'1px solid hsl(210 70% 75%)', background:'hsl(210 80% 97%)', fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.4rem 1rem', cursor:'pointer' }}>
                     <DollarSign size={11} strokeWidth={2} /> Add Charge
                   </button>
+                </div>
+              )}
+
+              {/* Discount section — only shown when discountEnabled=true and bill is open */}
+              {selectedBill.status === 'open' && discountSettings?.discountEnabled && (
+                <div style={{ borderTop:`1px solid ${A.border}`, paddingTop:'1.25rem', marginBottom:'1.25rem' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.75rem' }}>
+                    <Tag size={13} color={A.gold} strokeWidth={2} />
+                    <span style={{ fontFamily:A.cinzel, fontSize:'0.75rem', letterSpacing:'0.15em', textTransform:'uppercase', color:A.navy }}>Apply Discount</span>
+                  </div>
+                  {discountCategories && (
+                    <p style={{ fontFamily:A.cinzel, fontSize:'0.75rem', color:A.navy, marginBottom:'0.75rem' }}>
+                      Applies to: {discountCategories}
+                    </p>
+                  )}
+                  {/* Cash / Percentage toggle — only the mode enabled by superadmin is active */}
+                  {(() => {
+                    const cashEnabled = (discountSettings?.maxDiscountCash ?? 0) > 0;
+                    const pctEnabled  = (discountSettings?.maxDiscountPercentage ?? 0) > 0;
+                    return (
+                      <>
+                        <div style={{ display:'flex', marginBottom:'0.625rem' }}>
+                          <button
+                            onClick={() => cashEnabled && setDiscountType('cash')}
+                            style={{ flex:1, padding:'0.4rem', fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.08em', textTransform:'uppercase', border:`1px solid ${A.border}`, borderRight:'none', background: discountType === 'cash' && cashEnabled ? A.navy : '#fff', color: discountType === 'cash' && cashEnabled ? A.gold : A.muted, cursor: cashEnabled ? 'pointer' : 'not-allowed', opacity: cashEnabled ? 1 : 0.4 }}>
+                            <DollarSign size={11} style={{ display:'inline', marginRight:'0.25rem', verticalAlign:'middle' }} />
+                            Cash
+                          </button>
+                          <button
+                            onClick={() => pctEnabled && setDiscountType('percentage')}
+                            style={{ flex:1, padding:'0.4rem', fontFamily:A.cinzel, fontSize:'0.68rem', letterSpacing:'0.08em', textTransform:'uppercase', border:`1px solid ${A.border}`, background: discountType === 'percentage' && pctEnabled ? A.navy : '#fff', color: discountType === 'percentage' && pctEnabled ? A.gold : A.muted, cursor: pctEnabled ? 'pointer' : 'not-allowed', opacity: pctEnabled ? 1 : 0.4 }}>
+                            <Percent size={11} style={{ display:'inline', marginRight:'0.25rem', verticalAlign:'middle' }} />
+                            Percent
+                          </button>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:'0.625rem', alignItems:'end' }}>
+                          <input
+                            className="bill-input"
+                            style={inputStyle}
+                            type="number"
+                            min={0}
+                            placeholder={discountType === 'percentage' ? '% off' : isNepali ? 'Amount in Rs.' : 'Amount in $'}
+                            value={discountValue}
+                            onChange={e => setDiscountValue(e.target.value)}
+                          />
+                          <button
+                            onClick={applyDiscount}
+                            disabled={applyingDiscount}
+                            style={{ display:'flex', alignItems:'center', gap:'0.4rem', color:'hsl(142 50% 28%)', border:'1px solid hsl(142 50% 72%)', background:'hsl(142 60% 97%)', fontFamily:A.cinzel, fontSize:'0.6rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.4rem 1rem', cursor:'pointer', whiteSpace:'nowrap', opacity: applyingDiscount ? 0.6 : 1 }}>
+                            <Tag size={11} strokeWidth={2} /> Apply
+                          </button>
+                        </div>
+                        <p style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.muted, marginTop:'0.35rem' }}>
+                          {discountType === 'percentage'
+                            ? pctEnabled ? `Max allowed: ${discountSettings!.maxDiscountPercentage}%` : 'Percentage discounts not enabled by management'
+                            : cashEnabled ? `Max allowed: ${isNepali ? `Rs. ${(discountSettings!.maxDiscountCash * (exchangeRate || 1)).toLocaleString('en-IN', { maximumFractionDigits: 0 })}` : `$${discountSettings!.maxDiscountCash.toFixed(2)}`}` : 'Cash discounts not enabled by management'
+                          }
+                        </p>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 

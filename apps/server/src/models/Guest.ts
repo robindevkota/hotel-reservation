@@ -1,11 +1,14 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export type GuestNationality = 'nepali' | 'foreign';
+
 export interface IGuest extends Document {
   reservation: mongoose.Types.ObjectId;
   room: mongoose.Types.ObjectId;
   name: string;
   email: string;
   phone: string;
+  nationality: GuestNationality;
   checkInTime: Date;
   checkOutTime?: Date;
   qrSessionToken: string;
@@ -22,6 +25,7 @@ const GuestSchema = new Schema<IGuest>(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, lowercase: true, trim: true },
     phone: { type: String, required: true },
+    nationality: { type: String, enum: ['nepali', 'foreign'], default: 'foreign' },
     checkInTime: { type: Date, default: Date.now },
     checkOutTime: { type: Date },
     qrSessionToken: { type: String, required: true },

@@ -201,10 +201,14 @@ function assertBillsMatch(adminBill: any, guestBill: any) {
   expect(adminBill.lineItems.length).toBe(guestBill.lineItems.length);
 }
 
-/** Assert VAT is exactly 13% of subtotal. */
+/** Assert VAT is consistent with vatEnabled flag (VAT is opt-in, off by default). */
 function assertVAT(bill: any) {
-  const expectedTax = Math.round(bill.totalAmount * 0.13 * 100) / 100;
-  expect(bill.taxAmount).toBeCloseTo(expectedTax, 1);
+  if (bill.vatEnabled) {
+    const expectedTax = Math.round(bill.totalAmount * 0.13 * 100) / 100;
+    expect(bill.taxAmount).toBeCloseTo(expectedTax, 1);
+  } else {
+    expect(bill.taxAmount).toBe(0);
+  }
   expect(bill.grandTotal).toBeCloseTo(bill.totalAmount + bill.taxAmount, 1);
 }
 
@@ -1092,11 +1096,11 @@ test.describe('Phase 4 — Week 4: Checkout Wave + Room Recycling', () => {
     const finalBill = billFinal.bill ?? billFinal;
     expect(finalBill.status).toBe('pending_payment');
 
-    const expectedTotal = parseFloat(((foodAmt + spaAmt) * 1.13).toFixed(2));
-    expect(finalBill.grandTotal).toBeCloseTo(expectedTotal, 1);
+    // VAT is opt-in (off by default) — grandTotal = food + spa, no tax unless toggled
+    expect(finalBill.totalAmount).toBeCloseTo(foodAmt + spaAmt, 1);
+    expect(finalBill.grandTotal).toBeCloseTo(finalBill.totalAmount + finalBill.taxAmount, 1);
     expect(finalBill.roomCharges).toBeGreaterThan(0);     // still recorded
     expect(finalBill.prepaidAmount).toBeGreaterThan(0);   // still tracked
-    expect(finalBill.totalAmount).toBeCloseTo(foodAmt + spaAmt, 1);
 
     // Room freed after checkout
     expect(await isRoomAvailable(room._id)).toBe(true);
@@ -1458,5 +1462,270 @@ test.describe('Phase 4 — Week 4: Checkout Wave + Room Recycling', () => {
     }
     console.log('Simulation final reservation statuses:', statuses);
     console.log(`Total: ${occupied} occupied, ${free} available (${occupied + free} rooms)`);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 5 — New Feature Scenarios
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('Phase 5 — New Feature Scenarios', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let p5Admin: string;
+  let p5RoomId: string;
+  let p5GuestId: string;
+  let p5RoomPrice: number;
+
+  test.beforeAll(async () => {
+    const os   = await import('os');
+    const path = await import('path');
+    const fs   = await import('fs');
+    const tokenFile = process.env.ADMIN_TOKEN_FILE || path.join(os.tmpdir(), 'rs-admin-token.json');
+    p5Admin = JSON.parse(fs.readFileSync(tokenFile, 'utf8')).token;
+  });
+
+  // ── SIM-P5-01: Stay Extension ─────────────────────────────────────────────
+
+  test('SIM-P5-01 Stay extension — adds nights, line item, extends QR expiry', async () => {
+    // Get a free room
+    const { data: roomsD } = await get('/rooms?available=true', p5Admin);
+    const freeRooms: any[] = (roomsD.rooms ?? []).filter((r: any) => r.isAvailable === true);
+    test.skip(!freeRooms.length, 'No free rooms');
+
+    const room = freeRooms[0];
+    p5RoomId    = room._id;
+    p5RoomPrice = room.pricePerNight;
+
+    // Book 3 nights, confirm, check in
+    const ctx = await bookAndCheckin(p5Admin, p5RoomId, 'Zara Phase5', 'zara.p5@nile.eg', simDate(50), simDate(53));
+    test.skip(!ctx, 'Check-in failed');
+    p5GuestId = ctx!.guestId;
+
+    const { data: billBefore } = await get(`/billing/${p5GuestId}`, p5Admin);
+    const before = billBefore.bill ?? billBefore;
+    const itemsBefore = before.lineItems.length;
+    const totalBefore = before.grandTotal;
+
+    // Extend by 2 nights
+    const { status, data } = await patch(`/checkin/extend/${p5GuestId}`, { extraNights: 2 }, p5Admin);
+    expect(status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(data.extraNights).toBe(2);
+    expect(data.extraCharge).toBeCloseTo(p5RoomPrice * 2, 1);
+    expect(data.newCheckOut).toBeTruthy();
+
+    // Bill has new room line item
+    const { data: billAfter } = await get(`/billing/${p5GuestId}`, p5Admin);
+    const after = billAfter.bill ?? billAfter;
+    expect(after.lineItems.length).toBe(itemsBefore + 1);
+    const extItem = after.lineItems.find((i: any) => i.description?.includes('extension'));
+    expect(extItem).toBeTruthy();
+    expect(extItem.amount).toBeCloseTo(p5RoomPrice * 2, 1);
+
+    // Grand total increased
+    expect(after.grandTotal).toBeCloseTo(totalBefore + p5RoomPrice * 2, 1);
+  });
+
+  test('SIM-P5-02 Stay extension blocked by conflicting reservation', async () => {
+    test.skip(!p5GuestId || !p5RoomId, 'No active guest from P5-01');
+
+    // Get current checkout date from reservation
+    const { data: guestD } = await get(`/checkin/active`, p5Admin);
+    const guestDoc = (guestD.guests ?? []).find((g: any) => g._id === p5GuestId);
+    test.skip(!guestDoc, 'Guest not found');
+
+    // Walk-in a blocker directly onto the same room starting at the extended checkout (day 55)
+    // Walk-in creates a confirmed reservation immediately, which is what the conflict check needs
+    const blockRes = await post('/reservations/walk-in', {
+      guest: { name: 'Blocker Guest', email: 'blocker.p5@nile.eg', phone: '+977000000' },
+      room: p5RoomId,
+      checkInDate: simDate(56),
+      checkOutDate: simDate(58),
+      numberOfGuests: 1,
+    }, p5Admin);
+    expect(blockRes.data.success).toBe(true);
+
+    // Attempt extend by 3 nights (would overlap day 56) — should be blocked
+    const { status } = await patch(`/checkin/extend/${p5GuestId}`, { extraNights: 3 }, p5Admin);
+    expect(status).toBe(409);
+  });
+
+  // ── SIM-P5-03: Nepali Walk-In + NPR Billing ───────────────────────────────
+
+  test('SIM-P5-03 Nepali walk-in — nationality propagates to guest doc', async () => {
+    const { data: roomsD } = await get('/rooms?available=true', p5Admin);
+    const freeRooms: any[] = (roomsD.rooms ?? []).filter((r: any) => r.isAvailable === true);
+    test.skip(!freeRooms.length, 'No free rooms for Nepali walk-in');
+
+    const room = freeRooms[0];
+
+    // Walk-in with guestType = nepali
+    const { status: wStatus, data: wData } = await post('/reservations/walk-in', {
+      guestType: 'nepali',
+      guest: { name: 'Hari Shrestha', email: 'hari.p5@nepal.np', phone: '+977-980-000001' },
+      room: room._id,
+      checkInDate: simDate(60),
+      checkOutDate: simDate(62),
+      numberOfGuests: 1,
+    }, p5Admin);
+    expect(wStatus).toBe(201);
+    expect(wData.reservation.guestType).toBe('nepali');
+
+    // Check in
+    const { data: ciD } = await post(`/checkin/${wData.reservation._id}`, {}, p5Admin);
+    expect(ciD.success).toBe(true);
+    expect(ciD.guest.nationality).toBe('nepali');
+
+    // Billing endpoint returns isNepali + exchangeRate
+    const { data: billD } = await get(`/billing/${ciD.guest._id}`, p5Admin);
+    expect(billD.isNepali).toBe(true);
+    expect(billD.exchangeRate).toBeGreaterThan(1);
+
+    // Cleanup — checkout
+    await post(`/checkin/checkout/${ciD.guest._id}`, {}, p5Admin);
+  });
+
+  // ── SIM-P5-04 to P5-07: Discount System ──────────────────────────────────
+
+  let discountGuestId: string;
+
+  test('SIM-P5-04 Superadmin enables cash discount — front desk applies it', async () => {
+    const { data: roomsD } = await get('/rooms?available=true', p5Admin);
+    const freeRooms: any[] = (roomsD.rooms ?? []).filter((r: any) => r.isAvailable === true);
+    test.skip(!freeRooms.length, 'No free rooms');
+
+    const room = freeRooms[0];
+    const ctx = await bookAndCheckin(p5Admin, room._id, 'Discount Guest', 'discount.p5@nile.eg', simDate(70), simDate(72));
+    test.skip(!ctx, 'Check-in failed');
+    discountGuestId = ctx!.guestId;
+
+    // Add a food charge so there's something to discount
+    await post(`/billing/${discountGuestId}/add`, { description: 'Dinner', amount: 100 }, p5Admin);
+
+    // Superadmin enables cash discount, max $50
+    const { status: sStatus } = await patch('/settings/discount', {
+      discountEnabled: true,
+      discountAppliesTo: { room: true, food: true, spa: true },
+      maxDiscountCash: 50,
+      maxDiscountPercentage: 0,
+    }, p5Admin);
+    expect(sStatus).toBe(200);
+
+    const { data: billBefore } = await get(`/billing/${discountGuestId}`, p5Admin);
+    const before = (billBefore.bill ?? billBefore).grandTotal;
+
+    // Apply $20 cash discount
+    const { status: dStatus, data: dData } = await post(`/billing/${discountGuestId}/discount`, {
+      discountType: 'cash',
+      value: 20,
+    }, p5Admin);
+    expect(dStatus).toBe(200);
+
+    const { data: billAfter } = await get(`/billing/${discountGuestId}`, p5Admin);
+    const after = billAfter.bill ?? billAfter;
+
+    // Negative line item exists
+    const discountItem = after.lineItems.find((i: any) => i.amount < 0);
+    expect(discountItem).toBeTruthy();
+    expect(discountItem.amount).toBeCloseTo(-20, 1);
+
+    // Grand total decreased
+    expect(after.grandTotal).toBeCloseTo(before - 20, 1);
+  });
+
+  test('SIM-P5-05 Discount blocked when disabled', async () => {
+    test.skip(!discountGuestId, 'No discount guest from P5-04');
+
+    await patch('/settings/discount', { discountEnabled: false }, p5Admin);
+
+    const { status } = await post(`/billing/${discountGuestId}/discount`, {
+      discountType: 'cash',
+      value: 10,
+    }, p5Admin);
+    expect(status).toBe(403);
+  });
+
+  test('SIM-P5-06 Max discount limit enforced — over-limit rejected', async () => {
+    test.skip(!discountGuestId, 'No discount guest');
+
+    // Re-enable with max 10%
+    await patch('/settings/discount', {
+      discountEnabled: true,
+      discountAppliesTo: { room: true, food: true, spa: true },
+      maxDiscountPercentage: 10,
+      maxDiscountCash: 0,
+    }, p5Admin);
+
+    // Attempt 20% — exceeds max
+    const { status } = await post(`/billing/${discountGuestId}/discount`, {
+      discountType: 'percentage',
+      value: 20,
+    }, p5Admin);
+    expect(status).toBe(400);
+
+    // 10% should succeed
+    const { status: okStatus } = await post(`/billing/${discountGuestId}/discount`, {
+      discountType: 'percentage',
+      value: 10,
+    }, p5Admin);
+    expect(okStatus).toBe(200);
+  });
+
+  test('SIM-P5-07 One mode at a time — disabled mode blocked at backend', async () => {
+    test.skip(!discountGuestId, 'No discount guest');
+
+    // Settings: cash mode only (maxDiscountCash=30, maxDiscountPercentage=0)
+    await patch('/settings/discount', {
+      discountEnabled: true,
+      discountAppliesTo: { room: true, food: true, spa: true },
+      maxDiscountCash: 30,
+      maxDiscountPercentage: 0,
+    }, p5Admin);
+
+    // Percentage attempt — blocked (maxDiscountPercentage=0)
+    const { status: pctStatus } = await post(`/billing/${discountGuestId}/discount`, {
+      discountType: 'percentage',
+      value: 5,
+    }, p5Admin);
+    expect(pctStatus).toBe(400);
+
+    // Cleanup
+    await post(`/checkin/checkout/${discountGuestId}`, {}, p5Admin).catch(() => {});
+  });
+
+  // ── SIM-P5-08: Exchange Rate via Settings ─────────────────────────────────
+
+  test('SIM-P5-08 Exchange rate updated via Settings API — reflected in billing', async () => {
+    // Update rate
+    const { status, data } = await patch('/settings/exchange-rate', { rate: 140 }, p5Admin);
+    expect(status).toBe(200);
+    expect(data.rate).toBe(140);
+    expect(data.updatedBy).toBeTruthy();
+
+    // Verify GET returns new rate
+    const { data: getD } = await get('/settings/exchange-rate', p5Admin);
+    expect(getD.rate).toBe(140);
+
+    // Walk-in a Nepali guest and verify billing uses the new rate
+    const { data: roomsD } = await get('/rooms?available=true', p5Admin);
+    const freeRooms: any[] = (roomsD.rooms ?? []).filter((r: any) => r.isAvailable === true);
+    if (!freeRooms.length) return;
+
+    const room = freeRooms[0];
+    const { data: wData } = await post('/reservations/walk-in', {
+      guestType: 'nepali',
+      guest: { name: 'Rate Test', email: 'rate.p5@nepal.np', phone: '+977000000002' },
+      room: room._id,
+      checkInDate: simDate(80),
+      checkOutDate: simDate(82),
+      numberOfGuests: 1,
+    }, p5Admin);
+    const { data: ciD } = await post(`/checkin/${wData.reservation._id}`, {}, p5Admin);
+    const { data: billD } = await get(`/billing/${ciD.guest._id}`, p5Admin);
+    expect(billD.isNepali).toBe(true);
+    expect(billD.exchangeRate).toBe(140);
+
+    await post(`/checkin/checkout/${ciD.guest._id}`, {}, p5Admin).catch(() => {});
   });
 });

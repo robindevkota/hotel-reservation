@@ -31,6 +31,7 @@ import categoryRoutes from './routes/category.routes';
 import offerRoutes from './routes/offer.routes';
 import walkInCustomerRoutes from './routes/walkInCustomer.routes';
 import channelRoutes from './routes/channel.routes';
+import settingsRoutes from './routes/settings.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -102,6 +103,7 @@ app.use('/api/room-categories', categoryRoutes);
 app.use('/api/offers', offerRoutes);
 app.use('/api/walkin-customers', walkInCustomerRoutes);
 app.use('/api/channels', channelRoutes);
+app.use('/api/settings', settingsRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 

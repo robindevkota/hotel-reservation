@@ -11,5 +11,6 @@ router.get('/reservation/:reservationId', ...requireStaff, requireAdmin, billing
 router.get('/:guestId', ...requireStaff, requireAdmin, billing.getGuestBill);
 router.post('/:guestId/add', ...requireStaff, requireAdmin, billing.manualChargeValidation, validate, billing.addManualCharge);
 router.patch('/:guestId/vat', ...requireStaff, requireAdmin, billing.toggleVat);
+router.post('/:guestId/discount', ...requireStaff, requireAdmin, billing.applyDiscount);
 
 export default router;

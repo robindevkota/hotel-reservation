@@ -18,9 +18,18 @@ function cleanDescription(desc: string): string {
   return desc.replace(/\s+#?[0-9a-f]{24}/gi, '').trim();
 }
 
+function fmtAmount(amount: number, isNepali: boolean, rate: number): string {
+  if (isNepali) {
+    return `Rs. ${(amount * rate).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  }
+  return `$${amount.toFixed(2)}`;
+}
+
 export default function BillingPage() {
-  const { bill, loading } = useBilling(true);
+  const { bill, loading, isNepali, exchangeRate } = useBilling(true);
   const [paying, setPaying] = useState(false);
+
+  const F = (v: number) => fmtAmount(v, isNepali, exchangeRate);
 
   const handlePayment = async () => {
     if (!bill) return;
@@ -50,6 +59,11 @@ export default function BillingPage() {
       <div style={{ background: NAVY, padding: '2rem 1.5rem 2rem', textAlign: 'center', borderBottom: `1px solid ${GOLD}30` }}>
         <p style={{ fontFamily: "'Cinzel', serif", color: GOLD, fontSize: '0.6rem', letterSpacing: '0.45em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Your Account</p>
         <h1 style={{ fontFamily: "'Cinzel Decorative', serif", color: 'hsl(40 30% 94%)', fontSize: '1.4rem' }}>Running Bill</h1>
+        {isNepali && (
+          <p style={{ fontFamily: "'Cinzel', serif", color: `${GOLD}90`, fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', marginTop: '0.4rem' }}>
+            Amounts shown in Nepali Rupees (NPR)
+          </p>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'center', marginTop: '1rem' }}>
           <div style={{ flex: 1, height: '1px', background: `linear-gradient(to right, transparent, ${GOLD}40)` }} />
           <span style={{ color: GOLD }}>𓎛</span>
@@ -87,7 +101,7 @@ export default function BillingPage() {
                       <p style={{ color: 'hsl(142 40% 28%)', fontSize: '0.78rem', lineHeight: 1.4 }}>{cleanDescription(item.description)}</p>
                       <p style={{ color: 'hsl(142 30% 48%)', fontSize: '0.65rem', marginTop: '0.2rem' }}>Non-refundable — paid at booking</p>
                     </div>
-                    <p style={{ fontFamily: "'Cinzel', serif", color: 'hsl(142 40% 28%)', fontSize: '0.8rem', flexShrink: 0 }}>${item.amount.toFixed(2)}</p>
+                    <p style={{ fontFamily: "'Cinzel', serif", color: 'hsl(142 40% 28%)', fontSize: '0.8rem', flexShrink: 0 }}>{F(item.amount)}</p>
                   </div>
                 ))}
               </div>
@@ -105,10 +119,12 @@ export default function BillingPage() {
                 : bill.lineItems.filter((i: any) => bill.prepaidAmount > 0 ? i.type !== 'room' : true).map((item: any, i: number, arr: any[]) => (
                   <div key={i} style={{ padding: '0.875rem 1.125rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: i < arr.length - 1 ? '1px solid hsl(220 15% 93%)' : 'none' }}>
                     <div style={{ flex: 1, marginRight: '1rem' }}>
-                      <p style={{ color: NAVY, fontSize: '0.78rem', lineHeight: 1.4 }}>{cleanDescription(item.description)}</p>
+                      <p style={{ color: item.amount < 0 ? 'hsl(142 50% 28%)' : NAVY, fontSize: '0.78rem', lineHeight: 1.4 }}>{cleanDescription(item.description)}</p>
                       <p style={{ color: 'hsl(220 15% 58%)', fontSize: '0.65rem', marginTop: '0.2rem' }}>{new Date(item.date).toLocaleDateString()}</p>
                     </div>
-                    <p style={{ fontFamily: "'Cinzel', serif", color: NAVY, fontSize: '0.8rem', flexShrink: 0 }}>${item.amount.toFixed(2)}</p>
+                    <p style={{ fontFamily: "'Cinzel', serif", color: item.amount < 0 ? 'hsl(142 50% 28%)' : NAVY, fontSize: '0.8rem', flexShrink: 0 }}>
+                      {item.amount < 0 ? `−${F(Math.abs(item.amount))}` : F(item.amount)}
+                    </p>
                   </div>
                 ))
               }
@@ -124,10 +140,12 @@ export default function BillingPage() {
                   ['Other',            bill.otherCharges],
                   ['Subtotal',         bill.totalAmount],
                   ['Tax (13% VAT)',    bill.taxAmount],
-                ] as [string, number][]).filter(([, v]) => Number(v) > 0).map(([lbl, amount]) => (
+                ] as [string, number][]).filter(([, v]) => Number(v) !== 0).map(([lbl, amount]) => (
                   <div key={lbl} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontFamily: "'Cinzel', serif", color: 'hsl(40 30% 85% / 0.5)', fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>{lbl}</span>
-                    <span style={{ fontFamily: "'Cinzel', serif", color: 'hsl(40 30% 88%)', fontSize: '0.75rem' }}>${Number(amount).toFixed(2)}</span>
+                    <span style={{ fontFamily: "'Cinzel', serif", color: Number(amount) < 0 ? 'hsl(142 55% 60%)' : 'hsl(40 30% 88%)', fontSize: '0.75rem' }}>
+                      {Number(amount) < 0 ? `−${F(Math.abs(Number(amount)))}` : F(Number(amount))}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -142,22 +160,34 @@ export default function BillingPage() {
                 <span style={{ fontFamily: "'Cinzel', serif", color: 'hsl(40 30% 92%)', fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
                   {bill.prepaidAmount > 0 ? 'Amount Due' : 'Grand Total'}
                 </span>
-                <span style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '1.5rem' }}>${bill.grandTotal.toFixed(2)}</span>
+                <span style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '1.5rem' }}>{F(bill.grandTotal)}</span>
               </div>
             </div>
 
             {/* Pay button */}
-            {bill.status === 'pending_payment' && (
+            {bill.status === 'pending_payment' && !isNepali && (
               <div style={{ marginTop: '1.5rem' }}>
                 <button
                   onClick={handlePayment}
                   disabled={paying}
                   style={{ width: '100%', background: `linear-gradient(135deg, ${GOLD}, hsl(43 65% 68%))`, color: NAVY, fontFamily: "'Cinzel', serif", fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '1rem', border: 'none', cursor: paying ? 'not-allowed' : 'pointer', opacity: paying ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 700 }}>
                   <CreditCard size={16} strokeWidth={2} />
-                  {paying ? 'Processing...' : `Pay Now — $${bill.grandTotal.toFixed(2)}`}
+                  {paying ? 'Processing...' : `Pay Now — ${F(bill.grandTotal)}`}
                 </button>
                 <p style={{ textAlign: 'center', fontFamily: "'Cinzel', serif", color: 'hsl(220 15% 55%)', fontSize: '0.6rem', letterSpacing: '0.1em', marginTop: '0.875rem' }}>
                   Or pay at the front desk
+                </p>
+              </div>
+            )}
+
+            {/* Nepali guests: pay at front desk */}
+            {bill.status === 'pending_payment' && isNepali && (
+              <div style={{ marginTop: '1.5rem', textAlign: 'center', padding: '1.25rem', background: 'hsl(205 60% 96%)', border: '1px solid hsl(205 55% 78%)' }}>
+                <p style={{ fontFamily: "'Cinzel', serif", color: 'hsl(205 60% 30%)', fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
+                  Please Pay at Front Desk
+                </p>
+                <p style={{ fontFamily: "'Cinzel', serif", color: 'hsl(205 40% 50%)', fontSize: '0.65rem' }}>
+                  Amount due: <strong>{F(bill.grandTotal)}</strong>
                 </p>
               </div>
             )}

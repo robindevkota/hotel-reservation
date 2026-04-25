@@ -412,7 +412,7 @@ export async function walkInLinkedReservation(req: Request, res: Response): Prom
 
 // Walk-in: create reservation + confirm in one step (admin only)
 export async function walkInReservation(req: Request, res: Response): Promise<void> {
-  const { guest, room: roomId, checkInDate, checkOutDate, numberOfGuests, specialRequests } = req.body;
+  const { guest, room: roomId, checkInDate, checkOutDate, numberOfGuests, specialRequests, guestType = 'foreign' } = req.body;
 
   const checkIn = new Date(checkInDate);
   const checkOut = new Date(checkOutDate);
@@ -448,7 +448,8 @@ export async function walkInReservation(req: Request, res: Response): Promise<vo
     specialRequests,
     totalNights,
     roomCharges,
-    status: 'confirmed', // skip pending for walk-ins
+    guestType,
+    status: 'confirmed',
   });
 
   res.status(201).json({ success: true, reservation });

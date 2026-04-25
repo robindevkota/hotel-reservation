@@ -151,7 +151,7 @@ export default function AdminRoomsPage() {
   useEffect(() => {
     if (view === 'availability') fetchAvailability(availDate);
     if (view === 'exchange_rate') {
-      api.get('/payment/exchange-rate/usd-npr').then(({ data }) => {
+      api.get('/settings/exchange-rate').then(({ data }) => {
         setCurrentRate(data.rate);
         setRateInput(String(data.rate));
         setRateUpdatedBy(data.updatedBy || '');
@@ -431,7 +431,7 @@ export default function AdminRoomsPage() {
             { key:'rooms',         label:'Room Cards',    Icon:Bed          },
             { key:'availability',  label:'Availability',  Icon:CalendarDays },
             { key:'categories',    label:'Categories',    Icon:Tag          },
-            { key:'exchange_rate', label:'Exchange Rate',  Icon:DollarSign   },
+            { key:'exchange_rate', label:'Exchange Rate', Icon:DollarSign   },
           ].map(({ key, label, Icon }) => (
             <button key={key} className="view-tab" onClick={() => { setView(key as any); }}
               style={{ borderColor: view===key ? A.gold : 'transparent', color: view===key ? A.navy : A.muted, background: view===key ? 'hsl(43 72% 55%/0.06)' : 'transparent', borderBottom: view===key ? `2px solid ${A.gold}` : '2px solid transparent', marginBottom:'-1px' }}>
@@ -662,11 +662,10 @@ export default function AdminRoomsPage() {
                 </div>
                 <div>
                   <p style={{ fontFamily: A.cinzel, fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: A.navy, marginBottom: '0.2rem' }}>USD → NPR Exchange Rate</p>
-                  <p style={{ fontFamily: A.raleway, fontSize: '0.78rem', color: A.muted }}>Used to display prices for Nepali guests at booking</p>
+                  <p style={{ fontFamily: A.raleway, fontSize: '0.78rem', color: A.muted }}>Used to display prices for Nepali guests</p>
                 </div>
               </div>
 
-              {/* Current rate display */}
               <div style={{ background: A.papyrus, border: `1px solid ${A.border}`, padding: '1.25rem 1.5rem', marginBottom: '1.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <p style={{ fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: A.muted, marginBottom: '0.35rem' }}>Current Rate</p>
@@ -676,17 +675,12 @@ export default function AdminRoomsPage() {
                 </div>
                 {rateUpdatedAt && (
                   <div style={{ textAlign: 'right' }}>
-                    <p style={{ fontFamily: A.raleway, fontSize: '0.7rem', color: A.muted }}>
-                      Updated by <strong>{rateUpdatedBy || 'admin'}</strong>
-                    </p>
-                    <p style={{ fontFamily: A.raleway, fontSize: '0.7rem', color: A.muted }}>
-                      {new Date(rateUpdatedAt).toLocaleString()}
-                    </p>
+                    <p style={{ fontFamily: A.raleway, fontSize: '0.7rem', color: A.muted }}>Updated by <strong>{rateUpdatedBy || 'admin'}</strong></p>
+                    <p style={{ fontFamily: A.raleway, fontSize: '0.7rem', color: A.muted }}>{new Date(rateUpdatedAt).toLocaleString()}</p>
                   </div>
                 )}
               </div>
 
-              {/* Update form */}
               <div style={{ marginBottom: '1.25rem' }}>
                 <label style={{ display: 'block', fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.13em', textTransform: 'uppercase', color: A.navy, marginBottom: '0.5rem', fontWeight: 600 }}>
                   New Rate (NPR per 1 USD)
@@ -706,11 +700,10 @@ export default function AdminRoomsPage() {
                       if (!val || val < 1) { toast.error('Enter a valid rate'); return; }
                       setRateSaving(true);
                       try {
-                        const { data } = await api.put('/payment/exchange-rate/usd-npr', { rate: val });
+                        const { data } = await api.patch('/settings/exchange-rate', { rate: val });
                         setCurrentRate(data.rate);
                         toast.success('Exchange rate updated');
-                        // Refresh meta
-                        const { data: fresh } = await api.get('/payment/exchange-rate/usd-npr');
+                        const { data: fresh } = await api.get('/settings/exchange-rate');
                         setRateUpdatedBy(fresh.updatedBy || '');
                         setRateUpdatedAt(fresh.updatedAt || '');
                       } catch (e: any) {
