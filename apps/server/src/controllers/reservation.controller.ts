@@ -164,21 +164,20 @@ export async function cancelReservation(req: AuthRequest, res: Response): Promis
     penaltyCharged = reservation.roomCharges;
   } else {
     // Flexible policy — uses authorize/capture/cancel model
+    // TODO: restore Stripe capture/cancel once Khalti merchant API is available (foreign guests have no card hold for now)
     if (reservation.stripePaymentIntentId) {
       const room = reservation.room as any;
       if (withinFreeCancelWindow) {
-        // Within 48h window → cancel the authorization (release hold, $0 charged)
-        await stripe.paymentIntents.cancel(reservation.stripePaymentIntentId);
-        refundIssued = false; // nothing was ever charged
+        // await stripe.paymentIntents.cancel(reservation.stripePaymentIntentId);
+        refundIssued = false;
         penaltyCharged = 0;
       } else {
-        // Past deadline → capture exactly 1 night from the hold
-        const oneNightCents = Math.round(room.pricePerNight * 100);
-        await stripe.paymentIntents.capture(reservation.stripePaymentIntentId, {
-          amount_to_capture: oneNightCents,
-        });
-        penaltyCharged = room.pricePerNight;
-        refundIssued = false; // 1 night captured, rest of hold released automatically by Stripe
+        // const oneNightCents = Math.round(room.pricePerNight * 100);
+        // await stripe.paymentIntents.capture(reservation.stripePaymentIntentId, {
+        //   amount_to_capture: oneNightCents,
+        // });
+        penaltyCharged = room.pricePerNight; // record penalty for manual collection
+        refundIssued = false;
       }
     }
   }
@@ -250,17 +249,18 @@ export async function guestCancelReservation(req: Request, res: Response): Promi
   if (reservation.cancellationPolicy === 'non_refundable') {
     penaltyCharged = reservation.roomCharges;
   } else {
+    // TODO: restore Stripe capture/cancel once Khalti merchant API is available
     if (reservation.stripePaymentIntentId) {
       const room = reservation.room as any;
       if (withinFreeCancelWindow) {
-        await stripe.paymentIntents.cancel(reservation.stripePaymentIntentId);
+        // await stripe.paymentIntents.cancel(reservation.stripePaymentIntentId);
         penaltyCharged = 0;
       } else {
-        const oneNightCents = Math.round(room.pricePerNight * 100);
-        await stripe.paymentIntents.capture(reservation.stripePaymentIntentId, {
-          amount_to_capture: oneNightCents,
-        });
-        penaltyCharged = room.pricePerNight;
+        // const oneNightCents = Math.round(room.pricePerNight * 100);
+        // await stripe.paymentIntents.capture(reservation.stripePaymentIntentId, {
+        //   amount_to_capture: oneNightCents,
+        // });
+        penaltyCharged = room.pricePerNight; // record penalty for manual collection
       }
     }
   }
@@ -303,16 +303,14 @@ export async function markNoShow(req: Request, res: Response): Promise<void> {
     penaltyCharged = reservation.roomCharges;
   } else {
     // Flexible — card was authorized (hold) at booking
+    // TODO: restore Stripe capture once Khalti merchant API is available
     if (reservation.stripePaymentIntentId) {
-      // Capture exactly 1 night from the held amount
-      await stripe.paymentIntents.capture(reservation.stripePaymentIntentId, {
-        amount_to_capture: Math.round(room.pricePerNight * 100),
-      });
-      penaltyCharged = room.pricePerNight;
-    } else {
-      // No card on file (e.g. walk-in) — record penalty for manual collection
-      penaltyCharged = room.pricePerNight;
+      // await stripe.paymentIntents.capture(reservation.stripePaymentIntentId, {
+      //   amount_to_capture: Math.round(room.pricePerNight * 100),
+      // });
     }
+    // Record penalty for manual collection at front desk
+    penaltyCharged = room.pricePerNight;
   }
 
   reservation.status = 'no_show';

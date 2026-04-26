@@ -249,9 +249,8 @@ function ReserveContent() {
 
   // Step 3 → submit reservation
   const handleSubmit = async () => {
-    if (!selectedRoom)                           { toast.error('Please select a room'); return; }
-    if (!form.checkInDate || !form.checkOutDate) { toast.error('Please select dates'); return; }
-    if (!form.name || !form.email || !form.phone){ toast.error('Please fill guest details'); return; }
+    if (!selectedRoom)                            { toast.error('Please select a room'); return; }
+    if (!form.name || !form.email || !form.phone) { toast.error('Please fill all required fields'); return; }
     setLoading(true);
     try {
       const { data } = await api.post('/reservations', {
@@ -273,12 +272,13 @@ function ReserveContent() {
         setDepositAmount(data.depositAmount);
         setStep(4);
       } else {
-        // Stripe flow
-        const endpoint = policy === 'non_refundable' ? '/payment/upfront' : '/payment/authorize';
-        const { data: payData } = await api.post(endpoint, { reservationId: data.reservation._id });
-        setClientSecret(payData.clientSecret);
-        setUpfrontAmount(payData.amount);
-        setStep(4);
+        // Foreign guests: no card step — confirm immediately, collect payment at check-in
+        // TODO: restore Stripe flow once Khalti merchant API is available
+        // const endpoint = policy === 'non_refundable' ? '/payment/upfront' : '/payment/authorize';
+        // const { data: payData } = await api.post(endpoint, { reservationId: data.reservation._id });
+        // setClientSecret(payData.clientSecret);
+        // setUpfrontAmount(payData.amount);
+        setStep(5);
       }
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to create reservation');
@@ -481,9 +481,12 @@ function ReserveContent() {
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button className="res-btn-primary" onClick={() => {
                   if (!selectedRoom)                           { toast.error('Please select a room'); return; }
-                  if (!form.checkInDate || !form.checkOutDate) { toast.error('Please select dates'); return; }
-                  // Nepali guests skip rate selection (always non-refundable 50% deposit)
-                  setStep(guestType === 'nepali' ? 3 : 2);
+                  if (!form.checkInDate || !form.checkOutDate) { toast.error('Please select check-in and check-out dates'); return; }
+                  if (form.checkOutDate <= form.checkInDate)   { toast.error('Check-out date must be after check-in date'); return; }
+                  if (nights < 1)                              { toast.error('Minimum stay is 1 night'); return; }
+                  // TODO: restore step 2 (rate selection) for foreign guests once Stripe Atlas or Khalti merchant API is live
+                  // setStep(guestType === 'nepali' ? 3 : 2);
+                  setStep(3);
                 }}>Continue →</button>
               </div>
             </div>
@@ -597,27 +600,26 @@ function ReserveContent() {
             <div>
               <div style={{ background: S.navy, padding: '1rem 1.5rem', border: `1px solid hsl(43 72% 55% / 0.2)`, marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <span style={{ fontFamily: S.cinzel, fontSize: '0.68rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(245,236,215,0.6)' }}>
-                  {selectedRoom?.name} · {nights} night{nights !== 1 ? 's' : ''} · {guestType === 'nepali' ? 'PhonePay Deposit' : policy === 'non_refundable' ? 'Non-Refundable' : 'Flexible'}
+                  {selectedRoom?.name} · {nights} night{nights !== 1 ? 's' : ''} · {guestType === 'nepali' ? 'PhonePay Deposit' : 'Pay at Check-In'}
                 </span>
                 <span style={{ fontFamily: S.cinzel, fontSize: '1.1rem', color: S.gold, fontWeight: 600 }}>
                   {currencySymbol}{totalCost.toFixed(2)}
-                  {guestType === 'foreign' && policy === 'non_refundable' && <span style={{ fontSize: '0.65rem', color: '#22c55e', marginLeft: '0.5rem' }}>10% OFF</span>}
                 </span>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.25rem' }}>
                 <div>
-                  <label style={labelStyle}>Full Name</label>
+                  <label style={labelStyle}>Full Name <span style={{ color: 'hsl(0 70% 50%)' }}>*</span></label>
                   <input className="res-input" style={inputStyle} placeholder="As on ID"
                     value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Email</label>
+                  <label style={labelStyle}>Email <span style={{ color: 'hsl(0 70% 50%)' }}>*</span></label>
                   <input type="email" className="res-input" style={inputStyle}
                     value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Phone</label>
+                  <label style={labelStyle}>Phone <span style={{ color: 'hsl(0 70% 50%)' }}>*</span></label>
                   <input type="tel" className="res-input" style={inputStyle}
                     value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
                 </div>
@@ -635,7 +637,7 @@ function ReserveContent() {
                   value={form.specialRequests} onChange={(e) => setForm({ ...form, specialRequests: e.target.value })} />
               </div>
 
-              {/* Policy reminder before payment step */}
+              {/* Policy reminder */}
               {guestType === 'nepali' ? (
                 <div style={{ background: '#fff8e6', border: `1px solid ${S.gold}`, padding: '0.875rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
                   <AlertTriangle size={16} color={S.gold} style={{ flexShrink: 0, marginTop: '2px' }} />
@@ -643,26 +645,19 @@ function ReserveContent() {
                     A <strong>50% deposit</strong> of <strong>NPR {Math.round(totalCost * 0.5 * 100) / 100}</strong> is required via PhonePay to confirm your booking. The remaining 50% is due at check-in. <strong>Deposit is non-refundable.</strong>
                   </p>
                 </div>
-              ) : policy === 'flexible' ? (
+              ) : (
                 <div style={{ background: '#f0f9ff', border: '1px solid #38bdf8', padding: '0.875rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
                   <CheckCircle2 size={16} color="#0ea5e9" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <p style={{ fontFamily: S.raleway, fontSize: '0.82rem', color: S.navy, margin: 0 }}>
-                    Your card will be <strong>verified and held for 1 night (${selectedRoom?.pricePerNight})</strong>. You will <strong>not be charged now</strong>. The hold is released on normal cancellation within 48 hours.
-                  </p>
-                </div>
-              ) : (
-                <div style={{ background: '#fff8e6', border: `1px solid ${S.gold}`, padding: '0.875rem 1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-                  <AlertTriangle size={16} color={S.gold} style={{ flexShrink: 0, marginTop: '2px' }} />
-                  <p style={{ fontFamily: S.raleway, fontSize: '0.82rem', color: S.navy, margin: 0 }}>
-                    You have selected a <strong>non-refundable</strong> rate. You will be charged <strong>${totalCost.toFixed(2)}</strong> immediately on the next step. No refund will be issued for cancellations.
+                    Your request will be <strong>reviewed by the front desk</strong>. You will receive a confirmation email once approved. Full payment is collected at check-in. <strong>No payment required now.</strong>
                   </p>
                 </div>
               )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <button className="res-btn-secondary" onClick={() => setStep(guestType === 'nepali' ? 1 : 2)}>← Back</button>
+                <button className="res-btn-secondary" onClick={() => setStep(guestType === 'nepali' ? 1 : 1)}>← Back</button>
                 <button className="res-btn-primary" disabled={loading} onClick={handleSubmit}>
-                  {loading ? 'Processing...' : guestType === 'nepali' ? 'Continue to PhonePay →' : 'Continue to Card →'}
+                  {loading ? 'Processing...' : guestType === 'nepali' ? 'Continue to PhonePay →' : 'Confirm Booking →'}
                 </button>
               </div>
             </div>
@@ -741,7 +736,7 @@ function ReserveContent() {
                 <PartyPopper size={56} strokeWidth={1.2} />
               </div>
               <h2 style={{ fontFamily: S.cinzel, fontWeight: 600, fontSize: 'clamp(1.5rem, 3vw, 2.2rem)', color: S.navy, marginBottom: '0.75rem' }}>
-                {guestType === 'nepali' ? 'Deposit Verified — Booking Confirmed' : policy === 'non_refundable' ? 'Booking Paid & Confirmed' : 'Reservation Confirmed'}
+                {guestType === 'nepali' ? 'Deposit Verified — Booking Confirmed' : 'Reservation Request Received'}
               </h2>
               <div style={{ width: '6rem', height: '1px', background: S.divider, margin: '1.25rem auto' }} />
               <p style={{ fontFamily: S.cormo, fontStyle: 'italic', color: S.muted, fontSize: '1.1rem', marginBottom: '2.5rem' }}>
@@ -765,9 +760,9 @@ function ReserveContent() {
                   ['Check-In',         new Date(form.checkInDate).toDateString()],
                   ['Check-Out',        new Date(form.checkOutDate).toDateString()],
                   ['Nights',           String(nights)],
-                  ['Rate',             policy === 'non_refundable' ? 'Non-Refundable (10% off)' : 'Flexible'],
+                  ['Rate',             'Standard'],
                   ['Total',            `$${totalCost.toFixed(2)}`],
-                  ['Payment',          policy === 'non_refundable' ? 'Paid in full' : `Card held — $${selectedRoom ? selectedRoom.pricePerNight : 0} (pay balance at checkout)`],
+                  ['Payment',          'Due at check-in — front desk'],
                 ]).map(([k, v]) => (
                   <div key={String(k)} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid hsl(43 72% 55% / 0.1)', paddingBottom: '0.625rem', marginBottom: '0.625rem', gap: '1rem' }}>
                     <span style={{ fontFamily: S.cinzel, fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(245,236,215,0.45)', flexShrink: 0 }}>{k}</span>
@@ -776,11 +771,11 @@ function ReserveContent() {
                 ))}
               </div>
 
-              {guestType === 'foreign' && policy === 'flexible' && (
+              {guestType === 'foreign' && (
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: '0.5rem', marginBottom: '2rem', maxWidth: '28rem', margin: '0 auto 2rem' }}>
                   <CheckCircle2 size={16} color="#22c55e" style={{ flexShrink: 0, marginTop: '2px' }} />
                   <p style={{ fontFamily: S.raleway, fontSize: '0.82rem', color: S.muted, textAlign: 'left' }}>
-                    Your card is held for 1 night — <strong>not charged</strong>. Free cancellation until 48 hours before check-in. The hold is released automatically on normal cancellation.
+                    Your request is <strong>pending review</strong>. The front desk will confirm your booking and send you a confirmation email. Full payment is due at check-in.
                   </p>
                 </div>
               )}
