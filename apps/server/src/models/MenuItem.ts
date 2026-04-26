@@ -12,6 +12,7 @@ export interface IMenuItem extends Document {
   preparationTime: number;
   isVeg: boolean;
   tags: string[];
+  recipe?: mongoose.Types.ObjectId;
 }
 
 const MenuItemSchema = new Schema<IMenuItem>(
@@ -26,9 +27,10 @@ const MenuItemSchema = new Schema<IMenuItem>(
     price: { type: Number, required: true, min: 0 },
     image: { type: String, default: '' },
     isAvailable: { type: Boolean, default: true },
-    preparationTime: { type: Number, default: 20 }, // minutes
+    preparationTime: { type: Number, default: 20 },
     isVeg: { type: Boolean, default: false },
     tags: [{ type: String }],
+    recipe: { type: Schema.Types.ObjectId, ref: 'Recipe', default: null },
   },
   { timestamps: true }
 );

@@ -7,8 +7,8 @@ import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth.middleware';
 import {
   getInventoryStats,
-  executeSell,
   executeConsume,
+  executeConsumeDish,
   executeStocktake,
   getVarianceReport,
   getInventoryAnalytics,
@@ -111,17 +111,6 @@ export async function deleteRecipe(req: AuthRequest, res: Response): Promise<voi
   res.json({ success: true });
 }
 
-// ── Sell ─────────────────────────────────────────────────────────────────────
-
-export async function sell(req: AuthRequest, res: Response): Promise<void> {
-  const { recipeId, servings } = req.body;
-  if (!recipeId || !servings || Number(servings) < 1) {
-    throw new AppError('recipeId and servings (≥1) are required', 400);
-  }
-  await executeSell(recipeId, Number(servings), req.user?._id?.toString());
-  res.json({ success: true, message: `Sold ${servings} serving(s)` });
-}
-
 // ── Consume (staff / owner / wastage / complimentary) ────────────────────────
 
 export const consumeValidation = [
@@ -138,6 +127,26 @@ export async function consume(req: AuthRequest, res: Response): Promise<void> {
   await executeConsume({
     type, ingredientId, qty: Number(qty),
     consumedBy, consumptionReason, guestId, note,
+    userId: req.user?._id?.toString(),
+  });
+  res.json({ success: true, message: `${type.replace('_', ' ')} logged` });
+}
+
+// ── Consume Dish (whole recipe consumed by staff/owner/etc.) ─────────────────
+
+export const consumeDishValidation = [
+  body('type').isIn(['staff_consumption','owner_consumption','wastage','complimentary']),
+  body('recipeId').isMongoId(),
+  body('servings').isFloat({ min: 0.001 }),
+  body('consumedBy').optional().trim(),
+  body('consumptionReason').optional().isIn(['spillage','breakage','expired','other']),
+];
+
+export async function consumeDish(req: AuthRequest, res: Response): Promise<void> {
+  const { type, recipeId, servings, consumedBy, consumptionReason, note } = req.body;
+  await executeConsumeDish({
+    type, recipeId, servings: Number(servings),
+    consumedBy, consumptionReason, note,
     userId: req.user?._id?.toString(),
   });
   res.json({ success: true, message: `${type.replace('_', ' ')} logged` });
@@ -196,7 +205,9 @@ export async function analytics(_req: Request, res: Response): Promise<void> {
 // ── Petty Cash Purchase ───────────────────────────────────────────────────────
 
 export const pettyCashValidation = [
-  body('ingredientId').isMongoId(),
+  body('ingredientId').optional().isMongoId(),
+  body('itemName').optional().trim(),
+  body('expenseCategory').optional().trim(),
   body('qty').isFloat({ min: 0.001 }),
   body('cashAmount').isFloat({ min: 0.01 }),
   body('purchasedBy').trim().notEmpty(),
@@ -206,13 +217,23 @@ export const pettyCashValidation = [
 ];
 
 export async function pettyCashPurchase(req: AuthRequest, res: Response): Promise<void> {
-  const { ingredientId, qty, cashAmount, purchasedBy, vendor, approvedBy, note } = req.body;
+  const { ingredientId, itemName, expenseCategory, qty, cashAmount, purchasedBy, vendor, approvedBy, note } = req.body;
+  if (!ingredientId && !itemName) throw new AppError('Provide either ingredientId or itemName', 400);
   await executePettyCashPurchase({
-    ingredientId, qty: Number(qty), cashAmount: Number(cashAmount),
+    ingredientId, itemName, expenseCategory,
+    qty: Number(qty), cashAmount: Number(cashAmount),
     purchasedBy, vendor, approvedBy, note,
     userId: req.user?._id?.toString(),
   });
-  res.json({ success: true, message: `Petty cash purchase logged: $${cashAmount}` });
+  res.json({ success: true, message: `Petty cash purchase logged: NPR ${cashAmount}` });
+}
+
+// ── Staff list (for dropdowns) ────────────────────────────────────────────────
+
+export async function listStaff(_req: Request, res: Response): Promise<void> {
+  const User = (await import('../models/User')).default;
+  const staff = await User.find({ isActive: true }).select('name role department').sort('name').lean();
+  res.json({ success: true, staff });
 }
 
 // ── Excel Import ─────────────────────────────────────────────────────────────

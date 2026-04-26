@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { getSocket, connectSocket } from '../../lib/socket';
 import type { Order } from '../../store/orderStore';
+import toast from 'react-hot-toast';
 
 function playOrderAlert() {
   try {
@@ -373,6 +374,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (hydrated && (!user || user.type !== 'staff')) router.replace('/login');
   }, [user, router, hydrated]);
+
+  // Join admin socket room and listen for low-stock notifications
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket();
+    connectSocket();
+    const onConnect = () => { socket.emit('join:admin'); };
+    if (socket.connected) {
+      socket.emit('join:admin');
+    } else {
+      socket.on('connect', onConnect);
+    }
+    const onNotification = ({ message }: { message: string }) => {
+      toast(message, {
+        duration: 6000,
+        style: { fontFamily: "'Cinzel', serif", fontSize: '0.75rem', background: 'hsl(38 90% 94%)', color: 'hsl(38 80% 25%)', border: '1px solid hsl(38 80% 70%)', borderRadius: '2px' },
+        icon: '⚠️',
+      });
+    };
+    socket.on('notification:general', onNotification);
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('notification:general', onNotification);
+    };
+  }, [user]);
 
   if (!hydrated) return null;
   if (!user || user.type !== 'staff') return null;

@@ -1,8 +1,10 @@
 import mongoose from 'mongoose';
 import Ingredient, { IIngredient } from '../models/Ingredient';
 import Recipe, { IRecipe } from '../models/Recipe';
+import MenuItem from '../models/MenuItem';
 import StockLog from '../models/StockLog';
 import { AppError } from '../middleware/errorHandler';
+import { emitNotification } from './socket.service';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -247,6 +249,71 @@ export async function executeConsume(opts: {
   }
 }
 
+// ── Execute a recipe-level consumption (whole dish / drink consumed by staff/owner) ─
+
+export async function executeConsumeDish(opts: {
+  type: 'staff_consumption' | 'owner_consumption' | 'wastage' | 'complimentary';
+  recipeId: string;
+  servings: number;
+  consumedBy?: string;
+  consumptionReason?: string;
+  note?: string;
+  userId?: string;
+}): Promise<void> {
+  const { type, recipeId, servings, consumedBy, consumptionReason, note, userId } = opts;
+
+  if (servings <= 0) throw new AppError('servings must be positive', 400);
+
+  const recipe = await Recipe.findById(recipeId).populate('ingredients.ingredient');
+  if (!recipe) throw new AppError('Recipe not found', 404);
+  if (!recipe.isActive) throw new AppError('Recipe is not active', 400);
+
+  // Check stock sufficiency first
+  for (const line of recipe.ingredients as any[]) {
+    const ing = line.ingredient as IIngredient & { _id: mongoose.Types.ObjectId };
+    const needed = parseFloat((line.qtyPerServing * servings).toFixed(4));
+    if (needed > ing.stock) {
+      throw new AppError(
+        `Not enough "${ing.name}". Have ${ing.stock} ${ing.unit}, need ${needed} ${ing.unit}.`,
+        400
+      );
+    }
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const logLines: { ingredient: mongoose.Types.ObjectId; ingredientName: string; unit: string; delta: number }[] = [];
+
+    for (const line of recipe.ingredients as any[]) {
+      const ing = line.ingredient as IIngredient & { _id: mongoose.Types.ObjectId };
+      const delta = parseFloat((line.qtyPerServing * servings).toFixed(4));
+      const newStock = parseFloat((ing.stock - delta).toFixed(4));
+      await Ingredient.findByIdAndUpdate(ing._id, { stock: newStock }, { session });
+      logLines.push({ ingredient: ing._id, ingredientName: ing.name, unit: ing.unit, delta: -delta });
+    }
+
+    await StockLog.create([{
+      type,
+      performedBy: userId ? new mongoose.Types.ObjectId(userId) : undefined,
+      recipe: recipe._id,
+      recipeName: recipe.name,
+      servingsConsumed: servings,
+      lines: logLines,
+      consumedBy: consumedBy || undefined,
+      consumptionReason: consumptionReason || undefined,
+      note: note || `${type.replace('_', ' ')}: ${servings} × ${recipe.name}${consumedBy ? ` by ${consumedBy}` : ''}`,
+    }], { session });
+
+    await session.commitTransaction();
+  } catch (err) {
+    await session.abortTransaction();
+    throw err;
+  } finally {
+    session.endSession();
+  }
+}
+
 // ── Execute a stocktake (physical count → reconcile variance) ────────────────
 
 export async function executeStocktake(
@@ -394,7 +461,7 @@ export async function getInventoryAnalytics(): Promise<{
     totalCash: number;
     count: number;
     byCategory: { category: string; totalCash: number; count: number }[];
-    recent: { date: string; ingredientName: string; cashAmount: number; purchasedBy: string; vendor?: string }[];
+    recent: { date: string; itemName: string; cashAmount: number; purchasedBy: string; vendor?: string; expenseCategory?: string }[];
   };
 
   // Sold vs consumed trend — last 30 days, grouped by day
@@ -496,9 +563,13 @@ export async function getInventoryAnalytics(): Promise<{
   // Group by ingredient category
   const pettyCatMap: Record<string, { totalCash: number; count: number }> = {};
   for (const log of pettyCashLogs) {
-    const ingId = log.lines[0]?.ingredient ? String(log.lines[0].ingredient) : '';
-    const ing = ingredientMap.get(ingId);
-    const cat = ing?.category ?? 'general';
+    let cat: string;
+    if ((log as any).expenseCategory) {
+      cat = (log as any).expenseCategory;
+    } else {
+      const ingId = log.lines[0]?.ingredient ? String(log.lines[0].ingredient) : '';
+      cat = ingredientMap.get(ingId)?.category ?? 'general';
+    }
     if (!pettyCatMap[cat]) pettyCatMap[cat] = { totalCash: 0, count: 0 };
     pettyCatMap[cat].totalCash = parseFloat((pettyCatMap[cat].totalCash + ((log as any).cashAmount || 0)).toFixed(2));
     pettyCatMap[cat].count++;
@@ -507,13 +578,14 @@ export async function getInventoryAnalytics(): Promise<{
 
   const recentPetty = pettyCashLogs
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 10)
+    .slice(0, 20)
     .map(l => ({
       date: new Date(l.createdAt).toISOString().split('T')[0],
-      ingredientName: l.lines[0]?.ingredientName ?? '',
+      itemName: (l as any).itemName || l.lines[0]?.ingredientName || '',
       cashAmount: (l as any).cashAmount || 0,
       purchasedBy: (l as any).purchasedBy || '',
       vendor: (l as any).vendor,
+      expenseCategory: (l as any).expenseCategory || (l.lines[0]?.ingredient ? 'ingredient' : 'general'),
     }));
 
   const operationalExpenses = {
@@ -537,9 +609,14 @@ export async function getInventoryAnalytics(): Promise<{
 }
 
 // ── Petty cash purchase (restock item paid from front-desk cash) ─────────────
+// Supports two modes:
+//   ingredient mode: ingredientId provided → deducts stock, logs with ingredient line
+//   custom mode:     itemName + expenseCategory provided → no stock change, expense-only log
 
 export async function executePettyCashPurchase(opts: {
-  ingredientId: string;
+  ingredientId?: string;
+  itemName?: string;
+  expenseCategory?: string;
   qty: number;
   cashAmount: number;
   purchasedBy: string;
@@ -548,37 +625,56 @@ export async function executePettyCashPurchase(opts: {
   approvedBy?: string;
   note?: string;
 }): Promise<void> {
-  const { ingredientId, qty, cashAmount, purchasedBy, vendor, userId, approvedBy, note } = opts;
+  const { ingredientId, itemName, expenseCategory, qty, cashAmount, purchasedBy, vendor, userId, approvedBy, note } = opts;
 
-  const ingredient = await Ingredient.findById(ingredientId);
-  if (!ingredient) throw new AppError('Ingredient not found', 404);
-  if (!ingredient.isActive) throw new AppError('Ingredient is inactive', 400);
+  if (!ingredientId && !itemName) throw new AppError('Provide either ingredientId or itemName', 400);
   if (qty <= 0) throw new AppError('qty must be positive', 400);
   if (cashAmount <= 0) throw new AppError('cashAmount must be positive', 400);
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
-    const newStock = parseFloat((ingredient.stock + qty).toFixed(4));
-    await Ingredient.findByIdAndUpdate(ingredient._id, { stock: newStock }, { session });
+  if (ingredientId) {
+    // Ingredient mode — restock the ingredient
+    const ingredient = await Ingredient.findById(ingredientId);
+    if (!ingredient) throw new AppError('Ingredient not found', 404);
+    if (!ingredient.isActive) throw new AppError('Ingredient is inactive', 400);
 
-    await StockLog.create([{
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const newStock = parseFloat((ingredient.stock + qty).toFixed(4));
+      await Ingredient.findByIdAndUpdate(ingredient._id, { stock: newStock }, { session });
+
+      await StockLog.create([{
+        type: 'petty_cash_purchase',
+        performedBy: userId ? new mongoose.Types.ObjectId(userId) : undefined,
+        approvedBy: approvedBy ? new mongoose.Types.ObjectId(approvedBy) : undefined,
+        lines: [{ ingredient: ingredient._id, ingredientName: ingredient.name, unit: ingredient.unit, delta: qty }],
+        cashAmount,
+        purchasedBy,
+        vendor: vendor || undefined,
+        note: note || `Petty cash: ${qty} ${ingredient.unit} of ${ingredient.name} — NPR ${cashAmount}${vendor ? ` from ${vendor}` : ''} by ${purchasedBy}`,
+      }], { session });
+
+      await session.commitTransaction();
+    } catch (err) {
+      await session.abortTransaction();
+      throw err;
+    } finally {
+      session.endSession();
+    }
+  } else {
+    // Custom item mode — expense-only, no stock change
+    await StockLog.create({
       type: 'petty_cash_purchase',
       performedBy: userId ? new mongoose.Types.ObjectId(userId) : undefined,
       approvedBy: approvedBy ? new mongoose.Types.ObjectId(approvedBy) : undefined,
-      lines: [{ ingredient: ingredient._id, ingredientName: ingredient.name, unit: ingredient.unit, delta: qty }],
+      lines: [],
       cashAmount,
       purchasedBy,
       vendor: vendor || undefined,
-      note: note || `Petty cash purchase: ${qty} ${ingredient.unit} of ${ingredient.name} for $${cashAmount}${vendor ? ` from ${vendor}` : ''} by ${purchasedBy}`,
-    }], { session });
-
-    await session.commitTransaction();
-  } catch (err) {
-    await session.abortTransaction();
-    throw err;
-  } finally {
-    session.endSession();
+      itemName,
+      expenseCategory: expenseCategory || 'general',
+      note: note || `Petty cash: ${itemName} — NPR ${cashAmount}${vendor ? ` from ${vendor}` : ''} by ${purchasedBy}`,
+    });
   }
 }
 
@@ -674,4 +770,65 @@ export async function parseExcelImport(
   });
 
   return { ingredientsCount, recipesCount, errors };
+}
+
+// ── Auto-deduct ingredients when an order is placed ──────────────────────────
+// Called from order controller after Order.create(). Best-effort: never throws.
+// For each order line: load MenuItem → find its linked Recipe → deduct
+// qty × qtyPerServing for every ingredient in that recipe.
+
+export async function deductForOrder(
+  items: { menuItem: mongoose.Types.ObjectId | string; quantity: number }[]
+): Promise<void> {
+  for (const line of items) {
+    const menuItem = await MenuItem.findById(line.menuItem).lean();
+    if (!menuItem?.recipe) continue;
+
+    const recipe = await Recipe.findById(menuItem.recipe)
+      .populate('ingredients.ingredient')
+      .lean();
+    if (!recipe || !recipe.isActive) continue;
+
+    const logLines: { ingredient: mongoose.Types.ObjectId; ingredientName: string; unit: string; delta: number }[] = [];
+
+    for (const ing of recipe.ingredients as any[]) {
+      const ingredient = ing.ingredient as IIngredient & { _id: mongoose.Types.ObjectId };
+      if (!ingredient?._id) continue;
+
+      const deduct = parseFloat((ing.qtyPerServing * line.quantity).toFixed(4));
+      if (deduct <= 0) continue;
+
+      const newStock = parseFloat((Math.max(0, ingredient.stock - deduct)).toFixed(4));
+      await Ingredient.findByIdAndUpdate(ingredient._id, { stock: newStock });
+
+      logLines.push({
+        ingredient: ingredient._id,
+        ingredientName: ingredient.name,
+        unit: ingredient.unit,
+        delta: -deduct,
+      });
+    }
+
+    if (logLines.length) {
+      await StockLog.create({
+        type: 'sale',
+        recipe: recipe._id,
+        recipeName: recipe.name,
+        servingsConsumed: line.quantity,
+        lines: logLines,
+        note: `Order deduction: ${line.quantity} × ${recipe.name}`,
+      });
+
+      // Warn admin room about any ingredient that hit low/out after deduction
+      for (const ing of recipe.ingredients as any[]) {
+        const updated = await Ingredient.findById(ing.ingredient._id).lean();
+        if (!updated) continue;
+        if (updated.stock === 0) {
+          emitNotification('admin', `⚠️ OUT OF STOCK: ${updated.name} — please restock`);
+        } else if (updated.stock <= updated.lowStockThreshold) {
+          emitNotification('admin', `⚠️ Low stock: ${updated.name} — ${updated.stock} ${updated.unit} remaining`);
+        }
+      }
+    }
+  }
 }

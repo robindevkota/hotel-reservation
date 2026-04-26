@@ -7,6 +7,7 @@ import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { addLineItem } from '../services/billing.service';
 import { emitOrderUpdate, emitNewOrder, emitOrderAssigned } from '../services/socket.service';
+import { deductForOrder } from '../services/inventory.service';
 
 export const orderValidation = [
   body('items').isArray({ min: 1 }),
@@ -186,6 +187,10 @@ export async function updateOrderStatus(req: AuthRequest, res: Response): Promis
   if (status === 'preparing') order.preparedAt = now;
   if (status === 'delivered') {
     order.deliveredAt = now;
+
+    // Deduct ingredients from inventory — order is confirmed consumed at delivery
+    deductForOrder(order.items.map(i => ({ menuItem: i.menuItem, quantity: i.quantity }))).catch(() => {});
+
     if (order.orderPaymentMethod === 'cash') {
       // Cash paid at point of service — skip bill line item
       order.addedToBill = true;

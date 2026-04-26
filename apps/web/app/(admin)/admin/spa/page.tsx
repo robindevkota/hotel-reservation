@@ -7,8 +7,9 @@ import {
   Calendar, Clock, Users, Plus, Edit2, Trash2, X,
   ChevronLeft, ChevronRight, UserCheck, CheckCircle, AlertTriangle,
   Sparkles, Coffee, RefreshCw, TrendingUp,
-  Activity, Zap,
+  Activity, Zap, Printer,
 } from 'lucide-react';
+import { printReceipt } from '../../../../lib/printReceipt';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -760,6 +761,25 @@ export default function AdminSpaPage() {
             onStatus={(s: string) => doStatus(selectedBooking._id, s)}
             onComplete={(method: 'room_bill' | 'cash') => doComplete(selectedBooking._id, method)}
             onClose={() => setSelectedBooking(null)}
+            onPrint={() => {
+              const b = selectedBooking;
+              const nat = bookingNationality(b);
+              printReceipt({
+                type: 'spa',
+                bookingId: b._id,
+                completedAt: b.actualEnd ? new Date().toISOString() : new Date().toISOString(),
+                customer: b.guest?.name || b.walkInCustomer?.name || 'Guest',
+                isWalkIn: !!b.walkInCustomer,
+                service: b.service?.name || '',
+                therapist: b.therapist?.name || '—',
+                scheduledStart: b.scheduledStart,
+                scheduledEnd: b.scheduledEnd,
+                duration: b.durationSnapshot || b.service?.duration || 0,
+                paymentMethod: b.spaPaymentMethod || 'room_bill',
+                price: b.price,
+                priceFormatted: fmtPrice(b.price, nat, exchangeRate),
+              });
+            }}
           />
         </Modal>
       )}
@@ -800,7 +820,7 @@ export default function AdminSpaPage() {
 
 // ── Booking Detail Modal ──────────────────────────────────────────────────────
 
-function BookingDetailModal({ booking: b, exchangeRate, onArrive, onStatus, onComplete }: any) {
+function BookingDetailModal({ booking: b, exchangeRate, onArrive, onStatus, onComplete, onPrint }: any) {
   const sc = STATUS_COLORS[b.status] || STATUS_COLORS.pending;
   return (
     <div>
@@ -848,6 +868,9 @@ function BookingDetailModal({ booking: b, exchangeRate, onArrive, onStatus, onCo
         )}
         {['pending','confirmed','arrived'].includes(b.status) && (
           <Btn variant="danger" onClick={() => onStatus('cancelled')}><X size={13} /> Cancel</Btn>
+        )}
+        {b.status === 'completed' && (
+          <Btn variant="ghost" onClick={onPrint}><Printer size={13} /> Print Receipt</Btn>
         )}
       </div>
     </div>

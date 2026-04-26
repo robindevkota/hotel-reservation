@@ -165,10 +165,6 @@ export default function InventoryPage() {
   const [recLines, setRecLines]   = useState<{ ingredient: string; qtyPerServing: string }[]>([{ ingredient:'', qtyPerServing:'' }]);
   const [recSaving, setRecSaving] = useState(false);
 
-  // Sell modal
-  const [sellModal, setSellModal] = useState<Recipe | null>(null);
-  const [sellQty, setSellQty]     = useState('1');
-  const [sellSaving, setSellSaving] = useState(false);
 
   // Import modal
   const [importModal, setImportModal]     = useState(false);
@@ -182,10 +178,13 @@ export default function InventoryPage() {
 
   // Consume modal
   const [consumeModal, setConsumeModal] = useState(false);
+  const [consumeMode, setConsumeMode]   = useState<'ingredient' | 'dish'>('dish');
   const [consumeForm, setConsumeForm]   = useState({
     type: 'staff_consumption',
     ingredientId: '',
+    recipeId: '',
     qty: '',
+    servings: '1',
     consumedBy: '',
     consumptionReason: '',
     guestId: '',
@@ -200,12 +199,20 @@ export default function InventoryPage() {
 
   // Petty cash modal
   const [pettyCashModal, setPettyCashModal] = useState(false);
-  const [pettyCashForm, setPettyCashForm] = useState({ ingredientId: '', qty: '', cashAmount: '', purchasedBy: '', vendor: '', note: '' });
+  const [pettyCashItemMode, setPettyCashItemMode] = useState<'ingredient' | 'custom'>('custom');
+  const [pettyCashForm, setPettyCashForm] = useState({ ingredientId: '', itemName: '', expenseCategory: 'general', qty: '', cashAmount: '', purchasedBy: '', vendor: '', note: '' });
   const [pettyCashSaving, setPettyCashSaving] = useState(false);
-  interface PettyCashEntry { date: string; ingredientName: string; cashAmount: number; purchasedBy: string; vendor?: string }
+  interface PettyCashEntry { date: string; itemName: string; cashAmount: number; purchasedBy: string; vendor?: string; expenseCategory?: string }
   interface ExpensesData { totalCash: number; count: number; byCategory: { category: string; totalCash: number; count: number }[]; recent: PettyCashEntry[] }
   const [expensesData, setExpensesData] = useState<ExpensesData | null>(null);
   const [expensesLoading, setExpensesLoading] = useState(false);
+
+  // Staff list for dropdowns
+  interface StaffMember { _id: string; name: string; role: string; department: string | null }
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const fetchStaff = () => {
+    api.get('/inventory/staff').then(({ data }) => setStaff(data.staff || [])).catch(() => {});
+  };
 
   // ── Fetchers ────────────────────────────────────────────────────────────────
 
@@ -340,16 +347,6 @@ export default function InventoryPage() {
     await api.delete(`/inventory/recipes/${id}`);
     toast.success('Recipe removed'); setDeleteRecConfirm(null); fetchRecipes(); fetchStats();
   };
-  const doSell = async () => {
-    if (!sellQty || Number(sellQty) < 1) { toast.error('Enter valid quantity'); return; }
-    setSellSaving(true);
-    try {
-      await api.post('/inventory/sell', { recipeId: sellModal!._id, servings: Number(sellQty) });
-      toast.success(`Sold ${sellQty} × ${sellModal!.name}`);
-      setSellModal(null); setSellQty('1'); fetchIngredients(); fetchStats(); fetchRecipes();
-    } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
-    finally { setSellSaving(false); }
-  };
 
   // ── Import handler ────────────────────────────────────────────────────────────
 
@@ -369,25 +366,41 @@ export default function InventoryPage() {
   // ── Consume handler ───────────────────────────────────────────────────────────
 
   const openConsumeModal = () => {
-    setConsumeForm({ type:'staff_consumption', ingredientId:'', qty:'', consumedBy:'', consumptionReason:'', guestId:'', note:'' });
+    setConsumeMode('dish');
+    setConsumeForm({ type:'staff_consumption', ingredientId:'', recipeId:'', qty:'', servings:'1', consumedBy:'', consumptionReason:'', guestId:'', note:'' });
+    if (recipes.length === 0) fetchRecipes();
     setConsumeModal(true);
   };
   const doConsume = async () => {
-    if (!consumeForm.ingredientId) { toast.error('Select an ingredient'); return; }
-    if (!consumeForm.qty || Number(consumeForm.qty) <= 0) { toast.error('Enter a valid quantity'); return; }
     setConsumeSaving(true);
-    const payload: any = {
-      type: consumeForm.type,
-      ingredientId: consumeForm.ingredientId,
-      qty: Number(consumeForm.qty),
-    };
-    if (consumeForm.consumedBy) payload.consumedBy = consumeForm.consumedBy;
-    if (consumeForm.consumptionReason) payload.consumptionReason = consumeForm.consumptionReason;
-    if (consumeForm.guestId) payload.guestId = consumeForm.guestId;
-    if (consumeForm.note) payload.note = consumeForm.note;
     try {
-      await api.post('/inventory/consume', payload);
-      toast.success('Consumption logged');
+      if (consumeMode === 'dish') {
+        if (!consumeForm.recipeId) { toast.error('Select a dish or drink'); setConsumeSaving(false); return; }
+        if (!consumeForm.servings || Number(consumeForm.servings) <= 0) { toast.error('Enter a valid number of servings'); setConsumeSaving(false); return; }
+        const payload: any = {
+          type: consumeForm.type,
+          recipeId: consumeForm.recipeId,
+          servings: Number(consumeForm.servings),
+        };
+        if (consumeForm.consumedBy) payload.consumedBy = consumeForm.consumedBy;
+        if (consumeForm.consumptionReason) payload.consumptionReason = consumeForm.consumptionReason;
+        if (consumeForm.note) payload.note = consumeForm.note;
+        await api.post('/inventory/consume-dish', payload);
+      } else {
+        if (!consumeForm.ingredientId) { toast.error('Select an ingredient'); setConsumeSaving(false); return; }
+        if (!consumeForm.qty || Number(consumeForm.qty) <= 0) { toast.error('Enter a valid quantity'); setConsumeSaving(false); return; }
+        const payload: any = {
+          type: consumeForm.type,
+          ingredientId: consumeForm.ingredientId,
+          qty: Number(consumeForm.qty),
+        };
+        if (consumeForm.consumedBy) payload.consumedBy = consumeForm.consumedBy;
+        if (consumeForm.consumptionReason) payload.consumptionReason = consumeForm.consumptionReason;
+        if (consumeForm.guestId) payload.guestId = consumeForm.guestId;
+        if (consumeForm.note) payload.note = consumeForm.note;
+        await api.post('/inventory/consume', payload);
+      }
+      toast.success('Usage recorded');
       setConsumeModal(false); fetchIngredients(); fetchStats();
     } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
     finally { setConsumeSaving(false); }
@@ -396,24 +409,33 @@ export default function InventoryPage() {
   // ── Petty cash handler ────────────────────────────────────────────────────────
 
   const openPettyCashModal = () => {
-    setPettyCashForm({ ingredientId: '', qty: '', cashAmount: '', purchasedBy: '', vendor: '', note: '' });
+    setPettyCashItemMode('custom');
+    setPettyCashForm({ ingredientId: '', itemName: '', expenseCategory: 'general', qty: '', cashAmount: '', purchasedBy: '', vendor: '', note: '' });
+    if (staff.length === 0) fetchStaff();
     setPettyCashModal(true);
   };
   const doPettyCash = async () => {
-    if (!pettyCashForm.ingredientId) { toast.error('Select an item'); return; }
+    if (pettyCashItemMode === 'ingredient' && !pettyCashForm.ingredientId) { toast.error('Select an ingredient'); return; }
+    if (pettyCashItemMode === 'custom' && !pettyCashForm.itemName.trim()) { toast.error('Enter item name'); return; }
     if (!pettyCashForm.qty || Number(pettyCashForm.qty) <= 0) { toast.error('Enter a valid quantity'); return; }
     if (!pettyCashForm.cashAmount || Number(pettyCashForm.cashAmount) <= 0) { toast.error('Enter cash amount spent'); return; }
-    if (!pettyCashForm.purchasedBy.trim()) { toast.error('Enter who made the purchase'); return; }
+    if (!pettyCashForm.purchasedBy.trim() || pettyCashForm.purchasedBy === '__other__') { toast.error('Select or enter who made the purchase'); return; }
     setPettyCashSaving(true);
     try {
-      await api.post('/inventory/petty-cash', {
-        ingredientId: pettyCashForm.ingredientId,
+      const payload: any = {
         qty: Number(pettyCashForm.qty),
         cashAmount: Number(pettyCashForm.cashAmount),
         purchasedBy: pettyCashForm.purchasedBy.trim(),
         vendor: pettyCashForm.vendor.trim() || undefined,
         note: pettyCashForm.note.trim() || undefined,
-      });
+      };
+      if (pettyCashItemMode === 'ingredient') {
+        payload.ingredientId = pettyCashForm.ingredientId;
+      } else {
+        payload.itemName = pettyCashForm.itemName.trim();
+        payload.expenseCategory = pettyCashForm.expenseCategory;
+      }
+      await api.post('/inventory/petty-cash', payload);
       toast.success('Expense recorded');
       setPettyCashModal(false);
       fetchExpenses();
@@ -628,9 +650,6 @@ export default function InventoryPage() {
                   </AdminTd>
                   <AdminTd>
                     <div style={{ display: 'flex', gap: '0.4rem' }}>
-                      <button onClick={() => { setSellModal(rec); setSellQty('1'); }} disabled={stat?.servingsPossible === 0} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0.3rem 0.7rem', background: stat?.servingsPossible === 0 ? A.papyrus : 'hsl(43 80% 97%)', color: stat?.servingsPossible === 0 ? A.muted : 'hsl(43 65% 30%)', border: `1px solid ${stat?.servingsPossible === 0 ? A.border : 'hsl(43 65% 70%)'}`, cursor: stat?.servingsPossible === 0 ? 'not-allowed' : 'pointer', fontWeight: 600, opacity: stat?.servingsPossible === 0 ? 0.5 : 1 }}>
-                        <ShoppingCart size={10} strokeWidth={2} /> Sell
-                      </button>
                       <button onClick={() => openEditRec(rec)} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.08em', textTransform: 'uppercase', padding: '0.3rem 0.7rem', background: 'hsl(210 80% 97%)', color: 'hsl(210 70% 35%)', border: '1px solid hsl(210 70% 75%)', cursor: 'pointer', fontWeight: 600 }}>
                         <Edit2 size={10} strokeWidth={2} /> Edit
                       </button>
@@ -907,8 +926,8 @@ export default function InventoryPage() {
                 {/* Summary cards */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '1rem', marginBottom: '2rem' }}>
                   {[
-                    { label: 'Total Spent',     value: `$${expensesData.totalCash.toFixed(2)}`,   color: 'hsl(0 60% 38%)',   bg: 'hsl(0 60% 97%)',   border: 'hsl(0 60% 80%)' },
-                    { label: 'Transactions',    value: expensesData.count,                         color: A.navy,             bg: '#fff',             border: A.border },
+                    { label: 'Total Spent',     value: `NPR ${expensesData.totalCash.toLocaleString()}`,   color: 'hsl(0 60% 38%)',   bg: 'hsl(0 60% 97%)',   border: 'hsl(0 60% 80%)' },
+                    { label: 'Transactions',    value: expensesData.count,                                  color: A.navy,             bg: '#fff',             border: A.border },
                     { label: 'Top Category',    value: expensesData.byCategory.sort((a,b) => b.totalCash - a.totalCash)[0]?.category ?? '—', color: A.navy, bg: A.papyrus, border: A.border },
                   ].map(({ label, value, color, bg, border }) => (
                     <div key={label} style={{ background: bg, border: `1px solid ${border}`, padding: '1.1rem 1.25rem' }}>
@@ -924,7 +943,7 @@ export default function InventoryPage() {
                     {expensesData.byCategory.map(c => (
                       <div key={c.category} style={{ background: '#fff', border: `1px solid ${A.border}`, padding: '0.875rem 1rem' }}>
                         <div style={{ fontFamily: A.cinzel, fontSize: '0.58rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: A.muted, marginBottom: '0.35rem' }}>{c.category}</div>
-                        <div style={{ fontFamily: A.cinzel, fontSize: '1.1rem', fontWeight: 700, color: A.navy }}>${c.totalCash.toFixed(2)}</div>
+                        <div style={{ fontFamily: A.cinzel, fontSize: '1.1rem', fontWeight: 700, color: A.navy }}>NPR {c.totalCash.toLocaleString()}</div>
                         <div style={{ fontFamily: A.raleway, fontSize: '0.72rem', color: A.muted }}>{c.count} purchase{c.count !== 1 ? 's' : ''}</div>
                       </div>
                     ))}
@@ -933,13 +952,14 @@ export default function InventoryPage() {
 
                 {/* Recent purchases table */}
                 <p style={{ fontFamily: A.cinzel, fontSize: '0.68rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: A.navy, marginBottom: '1rem' }}>Recent Purchases</p>
-                <AdminTable headers={['Date', 'Item', 'Cash Spent', 'Purchased By', 'Vendor']} minWidth={600}>
-                  {expensesData.recent.length === 0 && <EmptyRow colSpan={5} message="No expenses logged yet — click Log Expense to add one" />}
+                <AdminTable headers={['Date', 'Item / Purpose', 'Category', 'Cash Spent', 'Taken By', 'Vendor']} minWidth={700}>
+                  {expensesData.recent.length === 0 && <EmptyRow colSpan={6} message="No expenses logged yet — click Log Expense to add one" />}
                   {expensesData.recent.map((e, i) => (
                     <AdminRow key={i}>
                       <AdminTd style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>{e.date}</AdminTd>
-                      <AdminTd><span style={{ fontFamily: A.cinzel, fontSize: '0.82rem', color: A.navy, fontWeight: 600 }}>{e.ingredientName}</span></AdminTd>
-                      <AdminTd><span style={{ fontFamily: A.cinzel, fontWeight: 700, color: 'hsl(0 60% 38%)' }}>${e.cashAmount.toFixed(2)}</span></AdminTd>
+                      <AdminTd><span style={{ fontFamily: A.cinzel, fontSize: '0.82rem', color: A.navy, fontWeight: 600 }}>{e.itemName}</span></AdminTd>
+                      <AdminTd><span style={{ fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: A.muted }}>{e.expenseCategory || 'general'}</span></AdminTd>
+                      <AdminTd><span style={{ fontFamily: A.cinzel, fontWeight: 700, color: 'hsl(0 60% 38%)' }}>NPR {e.cashAmount.toLocaleString()}</span></AdminTd>
                       <AdminTd style={{ fontSize: '0.82rem' }}>{e.purchasedBy}</AdminTd>
                       <AdminTd style={{ fontSize: '0.78rem', color: A.muted }}>{e.vendor || '—'}</AdminTd>
                     </AdminRow>
@@ -963,39 +983,92 @@ export default function InventoryPage() {
         <Modal title="Log Expense" onClose={() => setPettyCashModal(false)}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <p style={{ fontFamily: A.raleway, fontSize: '0.82rem', color: A.muted, margin: 0 }}>
-              Record cash spent from the front desk to purchase hotel or kitchen supplies.
+              Record any cash taken from the till — kitchen supplies, owner personal, staff errand, or any other purpose.
             </p>
-            <div>
-              <FieldLabel>Item Purchased *</FieldLabel>
-              <div style={{ position: 'relative' }}>
-                <select className="inv-input" style={{ ...inputBase, paddingRight: '2rem', appearance: 'none' }}
-                  value={pettyCashForm.ingredientId}
-                  onChange={e => setPettyCashForm({ ...pettyCashForm, ingredientId: e.target.value })}>
-                  <option value="">Select item...</option>
-                  {ingredients.map(ing => (
-                    <option key={ing._id} value={ing._id}>{ing.name} ({ing.category}) — {ing.unit}</option>
-                  ))}
-                </select>
-                <ChevronDown size={14} color={A.muted} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-              </div>
+
+            {/* Item type toggle */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: `1px solid ${A.border}`, overflow: 'hidden' }}>
+              {(['custom', 'ingredient'] as const).map(m => (
+                <button key={m} onClick={() => setPettyCashItemMode(m)}
+                  style={{ fontFamily: A.cinzel, fontSize: '0.62rem', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '0.6rem', border: 'none', cursor: 'pointer', fontWeight: 700,
+                    background: pettyCashItemMode === m ? A.navy : '#fff',
+                    color: pettyCashItemMode === m ? A.gold : A.muted }}>
+                  {m === 'custom' ? 'Any Item / Purpose' : 'Inventory Ingredient'}
+                </button>
+              ))}
             </div>
+
+            {/* Item fields */}
+            {pettyCashItemMode === 'ingredient' ? (
+              <div>
+                <FieldLabel>Ingredient *</FieldLabel>
+                <div style={{ position: 'relative' }}>
+                  <select className="inv-input" style={{ ...inputBase, paddingRight: '2rem', appearance: 'none' }}
+                    value={pettyCashForm.ingredientId}
+                    onChange={e => setPettyCashForm({ ...pettyCashForm, ingredientId: e.target.value })}>
+                    <option value="">Select ingredient...</option>
+                    {ingredients.map(ing => (
+                      <option key={ing._id} value={ing._id}>{ing.name} ({ing.category}) — {ing.unit}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={14} color={A.muted} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <FieldLabel>Item / Purpose *</FieldLabel>
+                  <input className="inv-input" style={inputBase}
+                    value={pettyCashForm.itemName}
+                    onChange={e => setPettyCashForm({ ...pettyCashForm, itemName: e.target.value })}
+                    placeholder="e.g. Taxi fare, Cleaning supplies" />
+                </div>
+                <div>
+                  <FieldLabel>Category</FieldLabel>
+                  <SelectField
+                    value={pettyCashForm.expenseCategory}
+                    onChange={v => setPettyCashForm({ ...pettyCashForm, expenseCategory: v })}
+                    options={['general', 'kitchen', 'bar', 'housekeeping', 'transport', 'maintenance', 'personal', 'other']}
+                  />
+                </div>
+              </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
-                <FieldLabel>Quantity Bought *</FieldLabel>
+                <FieldLabel>Quantity / Units *</FieldLabel>
                 <input className="inv-input" style={inputBase} type="number" min="0.001" step="any"
-                  value={pettyCashForm.qty} onChange={e => setPettyCashForm({ ...pettyCashForm, qty: e.target.value })} placeholder="e.g. 2" />
+                  value={pettyCashForm.qty} onChange={e => setPettyCashForm({ ...pettyCashForm, qty: e.target.value })} placeholder="e.g. 1" />
               </div>
               <div>
-                <FieldLabel>Cash Spent (USD) *</FieldLabel>
-                <input className="inv-input" style={inputBase} type="number" min="0.01" step="0.01"
-                  value={pettyCashForm.cashAmount} onChange={e => setPettyCashForm({ ...pettyCashForm, cashAmount: e.target.value })} placeholder="e.g. 12.50" />
+                <FieldLabel>Cash Spent (NPR) *</FieldLabel>
+                <input className="inv-input" style={inputBase} type="number" min="1" step="1"
+                  value={pettyCashForm.cashAmount} onChange={e => setPettyCashForm({ ...pettyCashForm, cashAmount: e.target.value })} placeholder="e.g. 1500" />
               </div>
             </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
-                <FieldLabel>Purchased By *</FieldLabel>
-                <input className="inv-input" style={inputBase}
-                  value={pettyCashForm.purchasedBy} onChange={e => setPettyCashForm({ ...pettyCashForm, purchasedBy: e.target.value })} placeholder="Staff member name" />
+                <FieldLabel>Taken By *</FieldLabel>
+                <div style={{ position: 'relative' }}>
+                  <select className="inv-input" style={{ ...inputBase, paddingRight: '2rem', appearance: 'none' }}
+                    value={pettyCashForm.purchasedBy}
+                    onChange={e => setPettyCashForm({ ...pettyCashForm, purchasedBy: e.target.value })}>
+                    <option value="">Select person...</option>
+                    {staff.map(s => (
+                      <option key={s._id} value={s.name}>
+                        {s.name}{s.department ? ` (${s.department.replace('_', ' ')})` : s.role === 'super_admin' ? ' (Owner)' : ''}
+                      </option>
+                    ))}
+                    <option value="__other__">Other (type below)</option>
+                  </select>
+                  <ChevronDown size={14} color={A.muted} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                </div>
+                {pettyCashForm.purchasedBy === '__other__' && (
+                  <input className="inv-input" style={{ ...inputBase, marginTop: '0.4rem' }}
+                    onChange={e => setPettyCashForm({ ...pettyCashForm, purchasedBy: e.target.value })}
+                    placeholder="Enter name" autoFocus />
+                )}
               </div>
               <div>
                 <FieldLabel>Vendor / Shop (optional)</FieldLabel>
@@ -1003,6 +1076,7 @@ export default function InventoryPage() {
                   value={pettyCashForm.vendor} onChange={e => setPettyCashForm({ ...pettyCashForm, vendor: e.target.value })} placeholder="e.g. Local Market" />
               </div>
             </div>
+
             <div>
               <FieldLabel>Note (optional)</FieldLabel>
               <input className="inv-input" style={inputBase}
@@ -1098,26 +1172,6 @@ export default function InventoryPage() {
         </Modal>
       )}
 
-      {/* ── Sell Modal ───────────────────────────────────────────────────────── */}
-      {sellModal && (
-        <Modal title={`Sell: ${sellModal.name}`} onClose={() => setSellModal(null)}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <p style={{ fontFamily: A.raleway, fontSize: '0.85rem', color: A.muted }}>{sellModal.servingLabel} · NPR {sellModal.sellingPrice} each</p>
-            <div><FieldLabel>Number of Servings *</FieldLabel><input className="inv-input" style={inputBase} type="number" min="1" value={sellQty} onChange={e => setSellQty(e.target.value)} autoFocus /></div>
-            {sellQty && Number(sellQty) > 0 && (
-              <div style={{ background: A.papyrus, border: `1px solid ${A.border}`, padding: '0.875rem 1rem', display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontFamily: A.raleway, fontSize: '0.82rem', color: A.muted }}>{sellQty} × NPR {sellModal.sellingPrice}</span>
-                <span style={{ fontFamily: A.cinzel, fontWeight: 700, color: A.navy }}>NPR {(Number(sellQty) * sellModal.sellingPrice).toLocaleString()}</span>
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <NavyBtn onClick={() => setSellModal(null)}>Cancel</NavyBtn>
-              <GoldBtn onClick={doSell} disabled={sellSaving}>{sellSaving ? 'Processing...' : 'Confirm Sale'}</GoldBtn>
-            </div>
-          </div>
-        </Modal>
-      )}
-
       {/* ── Import Modal ─────────────────────────────────────────────────────── */}
       {importModal && (
         <Modal title="Import from Excel" onClose={() => setImportModal(false)}>
@@ -1147,6 +1201,22 @@ export default function InventoryPage() {
       {consumeModal && (
         <Modal title="Record Usage" onClose={() => setConsumeModal(false)}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <p style={{ fontFamily: A.raleway, fontSize: '0.82rem', color: A.muted, margin: 0 }}>
+              Log staff/owner meals, wastage, or complimentary items. Ingredients are deducted automatically.
+            </p>
+
+            {/* Mode toggle */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', border: `1px solid ${A.border}`, overflow: 'hidden' }}>
+              {(['dish', 'ingredient'] as const).map(m => (
+                <button key={m} onClick={() => setConsumeMode(m)}
+                  style={{ fontFamily: A.cinzel, fontSize: '0.62rem', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '0.6rem', border: 'none', cursor: 'pointer', fontWeight: 700,
+                    background: consumeMode === m ? A.navy : '#fff',
+                    color: consumeMode === m ? A.gold : A.muted }}>
+                  {m === 'dish' ? 'By Dish / Drink' : 'By Raw Ingredient'}
+                </button>
+              ))}
+            </div>
+
             <div>
               <FieldLabel>Usage Type *</FieldLabel>
               <div style={{ position: 'relative' }}>
@@ -1159,33 +1229,81 @@ export default function InventoryPage() {
                 <ChevronDown size={14} color={A.muted} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
               </div>
             </div>
-            <div>
-              <FieldLabel>Ingredient *</FieldLabel>
-              <div style={{ position: 'relative' }}>
-                <select className="inv-input" style={{ ...inputBase, paddingRight: '2rem', appearance: 'none' }}
-                  value={consumeForm.ingredientId} onChange={e => setConsumeForm({ ...consumeForm, ingredientId: e.target.value })}>
-                  <option value="">Select ingredient...</option>
-                  {ingredients.map(ing => (
-                    <option key={ing._id} value={ing._id}>{ing.name} — {ing.stock} {ing.unit} in stock</option>
-                  ))}
-                </select>
-                <ChevronDown size={14} color={A.muted} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <FieldLabel>Quantity *</FieldLabel>
-                <input className="inv-input" style={inputBase} type="number" min="0.001" step="any"
-                  value={consumeForm.qty} onChange={e => setConsumeForm({ ...consumeForm, qty: e.target.value })} placeholder="e.g. 60" />
-              </div>
-              {(consumeForm.type === 'staff_consumption' || consumeForm.type === 'owner_consumption') && (
+
+            {consumeMode === 'dish' ? (
+              <>
                 <div>
-                  <FieldLabel>Consumed By</FieldLabel>
-                  <input className="inv-input" style={inputBase}
-                    value={consumeForm.consumedBy} onChange={e => setConsumeForm({ ...consumeForm, consumedBy: e.target.value })} placeholder="Name" />
+                  <FieldLabel>Dish / Drink *</FieldLabel>
+                  <div style={{ position: 'relative' }}>
+                    <select className="inv-input" style={{ ...inputBase, paddingRight: '2rem', appearance: 'none' }}
+                      value={consumeForm.recipeId} onChange={e => setConsumeForm({ ...consumeForm, recipeId: e.target.value })}>
+                      <option value="">Select dish or drink...</option>
+                      {recipes.map(r => {
+                        const stat = recipeStats.find(s => s.recipeId === r._id);
+                        return (
+                          <option key={r._id} value={r._id} disabled={stat?.servingsPossible === 0}>
+                            {r.name} ({r.servingLabel}){stat ? ` — ${stat.servingsPossible} serving${stat.servingsPossible !== 1 ? 's' : ''} available` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <ChevronDown size={14} color={A.muted} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                  </div>
                 </div>
-              )}
-            </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <FieldLabel>Servings *</FieldLabel>
+                    <input className="inv-input" style={inputBase} type="number" min="1" step="1"
+                      value={consumeForm.servings} onChange={e => setConsumeForm({ ...consumeForm, servings: e.target.value })} placeholder="e.g. 2" />
+                  </div>
+                  {(consumeForm.type === 'staff_consumption' || consumeForm.type === 'owner_consumption') && (
+                    <div>
+                      <FieldLabel>Consumed By</FieldLabel>
+                      <input className="inv-input" style={inputBase}
+                        value={consumeForm.consumedBy} onChange={e => setConsumeForm({ ...consumeForm, consumedBy: e.target.value })} placeholder="Name" />
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <FieldLabel>Ingredient *</FieldLabel>
+                  <div style={{ position: 'relative' }}>
+                    <select className="inv-input" style={{ ...inputBase, paddingRight: '2rem', appearance: 'none' }}
+                      value={consumeForm.ingredientId} onChange={e => setConsumeForm({ ...consumeForm, ingredientId: e.target.value })}>
+                      <option value="">Select ingredient...</option>
+                      {ingredients.map(ing => (
+                        <option key={ing._id} value={ing._id}>{ing.name} — {ing.stock} {ing.unit} in stock</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} color={A.muted} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div>
+                    <FieldLabel>Quantity *</FieldLabel>
+                    <input className="inv-input" style={inputBase} type="number" min="0.001" step="any"
+                      value={consumeForm.qty} onChange={e => setConsumeForm({ ...consumeForm, qty: e.target.value })} placeholder="e.g. 60" />
+                  </div>
+                  {(consumeForm.type === 'staff_consumption' || consumeForm.type === 'owner_consumption') && (
+                    <div>
+                      <FieldLabel>Consumed By</FieldLabel>
+                      <input className="inv-input" style={inputBase}
+                        value={consumeForm.consumedBy} onChange={e => setConsumeForm({ ...consumeForm, consumedBy: e.target.value })} placeholder="Name" />
+                    </div>
+                  )}
+                </div>
+                {consumeForm.type === 'complimentary' && (
+                  <div>
+                    <FieldLabel>Guest ID (optional)</FieldLabel>
+                    <input className="inv-input" style={inputBase}
+                      value={consumeForm.guestId} onChange={e => setConsumeForm({ ...consumeForm, guestId: e.target.value })} placeholder="MongoDB ObjectId" />
+                  </div>
+                )}
+              </>
+            )}
+
             {consumeForm.type === 'wastage' && (
               <div>
                 <FieldLabel>Wastage Reason</FieldLabel>
@@ -1194,13 +1312,6 @@ export default function InventoryPage() {
                   onChange={v => setConsumeForm({ ...consumeForm, consumptionReason: v })}
                   options={WASTAGE_REASONS}
                 />
-              </div>
-            )}
-            {consumeForm.type === 'complimentary' && (
-              <div>
-                <FieldLabel>Guest ID (optional)</FieldLabel>
-                <input className="inv-input" style={inputBase}
-                  value={consumeForm.guestId} onChange={e => setConsumeForm({ ...consumeForm, guestId: e.target.value })} placeholder="MongoDB ObjectId" />
               </div>
             )}
             <div>

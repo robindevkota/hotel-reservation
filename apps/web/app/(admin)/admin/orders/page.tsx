@@ -4,7 +4,8 @@ import api from '../../../../lib/api';
 import { useOrderStore } from '../../../../store/orderStore';
 import { useKitchenSocket } from '../../../../hooks/useSocket';
 import toast from 'react-hot-toast';
-import { ChefHat, ArrowRight, Plus, X, Banknote, FileText, UserPlus, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChefHat, ArrowRight, Plus, X, Banknote, FileText, UserPlus, Search, ChevronLeft, ChevronRight, Printer } from 'lucide-react';
+import { printReceipt } from '../../../../lib/printReceipt';
 import { A, StatusPill, PageHeader, AdminTable, AdminRow, AdminTd, Spinner, adminTableCss } from '../../_adminStyles';
 
 const DONE_PAGE_SIZE = 15;
@@ -131,6 +132,24 @@ export default function KitchenOrdersPage() {
       setShowNew(false);
     } catch(e:any) { toast.error(e.response?.data?.message || 'Failed'); }
     finally { setSubmitting(false); }
+  };
+
+  const printOrder = (order: any) => {
+    printReceipt({
+      type: 'kitchen',
+      orderId: order._id,
+      placedAt: order.placedAt,
+      customer: order.walkInCustomer ? order.walkInCustomer.name : `Room ${order.room?.roomNumber}`,
+      isWalkIn: !!order.walkInCustomer,
+      paymentMethod: order.orderPaymentMethod,
+      items: (order.items || []).map((it: any) => ({
+        name: it.menuItem?.name ?? 'Item',
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+      })),
+      notes: order.notes,
+      totalAmount: order.totalAmount,
+    });
   };
 
   const advance = async (id: string, cur: string) => {
@@ -265,6 +284,11 @@ export default function KitchenOrdersPage() {
                           {NEXT_LABEL[order.status]} <ArrowRight size={10} strokeWidth={2.5} />
                         </button>
                       )}
+                      {order.status === 'delivered' && (
+                        <button onClick={()=>printOrder(order)} style={{ display:'flex', alignItems:'center', gap:'0.3rem', color:A.navy, border:`1px solid ${A.border}`, background:A.papyrus, fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.35rem 0.75rem', cursor:'pointer' }}>
+                          <Printer size={10} strokeWidth={2} /> Receipt
+                        </button>
+                      )}
                       {['pending','accepted'].includes(order.status) && (
                         <button onClick={()=>{ setCancelTarget(order._id); setCancelReason(''); }} style={{ color:'hsl(0 60% 42%)', border:'1px solid hsl(0 60% 75%)', background:'hsl(0 70% 97%)', fontFamily:A.cinzel, fontSize:'0.72rem', letterSpacing:'0.12em', textTransform:'uppercase', padding:'0.35rem 0.75rem', cursor:'pointer' }}>Cancel</button>
                       )}
@@ -330,7 +354,7 @@ export default function KitchenOrdersPage() {
               </div>
             ) : (
               <>
-                <AdminTable headers={['Order ID','Customer','Items','Total','Payment','Status','Time']} minWidth={700}>
+                <AdminTable headers={['Order ID','Customer','Items','Total','Payment','Status','Time','']} minWidth={750}>
                   {donePageItems.map((o:any) => (
                     <AdminRow key={o._id}>
                       <AdminTd style={{ fontFamily:A.cinzel, fontSize:'0.72rem', color:A.muted }}>#{String(o._id).slice(-6).toUpperCase()}</AdminTd>
@@ -351,6 +375,13 @@ export default function KitchenOrdersPage() {
                       <AdminTd><StatusPill status={o.status} /></AdminTd>
                       <AdminTd style={{ whiteSpace:'nowrap' }}>
                         {new Date(o.placedAt).toLocaleDateString()} {new Date(o.placedAt).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}
+                      </AdminTd>
+                      <AdminTd>
+                        {o.status === 'delivered' && (
+                          <button onClick={()=>printOrder(o)} style={{ display:'flex', alignItems:'center', gap:'0.3rem', color:A.navy, border:`1px solid ${A.border}`, background:A.papyrus, fontFamily:A.cinzel, fontSize:'0.62rem', letterSpacing:'0.1em', textTransform:'uppercase', padding:'0.3rem 0.6rem', cursor:'pointer', whiteSpace:'nowrap' }}>
+                            <Printer size={9} strokeWidth={2} /> Receipt
+                          </button>
+                        )}
                       </AdminTd>
                     </AdminRow>
                   ))}

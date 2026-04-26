@@ -31,10 +31,12 @@ export interface IStockLog extends Document {
   consumptionReason?: string; // wastage: 'spillage' | 'breakage' | 'expired' | 'other'
   guestId?: mongoose.Types.ObjectId; // complimentary — optional guest link
   variance?: number;          // stocktake: expected − actual (negative = deficit)
-  cashAmount?: number;        // petty_cash_purchase: USD spent from front-desk cash
+  cashAmount?: number;        // petty_cash_purchase: NPR spent from front-desk cash
   purchasedBy?: string;       // petty_cash_purchase: staff member who made the purchase
   vendor?: string;            // petty_cash_purchase: where the item was bought
   approvedBy?: mongoose.Types.ObjectId; // petty_cash_purchase: admin who authorised
+  itemName?: string;          // petty_cash_purchase: free-text item name (when no ingredientId)
+  expenseCategory?: string;   // petty_cash_purchase: category for non-ingredient expenses
   createdAt: Date;
 }
 
@@ -66,6 +68,8 @@ const StockLogSchema = new Schema<IStockLog>(
     purchasedBy:        { type: String },
     vendor:             { type: String },
     approvedBy:         { type: Schema.Types.ObjectId, ref: 'User' },
+    itemName:           { type: String },
+    expenseCategory:    { type: String },
   },
   { timestamps: true }
 );

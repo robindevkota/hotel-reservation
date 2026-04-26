@@ -4,6 +4,7 @@ import { connectDB } from './config/db';
 import Room from './models/Room';
 import RoomCategory from './models/RoomCategory';
 import MenuItem from './models/MenuItem';
+import Recipe from './models/Recipe';
 import SpaService from './models/SpaService';
 import SpaTherapist from './models/SpaTherapist';
 import SpaBooking from './models/SpaBooking';
@@ -37,15 +38,23 @@ const FOOD_IMAGES = {
   snacks:    'https://images.unsplash.com/photo-1599490659213-e2b9527bd087?w=600',
   beverages: 'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=600',
   desserts:  'https://images.unsplash.com/photo-1551024601-bec78aea704b?w=600',
+  soup:      'https://images.unsplash.com/photo-1547592166-23ac45744acd?w=600',
+  salad:     'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600',
+  sandwich:  'https://images.unsplash.com/photo-1528736235302-52922df5c122?w=600',
+  maincourse:'https://images.unsplash.com/photo-1574484284002-952d92456975?w=600',
+  bar:       'https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=600',
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 function rnd(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+let _refCounter = 0;
 function bookingRef() {
   const d = new Date().toISOString().slice(0,10).replace(/-/g,'');
-  return `RS-${d}-${Math.random().toString(36).substring(2,6).toUpperCase()}`;
+  const seq = String(++_refCounter).padStart(4, '0');
+  const rand = Math.random().toString(36).substring(2,5).toUpperCase();
+  return `RS-${d}-${seq}-${rand}`;
 }
 function addMin(hhmm: string, mins: number) {
   const [h,m] = hhmm.split(':').map(Number);
@@ -180,6 +189,7 @@ async function seed() {
     Room.deleteMany({}),
     RoomCategory.deleteMany({}),
     MenuItem.deleteMany({}),
+    Recipe.deleteMany({}),
     SpaService.deleteMany({}),
     SpaTherapist.deleteMany({}),
     SpaBooking.deleteMany({}),
@@ -247,25 +257,145 @@ async function seed() {
   }));
   console.log(`✅ ${rooms.length} rooms seeded`);
 
-  // ─── MENU ITEMS ───────────────────────────────────────────────────────────
+  // ─── MENU ITEMS (extracted from actual restaurant menu photos) ─────────────
+  // Prices converted from NPR at rate 1 NPR = 0.00663 USD (live rate 2026-04-26)
   const menuItems = await MenuItem.insertMany([
-    { name:'Egyptian Ful Medames',         description:'Slow-cooked fava beans with olive oil, cumin, lemon.',           category:'breakfast', price:18,  image:FOOD_IMAGES.breakfast, preparationTime:15, isVeg:true,  tags:['traditional','vegan'] },
-    { name:'Royal Breakfast Platter',      description:'Scrambled eggs, smoked salmon, fresh fruit, assorted pastries.', category:'breakfast', price:35,  image:FOOD_IMAGES.breakfast, preparationTime:20, isVeg:false, tags:['premium','bestseller'] },
-    { name:"Pharaoh's Shakshuka",          description:'Poached eggs in spiced tomato and harissa sauce with feta.',      category:'breakfast', price:22,  image:FOOD_IMAGES.breakfast, preparationTime:18, isVeg:true,  tags:['vegetarian','spicy'] },
-    { name:'Grilled Sea Bass Nile Style',  description:'Whole sea bass with Egyptian spices and saffron rice.',           category:'lunch',     price:48,  image:FOOD_IMAGES.lunch,     preparationTime:30, isVeg:false, tags:['seafood','premium'] },
-    { name:'Kofta Royal Platter',          description:'Minced lamb kofta with tahini sauce and tabbouleh.',              category:'lunch',     price:42,  image:FOOD_IMAGES.lunch,     preparationTime:25, isVeg:false, tags:['lamb','traditional'] },
-    { name:'Lentil Soup du Pharaon',       description:'Velvety Egyptian red lentil soup with cumin.',                    category:'lunch',     price:16,  image:FOOD_IMAGES.lunch,     preparationTime:10, isVeg:true,  tags:['vegan','soup'] },
-    { name:"Rack of Lamb — Pharaoh's Cut", description:'Premium rack of lamb with pomegranate jus and truffle mash.',    category:'dinner',    price:95,  image:FOOD_IMAGES.dinner,    preparationTime:45, isVeg:false, tags:['premium','signature'] },
-    { name:'Hamam Mahshi',                 description:'Whole pigeon stuffed with freekeh grain and pine nuts.',          category:'dinner',    price:78,  image:FOOD_IMAGES.dinner,    preparationTime:50, isVeg:false, tags:['signature','traditional'] },
-    { name:'Molokhia with Chicken',        description:'Silky jute leaf stew with slow-cooked chicken.',                 category:'dinner',    price:52,  image:FOOD_IMAGES.dinner,    preparationTime:35, isVeg:false, tags:['traditional','bestseller'] },
-    { name:'Mezze Royal',                  description:'Hummus, baba ghanoush, tzatziki, olives, and warm pita.',        category:'snacks',    price:28,  image:FOOD_IMAGES.snacks,    preparationTime:10, isVeg:true,  tags:['vegetarian','sharing'] },
-    { name:'Truffle Falafel Bites',        description:'Crispy golden falafel with truffle oil and tahini.',              category:'snacks',    price:20,  image:FOOD_IMAGES.snacks,    preparationTime:12, isVeg:true,  tags:['vegan','crispy'] },
-    { name:'Karkade (Hibiscus Elixir)',    description:"Egypt's ancient royal drink, lightly sweetened.",                category:'beverages', price:12,  image:FOOD_IMAGES.beverages, preparationTime:5,  isVeg:true,  tags:['cold','traditional'] },
-    { name:'Saffron Mint Tea',             description:'Premium Egyptian mint tea infused with Kashmiri saffron.',        category:'beverages', price:14,  image:FOOD_IMAGES.beverages, preparationTime:5,  isVeg:true,  tags:['hot','traditional'] },
-    { name:'Royal Gold Cocktail',          description:'Aged whisky, honey, saffron syrup, and fresh lemon.',            category:'beverages', price:22,  image:FOOD_IMAGES.beverages, preparationTime:7,  isVeg:true,  tags:['cocktail','premium'] },
-    { name:'Umm Ali',                      description:"Egypt's beloved warm bread pudding with cream and nuts.",         category:'desserts',  price:24,  image:FOOD_IMAGES.desserts,  preparationTime:20, isVeg:true,  tags:['traditional','warm','bestseller'] },
-    { name:'Konafa Royal',                 description:'Crispy shredded pastry with clotted cream and rose water syrup.', category:'desserts', price:22,  image:FOOD_IMAGES.desserts,  preparationTime:15, isVeg:true,  tags:['traditional','sweet'] },
-    { name:'Gold Leaf Baklava',            description:'Filo pastry with pistachio and 24K gold leaf.',                  category:'desserts',  price:28,  image:FOOD_IMAGES.desserts,  preparationTime:5,  isVeg:true,  tags:['premium','signature'] },
+    // ── BREAKFAST MENU (set meals) ────────────────────────────────────────
+    { name:'American Breakfast',       description:'2 toast with butter/jam/honey, hash brown potatoes with onion & celery, 2 eggs any style (poached/fried/boiled/scrambled/omelette), 2 fried chicken sausages, tang juice, tea/milk/black coffee.', category:'breakfast', price:4.97, image:FOOD_IMAGES.breakfast, preparationTime:20, isVeg:false, tags:['bestseller','set'] },
+    { name:'Healthy Breakfast',        description:'2 toast with butter/jam/honey, hash brown potatoes with onion & celery, 2 eggs any style (poached/fried/boiled/scrambled/omelette), tang juice, tea/milk/black coffee.',                           category:'breakfast', price:3.91, image:FOOD_IMAGES.breakfast, preparationTime:15, isVeg:false, tags:['healthy','set'] },
+    { name:'Mirch Breakfast',          description:'2 roasted green chilly, 2 eggs masala, 3 pcs poori, tang juice, tea/milk/black coffee.',                                                                                                             category:'breakfast', price:3.91, image:FOOD_IMAGES.breakfast, preparationTime:20, isVeg:false, tags:['spicy','nepali','set'] },
+    { name:'Yoghurt Breakfast',        description:'Aloo gobi, chapati or choice of paratha (plain, vegetable, potato), yogurt (plain/sweet), tang juice, tea/milk/black coffee.',                                                                      category:'breakfast', price:4.97, image:FOOD_IMAGES.breakfast, preparationTime:15, isVeg:true,  tags:['vegetarian','set'] },
+    { name:'Sweet Breakfast',          description:'1 Vienna waffle or crepes with sugar powder and topping of your choice (chocolates, fresh fruits, honey), 2 eggs any style, tang juice, tea/milk/black coffee.',                                   category:'breakfast', price:4.97, image:FOOD_IMAGES.breakfast, preparationTime:15, isVeg:true,  tags:['sweet','set'] },
+    { name:'Fruit Breakfast',          description:'Fruit salad, muesli or cornflakes with yogurt or hot/cold milk, tang juice, tea/milk/black coffee.',                                                                                                category:'breakfast', price:3.91, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:true,  tags:['healthy','set'] },
+    // ── BREAKFAST VARIETIES ───────────────────────────────────────────────
+    { name:'Plain Toast with Butter/Jam/Honey',              description:'Plain toast served with butter, jam, or honey.',                                      category:'breakfast', price:0.73, image:FOOD_IMAGES.breakfast, preparationTime:5,  isVeg:true,  tags:[] },
+    { name:'Toast with Eggs',                                description:'Toast with eggs (fried/boiled/scrambled/poached/omelette).',                          category:'breakfast', price:1.82, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:false, tags:[] },
+    { name:'French Toast',                                   description:'Classic French toast.',                                                               category:'breakfast', price:1.59, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:true,  tags:[] },
+    { name:'Grilled Toast with Cheese and Tomato',           description:'Grilled toast topped with cheese and tomato.',                                        category:'breakfast', price:2.06, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:true,  tags:[] },
+    { name:'2 Eggs Any Style',                               description:'2 eggs cooked to your style — fried, boiled, scrambled, poached, or omelette.',      category:'breakfast', price:1.13, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:false, tags:[] },
+    { name:'Nepali Omelette',                                description:'Traditional Nepali style omelette.',                                                  category:'breakfast', price:1.49, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:false, tags:['nepali'] },
+    { name:'Fried Chicken Sausage',                          description:'Pan-fried chicken sausage.',                                                          category:'breakfast', price:2.09, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:false, tags:[] },
+    { name:'Honey Banana Porridge',                          description:'Warm porridge with honey and banana.',                                                category:'breakfast', price:1.82, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:true,  tags:['healthy'] },
+    { name:'Oats with Milk and Fresh Fruits',                description:'Oats with milk and fresh seasonal fruits.',                                           category:'breakfast', price:1.92, image:FOOD_IMAGES.breakfast, preparationTime:5,  isVeg:true,  tags:['healthy'] },
+    { name:'Cornflakes/Muesli with Hot Milk/Cold Milk/Yogurt', description:'Choice of cornflakes or muesli with hot milk, cold milk, or yogurt.',             category:'breakfast', price:1.66, image:FOOD_IMAGES.breakfast, preparationTime:5,  isVeg:true,  tags:['healthy'] },
+    { name:'Fresh Fruit Salad',                              description:'Seasonal fresh fruit salad.',                                                         category:'breakfast', price:1.72, image:FOOD_IMAGES.breakfast, preparationTime:5,  isVeg:true,  tags:['healthy','vegan'] },
+    { name:'Plain/Sweet Yogurt',                             description:'Plain or sweet yogurt.',                                                              category:'breakfast', price:1.26, image:FOOD_IMAGES.breakfast, preparationTime:2,  isVeg:true,  tags:[] },
+    { name:'Vienna Waffle with Chocolate/Honey/Fresh Fruits','description':'Vienna waffle served with chocolate syrup, honey, or fresh fruits.',              category:'breakfast', price:1.82, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:true,  tags:['sweet'] },
+    { name:'Crepes with Chocolate/Honey/Fresh Fruits',       description:'Soft crepes with choice of chocolate syrup, honey, or fresh fruits.',               category:'breakfast', price:1.82, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:true,  tags:['sweet'] },
+    { name:'Pancake with Chocolate/Honey/Maple Syrup',       description:'Fluffy pancakes with choice of chocolate, honey, or maple syrup.',                  category:'breakfast', price:1.82, image:FOOD_IMAGES.breakfast, preparationTime:10, isVeg:true,  tags:['sweet'] },
+    // ── SNACKS ────────────────────────────────────────────────────────────
+    { name:'Chicken Drumsticks',             description:'Crispy fried chicken drumsticks.',                           category:'snacks', price:3.65, image:FOOD_IMAGES.snacks, preparationTime:20, isVeg:false, tags:['chicken'] },
+    { name:'Chicken Satay with Peanut Sauce',description:'Grilled chicken satay served with peanut sauce.',            category:'snacks', price:3.65, image:FOOD_IMAGES.snacks, preparationTime:20, isVeg:false, tags:['chicken','bestseller'] },
+    { name:'Chicken Chilly with Bone/Boneless','description':'Spicy chicken chilly, choice of bone-in or boneless.',  category:'snacks', price:3.65, image:FOOD_IMAGES.snacks, preparationTime:20, isVeg:false, tags:['spicy','chicken'] },
+    { name:'Fried Chicken',                  description:'Classic fried chicken.',                                     category:'snacks', price:3.65, image:FOOD_IMAGES.snacks, preparationTime:20, isVeg:false, tags:['chicken'] },
+    { name:'Chicken Sandeko',                description:'Spiced and tossed chicken sandeko.',                         category:'snacks', price:2.65, image:FOOD_IMAGES.snacks, preparationTime:15, isVeg:false, tags:['nepali','spicy'] },
+    { name:'Chicken Cashewnuts',             description:'Stir-fried chicken with cashew nuts.',                       category:'snacks', price:3.98, image:FOOD_IMAGES.snacks, preparationTime:20, isVeg:false, tags:['chicken'] },
+    { name:'Prawn Chilly',                   description:'Spicy prawn chilly.',                                        category:'snacks', price:5.64, image:FOOD_IMAGES.snacks, preparationTime:20, isVeg:false, tags:['seafood','spicy'] },
+    { name:'Fried Fish',                     description:'Golden fried fish.',                                         category:'snacks', price:2.98, image:FOOD_IMAGES.snacks, preparationTime:20, isVeg:false, tags:['seafood'] },
+    { name:'Fish Fingers',                   description:'Crispy fish fingers.',                                       category:'snacks', price:3.98, image:FOOD_IMAGES.snacks, preparationTime:15, isVeg:false, tags:['seafood'] },
+    { name:'Sukuti Sandeko',                 description:'Dried meat tossed with spices.',                             category:'snacks', price:4.31, image:FOOD_IMAGES.snacks, preparationTime:15, isVeg:false, tags:['nepali'] },
+    { name:'Sausage Boiled or Chilly',       description:'Sausage served boiled or as chilly preparation.',           category:'snacks', price:2.65, image:FOOD_IMAGES.snacks, preparationTime:15, isVeg:false, tags:[] },
+    { name:'French Fries',                   description:'Crispy golden french fries.',                                category:'snacks', price:1.99, image:FOOD_IMAGES.snacks, preparationTime:10, isVeg:true,  tags:['vegan','bestseller'] },
+    { name:'Peanuts Sandeko / Wafers',       description:'Spiced peanuts sandeko or wafers.',                         category:'snacks', price:2.32, image:FOOD_IMAGES.snacks, preparationTime:5,  isVeg:true,  tags:['vegan','nepali'] },
+    { name:'Nepali Hot Garlic Potato',       description:'Garlic-spiced Nepali style potato.',                        category:'snacks', price:2.32, image:FOOD_IMAGES.snacks, preparationTime:15, isVeg:true,  tags:['nepali','vegan'] },
+    { name:'Mustang Aloo',                   description:'Spiced Mustang-style potato.',                               category:'snacks', price:2.65, image:FOOD_IMAGES.snacks, preparationTime:15, isVeg:true,  tags:['nepali','vegan'] },
+    { name:'Vegetable Pakoda',               description:'Crispy mixed vegetable pakoda.',                             category:'snacks', price:2.32, image:FOOD_IMAGES.snacks, preparationTime:15, isVeg:true,  tags:['vegetarian'] },
+    { name:'Cheese Balls',                   description:'Golden fried cheese balls.',                                 category:'snacks', price:2.65, image:FOOD_IMAGES.snacks, preparationTime:15, isVeg:true,  tags:['vegetarian'] },
+    { name:'Paneer Chilly',                  description:'Spicy paneer chilly.',                                       category:'snacks', price:2.65, image:FOOD_IMAGES.snacks, preparationTime:15, isVeg:true,  tags:['vegetarian','spicy'] },
+    { name:'Cashewnuts Plain/Fry',           description:'Plain or fried cashewnuts.',                                 category:'snacks', price:1.99, image:FOOD_IMAGES.snacks, preparationTime:5,  isVeg:true,  tags:['vegan'] },
+    // ── SOUP ─────────────────────────────────────────────────────────────
+    { name:'Chicken Mushroom Soup',          description:'Creamy chicken mushroom soup.',                              category:'lunch',  price:2.65, image:FOOD_IMAGES.soup, preparationTime:15, isVeg:false, tags:['soup'] },
+    { name:'Chicken Noodle Soup',            description:'Classic chicken noodle soup.',                               category:'lunch',  price:2.65, image:FOOD_IMAGES.soup, preparationTime:15, isVeg:false, tags:['soup'] },
+    { name:'Hot & Sour Soup',                description:'Spicy hot and sour soup with chicken or prawn.',             category:'lunch',  price:2.65, image:FOOD_IMAGES.soup, preparationTime:15, isVeg:false, tags:['soup','spicy'] },
+    { name:'Vegetables Soup',                description:'Fresh garden vegetable soup.',                               category:'lunch',  price:1.99, image:FOOD_IMAGES.soup, preparationTime:15, isVeg:true,  tags:['soup','vegan'] },
+    // ── SALADS ────────────────────────────────────────────────────────────
+    { name:'Green Salad',                    description:'Fresh vegetable slices salad.',                              category:'lunch',  price:3.31, image:FOOD_IMAGES.salad, preparationTime:10, isVeg:true,  tags:['salad','vegan','healthy'] },
+    { name:'Greek Salad',                    description:'Lettuce, tomato, cucumber, onion, bell pepper, Yak cheese, olive oil.',      category:'lunch',  price:3.98, image:FOOD_IMAGES.salad, preparationTime:10, isVeg:true,  tags:['salad'] },
+    { name:'Chill-out Salad',                description:'Lettuce, tomato, cucumber, Radicchio, walnut, honey, vinegar, olive oil.',   category:'lunch',  price:3.98, image:FOOD_IMAGES.salad, preparationTime:10, isVeg:true,  tags:['salad'] },
+    { name:'Caesar Salad',                   description:'Grilled chicken, lettuce, Yak cheese, egg, lemon juice, garlic, black pepper.', category:'lunch', price:4.64, image:FOOD_IMAGES.salad, preparationTime:10, isVeg:false, tags:['salad'] },
+    // ── SANDWICH & BURGER ─────────────────────────────────────────────────
+    { name:'Healthy Sandwich',               description:'With cheese, lettuce, cucumber, tomato, boiled egg and mayonnaise.',         category:'lunch',  price:2.98, image:FOOD_IMAGES.sandwich, preparationTime:10, isVeg:false, tags:['sandwich'] },
+    { name:'Delight Sandwich',               description:'Delight sandwich with premium fillings.',                                    category:'lunch',  price:3.65, image:FOOD_IMAGES.sandwich, preparationTime:10, isVeg:false, tags:['sandwich'] },
+    { name:'Club Sandwich',                  description:'Grilled bacon, fried eggs, lettuce, tomato and mayonnaise.',                category:'lunch',  price:3.98, image:FOOD_IMAGES.sandwich, preparationTime:15, isVeg:false, tags:['sandwich','bestseller'] },
+    { name:'Veg Burger',                     description:'Fresh vegetable patty burger.',                                              category:'lunch',  price:2.65, image:FOOD_IMAGES.sandwich, preparationTime:15, isVeg:true,  tags:['burger','vegetarian'] },
+    { name:'Chicken Burger',                 description:'Juicy chicken burger.',                                                      category:'lunch',  price:3.65, image:FOOD_IMAGES.sandwich, preparationTime:15, isVeg:false, tags:['burger','chicken','bestseller'] },
+    // ── MAIN COURSE ───────────────────────────────────────────────────────
+    { name:'Grilled Chicken Wings',          description:'Grilled chicken wings.',                                                     category:'dinner', price:3.98, image:FOOD_IMAGES.maincourse, preparationTime:25, isVeg:false, tags:['chicken','grilled'] },
+    { name:'Grilled Chicken Legs/Breast',    description:'Grilled chicken legs or breast.',                                           category:'dinner', price:3.98, image:FOOD_IMAGES.maincourse, preparationTime:25, isVeg:false, tags:['chicken','grilled'] },
+    { name:'Roasted Chicken Stuffed',        description:'Roasted chicken stuffed with cheese and spinach.',                          category:'dinner', price:3.98, image:FOOD_IMAGES.maincourse, preparationTime:35, isVeg:false, tags:['chicken','roasted'] },
+    { name:'Royal Penguin Chicken',          description:'Special Royal Penguin style chicken.',                                      category:'dinner', price:4.64, image:FOOD_IMAGES.maincourse, preparationTime:30, isVeg:false, tags:['chicken','signature'] },
+    { name:'Chicken Sizzler',                description:'Sizzling chicken platter.',                                                 category:'dinner', price:4.64, image:FOOD_IMAGES.maincourse, preparationTime:25, isVeg:false, tags:['chicken','bestseller'] },
+    { name:'Fried Catfish Fillet',           description:'Golden fried catfish fillet.',                                              category:'dinner', price:5.30, image:FOOD_IMAGES.maincourse, preparationTime:25, isVeg:false, tags:['seafood'] },
+    { name:'Grilled Whole Fish',             description:'Whole grilled fish.',                                                       category:'dinner', price:7.96, image:FOOD_IMAGES.maincourse, preparationTime:30, isVeg:false, tags:['seafood','premium'] },
+    { name:'Spaghetti Bolognese (Chicken)',  description:'Spaghetti with chicken bolognese sauce.',                                   category:'dinner', price:3.98, image:FOOD_IMAGES.maincourse, preparationTime:25, isVeg:false, tags:['pasta','chicken'] },
+    { name:'Spaghetti in Tomato/White Sauce',description:'Spaghetti in tomato or white sauce.',                                      category:'dinner', price:3.98, image:FOOD_IMAGES.maincourse, preparationTime:20, isVeg:true,  tags:['pasta','vegetarian'] },
+    { name:'Spaghetti Carbonara',            description:'Classic spaghetti carbonara.',                                              category:'dinner', price:3.98, image:FOOD_IMAGES.maincourse, preparationTime:20, isVeg:false, tags:['pasta'] },
+    { name:'Spaghetti Shrimp',               description:'Spaghetti with shrimp.',                                                   category:'dinner', price:5.30, image:FOOD_IMAGES.maincourse, preparationTime:25, isVeg:false, tags:['pasta','seafood'] },
+    { name:'Chicken Biryani',                description:'Aromatic chicken biryani.',                                                 category:'dinner', price:3.98, image:FOOD_IMAGES.maincourse, preparationTime:30, isVeg:false, tags:['rice','chicken','bestseller'] },
+    { name:'Chicken Curry',                  description:'Classic chicken curry.',                                                    category:'dinner', price:3.98, image:FOOD_IMAGES.maincourse, preparationTime:25, isVeg:false, tags:['curry','chicken'] },
+    { name:'Mutton Biryani',                 description:'Aromatic mutton biryani.',                                                  category:'dinner', price:5.30, image:FOOD_IMAGES.maincourse, preparationTime:35, isVeg:false, tags:['rice','mutton'] },
+    { name:'Mutton Curry',                   description:'Rich mutton curry.',                                                        category:'dinner', price:5.30, image:FOOD_IMAGES.maincourse, preparationTime:35, isVeg:false, tags:['curry','mutton'] },
+    { name:'Chicken Butter Masala',          description:'Creamy chicken butter masala.',                                             category:'dinner', price:3.98, image:FOOD_IMAGES.maincourse, preparationTime:25, isVeg:false, tags:['curry','chicken','bestseller'] },
+    { name:'Fish Curry',                     description:'Traditional fish curry.',                                                   category:'dinner', price:4.64, image:FOOD_IMAGES.maincourse, preparationTime:25, isVeg:false, tags:['curry','seafood'] },
+    { name:'Paneer Butter Masala',           description:'Creamy paneer butter masala.',                                             category:'dinner', price:3.98, image:FOOD_IMAGES.maincourse, preparationTime:20, isVeg:true,  tags:['curry','vegetarian'] },
+    { name:'Veg Curry',                      description:'Mixed vegetable curry.',                                                    category:'dinner', price:3.31, image:FOOD_IMAGES.maincourse, preparationTime:20, isVeg:true,  tags:['curry','vegan'] },
+    { name:'Plain Rice',                     description:'Steamed plain basmati rice.',                                               category:'dinner', price:1.66, image:FOOD_IMAGES.maincourse, preparationTime:15, isVeg:true,  tags:['rice','vegan'] },
+    { name:'Plain Roti',                     description:'Fresh plain roti.',                                                         category:'dinner', price:0.66, image:FOOD_IMAGES.maincourse, preparationTime:10, isVeg:true,  tags:['bread','vegan'] },
+    { name:'Papad Fry/Dry',                  description:'Crispy papad fried or dry.',                                               category:'dinner', price:1.33, image:FOOD_IMAGES.maincourse, preparationTime:5,  isVeg:true,  tags:['vegan'] },
+    // ── OTHER DISHES ──────────────────────────────────────────────────────
+    { name:'Chicken Momo',                   description:'Steamed chicken dumplings.',                                                category:'dinner', price:3.31, image:FOOD_IMAGES.maincourse, preparationTime:20, isVeg:false, tags:['nepali','bestseller'] },
+    { name:'Veg Momo',                       description:'Steamed vegetable dumplings.',                                             category:'dinner', price:2.65, image:FOOD_IMAGES.maincourse, preparationTime:20, isVeg:true,  tags:['nepali','vegetarian'] },
+    { name:'Chicken Chowmein',               description:'Stir-fried chicken chowmein noodles.',                                    category:'dinner', price:3.31, image:FOOD_IMAGES.maincourse, preparationTime:15, isVeg:false, tags:['nepali','noodles'] },
+    { name:'Shrimp Chowmein',                description:'Stir-fried shrimp chowmein.',                                             category:'dinner', price:4.64, image:FOOD_IMAGES.maincourse, preparationTime:15, isVeg:false, tags:['noodles','seafood'] },
+    { name:'Veg / Egg Chowmein',             description:'Vegetable or egg chowmein noodles.',                                      category:'dinner', price:2.65, image:FOOD_IMAGES.maincourse, preparationTime:15, isVeg:false, tags:['nepali','noodles'] },
+    { name:'Chicken Fried Rice',             description:'Stir-fried chicken fried rice.',                                          category:'dinner', price:3.31, image:FOOD_IMAGES.maincourse, preparationTime:15, isVeg:false, tags:['rice','chicken'] },
+    { name:'Shrimp Fried Rice',              description:'Stir-fried shrimp fried rice.',                                           category:'dinner', price:4.64, image:FOOD_IMAGES.maincourse, preparationTime:15, isVeg:false, tags:['rice','seafood'] },
+    { name:'Mixed Fried Rice',               description:'Mixed fried rice with assorted toppings.',                                category:'dinner', price:5.30, image:FOOD_IMAGES.maincourse, preparationTime:15, isVeg:false, tags:['rice'] },
+    { name:'Veg / Egg Fried Rice',           description:'Vegetable or egg fried rice.',                                            category:'dinner', price:3.31, image:FOOD_IMAGES.maincourse, preparationTime:15, isVeg:false, tags:['rice','vegetarian'] },
+    { name:'Chicken Thukpa',                 description:'Nepali chicken noodle soup.',                                             category:'dinner', price:3.31, image:FOOD_IMAGES.maincourse, preparationTime:20, isVeg:false, tags:['nepali','soup'] },
+    { name:'Shrimp Thukpa',                  description:'Nepali shrimp noodle soup.',                                              category:'dinner', price:4.64, image:FOOD_IMAGES.maincourse, preparationTime:20, isVeg:false, tags:['nepali','soup','seafood'] },
+    { name:'Mixed Thukpa',                   description:'Mixed Nepali noodle soup.',                                               category:'dinner', price:5.30, image:FOOD_IMAGES.maincourse, preparationTime:20, isVeg:false, tags:['nepali','soup'] },
+    { name:'Veg / Egg Thukpa',               description:'Vegetable or egg Nepali noodle soup.',                                   category:'dinner', price:3.31, image:FOOD_IMAGES.maincourse, preparationTime:20, isVeg:false, tags:['nepali','soup','vegetarian'] },
+    // ── SOFT DRINKS & COFFEE ──────────────────────────────────────────────
+    { name:'Real Juice (Mixed Fruit)',        description:'Real mixed fruit juice.',                                                category:'beverages', price:3.15, image:FOOD_IMAGES.beverages, preparationTime:2, isVeg:true, tags:['juice','cold'] },
+    { name:'Real Juice (Orange)',             description:'Real orange juice.',                                                     category:'beverages', price:3.12, image:FOOD_IMAGES.beverages, preparationTime:2, isVeg:true, tags:['juice','cold'] },
+    { name:'Real Juice (Mango)',              description:'Real mango juice.',                                                      category:'beverages', price:3.15, image:FOOD_IMAGES.beverages, preparationTime:2, isVeg:true, tags:['juice','cold'] },
+    { name:'Real Juice (Apple)',              description:'Real apple juice.',                                                      category:'beverages', price:3.15, image:FOOD_IMAGES.beverages, preparationTime:2, isVeg:true, tags:['juice','cold'] },
+    { name:'Real Juice (Cranberry)',          description:'Real cranberry juice.',                                                  category:'beverages', price:0.99, image:FOOD_IMAGES.beverages, preparationTime:2, isVeg:true, tags:['juice','cold'] },
+    { name:'Coke/Fanta/Sprite',               description:'Chilled Coke, Fanta, or Sprite.',                                      category:'beverages', price:0.99, image:FOOD_IMAGES.beverages, preparationTime:2, isVeg:true, tags:['cold','soda'] },
+    { name:'Water',                           description:'Mineral water.',                                                        category:'beverages', price:0.33, image:FOOD_IMAGES.beverages, preparationTime:2, isVeg:true, tags:['cold'] },
+    { name:'Americano',                       description:'Classic Americano coffee.',                                             category:'beverages', price:1.06, image:FOOD_IMAGES.bar, preparationTime:5, isVeg:true, tags:['coffee','hot'] },
+    { name:'Espresso',                        description:'Short and strong espresso shot.',                                       category:'beverages', price:0.93, image:FOOD_IMAGES.bar, preparationTime:5, isVeg:true, tags:['coffee','hot'] },
+    { name:'Cappuccino',                      description:'Creamy cappuccino.',                                                    category:'beverages', price:1.26, image:FOOD_IMAGES.bar, preparationTime:5, isVeg:true, tags:['coffee','hot','bestseller'] },
+    { name:'Ice Black Coffee',                description:'Chilled black coffee over ice.',                                       category:'beverages', price:0.99, image:FOOD_IMAGES.bar, preparationTime:5, isVeg:true, tags:['coffee','cold'] },
+    // ── BAR — WHISKEY ─────────────────────────────────────────────────────
+    { name:'Glenfiddich 12 Years (30 ml)',    description:'Glenfiddich 12 Years single malt Scotch whisky, 30 ml.',               category:'beverages', price:5.24, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','whiskey','scotch'] },
+    { name:'Double Black (30 ml)',            description:'Johnnie Walker Double Black, 30 ml.',                                   category:'beverages', price:4.57, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','whiskey'] },
+    { name:'Red Label (JW) (30 ml)',          description:'Johnnie Walker Red Label, 30 ml.',                                     category:'beverages', price:3.12, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','whiskey'] },
+    { name:'Black Label (JW) (30 ml)',        description:'Johnnie Walker Black Label, 30 ml.',                                   category:'beverages', price:4.04, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','whiskey'] },
+    { name:'Jack Daniels (30 ml)',            description:'Jack Daniels Tennessee Whiskey, 30 ml.',                               category:'beverages', price:4.51, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','whiskey','bestseller'] },
+    { name:'Old Durbar (30 ml)',              description:'Old Durbar whisky, 30 ml.',                                            category:'beverages', price:2.06, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','whiskey','nepali'] },
+    { name:'Old Durbar Black Chimney (30 ml)','description':'Old Durbar Black Chimney whisky, 30 ml.',                           category:'beverages', price:2.59, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','whiskey','nepali'] },
+    { name:'Gorkhas & Gun (30 ml)',           description:'Gorkhas & Gun whisky, 30 ml.',                                        category:'beverages', price:2.45, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','whiskey','nepali'] },
+    // ── BAR — TEQUILA ─────────────────────────────────────────────────────
+    { name:'Agavito Tequila Gold/Silver (30 ml)', description:'Agavito Tequila Gold or Silver, 30 ml.',                         category:'beverages', price:3.68, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','tequila'] },
+    // ── BAR — LIQUEUR ─────────────────────────────────────────────────────
+    { name:"Bailey's Irish Cream (30 ml)",    description:"Bailey's Irish Cream liqueur, 30 ml.",                                category:'beverages', price:3.12, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','liqueur'] },
+    { name:'Kahlua (30 ml)',                  description:'Kahlua coffee liqueur, 30 ml.',                                       category:'beverages', price:3.28, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','liqueur'] },
+    // ── BAR — VODKA ───────────────────────────────────────────────────────
+    { name:'Absolute Vodka (30 ml)',          description:'Absolut Vodka, 30 ml.',                                               category:'beverages', price:3.48, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','vodka'] },
+    { name:'8848 Vodka (30 ml)',              description:'8848 Vodka, 30 ml.',                                                  category:'beverages', price:1.49, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','vodka','nepali'] },
+    // ── BAR — RUM ─────────────────────────────────────────────────────────
+    { name:'Captain Morgan (30 ml)',          description:'Captain Morgan rum, 30 ml.',                                          category:'beverages', price:3.12, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','rum'] },
+    { name:'Khukuri Rum (30 ml)',             description:'Khukuri rum, 30 ml.',                                                 category:'beverages', price:4.31, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','rum','nepali'] },
+    // ── BAR — WINES ───────────────────────────────────────────────────────
+    { name:'Jacob Creek Red (150 ml)',        description:'Jacob Creek red wine, 150 ml glass.',                                 category:'beverages', price:6.96, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','wine','red'] },
+    { name:'Jacob Creek White (150 ml)',      description:'Jacob Creek white wine, 150 ml glass.',                               category:'beverages', price:6.96, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','wine','white'] },
+    { name:'Big Master Red (150 ml)',         description:'Big Master red wine, 150 ml glass.',                                  category:'beverages', price:2.98, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','wine','red'] },
+    { name:'Big Master White (150 ml)',       description:'Big Master white wine, 150 ml glass.',                                category:'beverages', price:2.98, image:FOOD_IMAGES.bar, preparationTime:3, isVeg:true, tags:['bar','wine','white'] },
+    // ── BAR — BEER ────────────────────────────────────────────────────────
+    { name:'Tuborg Beer (650 ml)',            description:'Chilled Tuborg beer, 650 ml bottle.',                                 category:'beverages', price:4.97, image:FOOD_IMAGES.bar, preparationTime:2, isVeg:true, tags:['bar','beer'] },
+    { name:'Gorkha Beer (650 ml)',            description:'Chilled Gorkha Beer, 650 ml bottle.',                                 category:'beverages', price:4.64, image:FOOD_IMAGES.bar, preparationTime:2, isVeg:true, tags:['bar','beer','bestseller'] },
   ]);
   console.log(`✅ ${menuItems.length} menu items seeded`);
 
@@ -303,31 +433,151 @@ async function seed() {
   console.log(`✅ ${therapists.length} spa therapists seeded`);
 
   // ─── INVENTORY ────────────────────────────────────────────────────────────
-  await Ingredient.insertMany([
-    { name:'Chicken Breast',   unit:'kg',     stock:15,  costPrice:850,  lowStockThreshold:3,  category:'kitchen' },
-    { name:'Beef Tenderloin',  unit:'kg',     stock:8,   costPrice:1800, lowStockThreshold:2,  category:'kitchen' },
-    { name:'Salmon Fillet',    unit:'kg',     stock:6,   costPrice:1600, lowStockThreshold:2,  category:'kitchen' },
-    { name:'Eggs',             unit:'piece',  stock:120, costPrice:18,   lowStockThreshold:24, category:'kitchen' },
-    { name:'Basmati Rice',     unit:'kg',     stock:25,  costPrice:180,  lowStockThreshold:5,  category:'kitchen' },
-    { name:'Fava Beans',       unit:'kg',     stock:10,  costPrice:120,  lowStockThreshold:2,  category:'kitchen' },
-    { name:'Feta Cheese',      unit:'kg',     stock:4,   costPrice:950,  lowStockThreshold:1,  category:'kitchen' },
-    { name:'Pistachio',        unit:'kg',     stock:3,   costPrice:2200, lowStockThreshold:0.5,category:'kitchen' },
-    { name:'Filo Pastry',      unit:'packet', stock:12,  costPrice:280,  lowStockThreshold:3,  category:'kitchen' },
-    { name:'Saffron',          unit:'g',      stock:50,  costPrice:45,   lowStockThreshold:10, category:'kitchen' },
-    { name:'Olive Oil',        unit:'litre',  stock:8,   costPrice:900,  lowStockThreshold:2,  category:'kitchen' },
-    { name:'Cumin',            unit:'g',      stock:500, costPrice:2,    lowStockThreshold:100,category:'kitchen' },
-    { name:'Orange Juice',     unit:'litre',  stock:20,  costPrice:180,  lowStockThreshold:5,  category:'bar' },
-    { name:'Sparkling Water',  unit:'bottle', stock:48,  costPrice:120,  lowStockThreshold:12, category:'bar' },
-    { name:'Coffee Beans',     unit:'kg',     stock:4,   costPrice:1800, lowStockThreshold:1,  category:'bar' },
-    { name:'Mint Leaves',      unit:'g',      stock:400, costPrice:3,    lowStockThreshold:100,category:'bar' },
-    { name:'Honey',            unit:'kg',     stock:5,   costPrice:600,  lowStockThreshold:1,  category:'bar' },
-    { name:'Napkins',          unit:'packet', stock:30,  costPrice:120,  lowStockThreshold:5,  category:'general' },
-    { name:'Towels (Bath)',    unit:'piece',  stock:80,  costPrice:450,  lowStockThreshold:20, category:'general' },
-    { name:'Bed Linen Set',    unit:'piece',  stock:60,  costPrice:1200, lowStockThreshold:10, category:'general' },
-    { name:'Shampoo',          unit:'bottle', stock:30,  costPrice:280,  lowStockThreshold:8,  category:'general' },
-    { name:'Hand Soap',        unit:'bottle', stock:35,  costPrice:220,  lowStockThreshold:8,  category:'general' },
+  const ingredients = await Ingredient.insertMany([
+    // ── Kitchen — Proteins ───────────────────────────────────────────────
+    { name:'Chicken (whole/pieces)', unit:'kg',     stock:20,  costPrice:350,  lowStockThreshold:5,  category:'kitchen' },
+    { name:'Mutton',                 unit:'kg',     stock:10,  costPrice:900,  lowStockThreshold:3,  category:'kitchen' },
+    { name:'Fish (catfish/fillet)',  unit:'kg',     stock:8,   costPrice:500,  lowStockThreshold:2,  category:'kitchen' },
+    { name:'Shrimp/Prawn',           unit:'kg',     stock:5,   costPrice:800,  lowStockThreshold:1,  category:'kitchen' },
+    { name:'Eggs',                   unit:'piece',  stock:150, costPrice:18,   lowStockThreshold:30, category:'kitchen' },
+    { name:'Paneer',                 unit:'kg',     stock:5,   costPrice:450,  lowStockThreshold:1,  category:'kitchen' },
+    { name:'Chicken Sausage',        unit:'piece',  stock:40,  costPrice:80,   lowStockThreshold:10, category:'kitchen' },
+    // ── Kitchen — Dry Goods ──────────────────────────────────────────────
+    { name:'Basmati Rice',           unit:'kg',     stock:30,  costPrice:180,  lowStockThreshold:5,  category:'kitchen' },
+    { name:'Spaghetti / Pasta',      unit:'kg',     stock:10,  costPrice:160,  lowStockThreshold:2,  category:'kitchen' },
+    { name:'Noodles (chowmein/thukpa)', unit:'kg',  stock:10,  costPrice:140,  lowStockThreshold:2,  category:'kitchen' },
+    { name:'Wheat Flour',            unit:'kg',     stock:20,  costPrice:80,   lowStockThreshold:5,  category:'kitchen' },
+    { name:'Bread (loaf/slices)',    unit:'piece',  stock:20,  costPrice:120,  lowStockThreshold:5,  category:'kitchen' },
+    { name:'Cornflakes',             unit:'packet', stock:15,  costPrice:220,  lowStockThreshold:3,  category:'kitchen' },
+    { name:'Oats',                   unit:'kg',     stock:5,   costPrice:200,  lowStockThreshold:1,  category:'kitchen' },
+    { name:'Potato',                 unit:'kg',     stock:15,  costPrice:60,   lowStockThreshold:3,  category:'kitchen' },
+    { name:'Onion',                  unit:'kg',     stock:10,  costPrice:50,   lowStockThreshold:2,  category:'kitchen' },
+    { name:'Tomato',                 unit:'kg',     stock:8,   costPrice:80,   lowStockThreshold:2,  category:'kitchen' },
+    { name:'Mixed Vegetables',       unit:'kg',     stock:10,  costPrice:120,  lowStockThreshold:2,  category:'kitchen' },
+    { name:'Cabbage',                unit:'kg',     stock:5,   costPrice:50,   lowStockThreshold:1,  category:'kitchen' },
+    { name:'Carrot',                 unit:'kg',     stock:5,   costPrice:60,   lowStockThreshold:1,  category:'kitchen' },
+    { name:'Mushroom',               unit:'kg',     stock:3,   costPrice:350,  lowStockThreshold:0.5,category:'kitchen' },
+    { name:'Butter',                 unit:'kg',     stock:5,   costPrice:600,  lowStockThreshold:1,  category:'kitchen' },
+    { name:'Cheese (block)',         unit:'kg',     stock:3,   costPrice:800,  lowStockThreshold:0.5,category:'kitchen' },
+    { name:'Cream',                  unit:'litre',  stock:5,   costPrice:400,  lowStockThreshold:1,  category:'kitchen' },
+    { name:'Tomato Sauce',           unit:'kg',     stock:5,   costPrice:250,  lowStockThreshold:1,  category:'kitchen' },
+    { name:'Cooking Oil',            unit:'litre',  stock:10,  costPrice:300,  lowStockThreshold:2,  category:'kitchen' },
+    { name:'Spice Mix (masala)',     unit:'kg',     stock:5,   costPrice:400,  lowStockThreshold:1,  category:'kitchen' },
+    { name:'Salt',                   unit:'kg',     stock:5,   costPrice:50,   lowStockThreshold:1,  category:'kitchen' },
+    { name:'Cashewnuts',             unit:'kg',     stock:3,   costPrice:1800, lowStockThreshold:0.5,category:'kitchen' },
+    { name:'Peanuts',                unit:'kg',     stock:5,   costPrice:300,  lowStockThreshold:1,  category:'kitchen' },
+    { name:'Banana',                 unit:'piece',  stock:30,  costPrice:20,   lowStockThreshold:5,  category:'kitchen' },
+    { name:'Fresh Fruits (mixed)',   unit:'kg',     stock:10,  costPrice:250,  lowStockThreshold:2,  category:'kitchen' },
+    { name:'Milk',                   unit:'litre',  stock:15,  costPrice:120,  lowStockThreshold:3,  category:'kitchen' },
+    { name:'Yogurt',                 unit:'kg',     stock:5,   costPrice:180,  lowStockThreshold:1,  category:'kitchen' },
+    { name:'Honey',                  unit:'kg',     stock:3,   costPrice:600,  lowStockThreshold:0.5,category:'kitchen' },
+    { name:'Jam',                    unit:'bottle', stock:10,  costPrice:250,  lowStockThreshold:2,  category:'kitchen' },
+    { name:'Papad',                  unit:'piece',  stock:50,  costPrice:10,   lowStockThreshold:10, category:'kitchen' },
+    { name:'Roti Dough',             unit:'kg',     stock:5,   costPrice:80,   lowStockThreshold:1,  category:'kitchen' },
+    { name:'Wonton / Momo Wrapper',  unit:'packet', stock:20,  costPrice:120,  lowStockThreshold:5,  category:'kitchen' },
+    { name:'Sukuti (dried meat)',    unit:'kg',     stock:2,   costPrice:1200, lowStockThreshold:0.5,category:'kitchen' },
+    // ── Bar ──────────────────────────────────────────────────────────────
+    { name:'Whiskey (bottle)',       unit:'bottle', stock:20,  costPrice:2800, lowStockThreshold:3,  category:'bar' },
+    { name:'Vodka (bottle)',         unit:'bottle', stock:10,  costPrice:2200, lowStockThreshold:2,  category:'bar' },
+    { name:'Rum (bottle)',           unit:'bottle', stock:10,  costPrice:2500, lowStockThreshold:2,  category:'bar' },
+    { name:'Tequila (bottle)',       unit:'bottle', stock:5,   costPrice:4500, lowStockThreshold:1,  category:'bar' },
+    { name:'Liqueur (bottle)',       unit:'bottle', stock:5,   costPrice:3500, lowStockThreshold:1,  category:'bar' },
+    { name:'Red Wine (bottle)',      unit:'bottle', stock:10,  costPrice:3000, lowStockThreshold:2,  category:'bar' },
+    { name:'White Wine (bottle)',    unit:'bottle', stock:8,   costPrice:2800, lowStockThreshold:2,  category:'bar' },
+    { name:'Gorkha Beer (650 ml)',   unit:'bottle', stock:48,  costPrice:350,  lowStockThreshold:12, category:'bar' },
+    { name:'Coke / Fanta / Sprite',  unit:'bottle', stock:48,  costPrice:80,   lowStockThreshold:12, category:'bar' },
+    { name:'Mineral Water',          unit:'bottle', stock:60,  costPrice:40,   lowStockThreshold:15, category:'bar' },
+    { name:'Real Juice (tetra pack)',unit:'piece',  stock:30,  costPrice:180,  lowStockThreshold:8,  category:'bar' },
+    { name:'Coffee Beans',           unit:'kg',     stock:4,   costPrice:1800, lowStockThreshold:1,  category:'bar' },
+    { name:'Milk (bar)',             unit:'litre',  stock:8,   costPrice:120,  lowStockThreshold:2,  category:'bar' },
+    // ── General / Housekeeping ───────────────────────────────────────────
+    { name:'Napkins',                unit:'packet', stock:30,  costPrice:120,  lowStockThreshold:5,  category:'general' },
+    { name:'Towels (Bath)',          unit:'piece',  stock:80,  costPrice:450,  lowStockThreshold:20, category:'general' },
+    { name:'Bed Linen Set',          unit:'piece',  stock:60,  costPrice:1200, lowStockThreshold:10, category:'general' },
+    { name:'Shampoo',                unit:'bottle', stock:30,  costPrice:280,  lowStockThreshold:8,  category:'general' },
+    { name:'Hand Soap',              unit:'bottle', stock:35,  costPrice:220,  lowStockThreshold:8,  category:'general' },
   ]);
-  console.log('✅ 22 inventory ingredients seeded');
+  console.log(`✅ ${ingredients.length} inventory ingredients seeded`);
+
+  // ─── RECIPES (ingredient → menu item linkage for inventory tracking) ──────
+  const ingByName = Object.fromEntries(ingredients.map(i => [i.name, i._id]));
+  await Recipe.insertMany([
+    // ── Breakfast ─────────────────────────────────────────────────────────
+    { name:'American Breakfast',          servingLabel:'full set', sellingPrice:750,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Bread (loaf/slices)'],  qtyPerServing:3  },{ ingredient:ingByName['Eggs'],                  qtyPerServing:2  },{ ingredient:ingByName['Chicken Sausage'],        qtyPerServing:2  },{ ingredient:ingByName['Butter'],                qtyPerServing:0.02 },{ ingredient:ingByName['Tomato'],               qtyPerServing:0.1 }] },
+    { name:'French Toast',                servingLabel:'2 slices', sellingPrice:240,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Bread (loaf/slices)'],  qtyPerServing:2  },{ ingredient:ingByName['Eggs'],                  qtyPerServing:2  },{ ingredient:ingByName['Butter'],                qtyPerServing:0.02 },{ ingredient:ingByName['Honey'],                qtyPerServing:0.02 }] },
+    { name:'Honey Banana Porridge',       servingLabel:'bowl',     sellingPrice:275,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Oats'],                qtyPerServing:0.1 },{ ingredient:ingByName['Banana'],                qtyPerServing:1  },{ ingredient:ingByName['Honey'],                 qtyPerServing:0.02 },{ ingredient:ingByName['Milk'],                 qtyPerServing:0.2 }] },
+    { name:'Oats with Milk and Fresh Fruits', servingLabel:'bowl', sellingPrice:250,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Oats'],                qtyPerServing:0.1 },{ ingredient:ingByName['Milk'],                  qtyPerServing:0.2 },{ ingredient:ingByName['Fresh Fruits (mixed)'],  qtyPerServing:0.1 }] },
+    { name:'Pancake with Chocolate/Honey/Maple Syrup', servingLabel:'3 pancakes', sellingPrice:275, section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Wheat Flour'], qtyPerServing:0.1 },{ ingredient:ingByName['Eggs'], qtyPerServing:1 },{ ingredient:ingByName['Milk'], qtyPerServing:0.1 },{ ingredient:ingByName['Butter'], qtyPerServing:0.02 },{ ingredient:ingByName['Honey'], qtyPerServing:0.02 }] },
+    // ── Snacks ────────────────────────────────────────────────────────────
+    { name:'Chicken Drumsticks',          servingLabel:'plate of 4', sellingPrice:550, section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.4 },{ ingredient:ingByName['Spice Mix (masala)'], qtyPerServing:0.02 },{ ingredient:ingByName['Cooking Oil'], qtyPerServing:0.05 }] },
+    { name:'Chicken Satay with Peanut Sauce', servingLabel:'plate of 6', sellingPrice:550, section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.3 },{ ingredient:ingByName['Peanuts'], qtyPerServing:0.05 },{ ingredient:ingByName['Spice Mix (masala)'], qtyPerServing:0.02 }] },
+    { name:'French Fries',                servingLabel:'plate',    sellingPrice:350,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Potato'],              qtyPerServing:0.3 },{ ingredient:ingByName['Cooking Oil'],            qtyPerServing:0.05 },{ ingredient:ingByName['Salt'],                  qtyPerServing:0.005 }] },
+    { name:'Chicken Cashewnuts',          servingLabel:'plate',    sellingPrice:600,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.25 },{ ingredient:ingByName['Cashewnuts'],           qtyPerServing:0.05 },{ ingredient:ingByName['Cooking Oil'],           qtyPerServing:0.03 }] },
+    { name:'Vegetable Pakoda',            servingLabel:'plate',    sellingPrice:360,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Mixed Vegetables'],   qtyPerServing:0.2 },{ ingredient:ingByName['Wheat Flour'],            qtyPerServing:0.1 },{ ingredient:ingByName['Cooking Oil'],            qtyPerServing:0.05 }] },
+    { name:'Cheese Balls',                servingLabel:'plate of 6', sellingPrice:400, section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Cheese (block)'],    qtyPerServing:0.1 },{ ingredient:ingByName['Wheat Flour'],            qtyPerServing:0.05 },{ ingredient:ingByName['Cooking Oil'],            qtyPerServing:0.05 }] },
+    { name:'Paneer Chilly',               servingLabel:'plate',    sellingPrice:400,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Paneer'],             qtyPerServing:0.2 },{ ingredient:ingByName['Onion'],                  qtyPerServing:0.1 },{ ingredient:ingByName['Tomato'],                 qtyPerServing:0.05 },{ ingredient:ingByName['Cooking Oil'], qtyPerServing:0.03 }] },
+    // ── Soup ─────────────────────────────────────────────────────────────
+    { name:'Chicken Mushroom Soup',       servingLabel:'bowl',     sellingPrice:400,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.1 },{ ingredient:ingByName['Mushroom'],             qtyPerServing:0.05 },{ ingredient:ingByName['Cream'],                 qtyPerServing:0.05 }] },
+    { name:'Chicken Noodle Soup',         servingLabel:'bowl',     sellingPrice:400,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.1 },{ ingredient:ingByName['Noodles (chowmein/thukpa)'], qtyPerServing:0.08 },{ ingredient:ingByName['Carrot'], qtyPerServing:0.03 }] },
+    { name:'Vegetables Soup',             servingLabel:'bowl',     sellingPrice:300,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Mixed Vegetables'],   qtyPerServing:0.15 },{ ingredient:ingByName['Tomato'],                 qtyPerServing:0.05 },{ ingredient:ingByName['Onion'],                  qtyPerServing:0.05 }] },
+    // ── Salads ────────────────────────────────────────────────────────────
+    { name:'Caesar Salad',                servingLabel:'plate',    sellingPrice:700,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.15 },{ ingredient:ingByName['Cheese (block)'],       qtyPerServing:0.05 },{ ingredient:ingByName['Eggs'],                  qtyPerServing:1  },{ ingredient:ingByName['Tomato'], qtyPerServing:0.05 }] },
+    // ── Sandwich & Burger ─────────────────────────────────────────────────
+    { name:'Club Sandwich',               servingLabel:'plate',    sellingPrice:600,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Bread (loaf/slices)'],  qtyPerServing:3  },{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.1 },{ ingredient:ingByName['Eggs'],                  qtyPerServing:1  },{ ingredient:ingByName['Tomato'], qtyPerServing:0.05 },{ ingredient:ingByName['Butter'], qtyPerServing:0.02 }] },
+    { name:'Chicken Burger',              servingLabel:'piece',    sellingPrice:490,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.15 },{ ingredient:ingByName['Bread (loaf/slices)'], qtyPerServing:1  },{ ingredient:ingByName['Tomato'],               qtyPerServing:0.05 },{ ingredient:ingByName['Butter'], qtyPerServing:0.02 }] },
+    // ── Main Course ───────────────────────────────────────────────────────
+    { name:'Chicken Biryani',             servingLabel:'plate',    sellingPrice:600,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.25 },{ ingredient:ingByName['Basmati Rice'],         qtyPerServing:0.15 },{ ingredient:ingByName['Spice Mix (masala)'],    qtyPerServing:0.02 },{ ingredient:ingByName['Onion'], qtyPerServing:0.05 }] },
+    { name:'Mutton Biryani',              servingLabel:'plate',    sellingPrice:800,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Mutton'],              qtyPerServing:0.25 },{ ingredient:ingByName['Basmati Rice'],         qtyPerServing:0.15 },{ ingredient:ingByName['Spice Mix (masala)'],    qtyPerServing:0.02 },{ ingredient:ingByName['Onion'], qtyPerServing:0.05 }] },
+    { name:'Chicken Butter Masala',       servingLabel:'plate',    sellingPrice:600,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.2 },{ ingredient:ingByName['Tomato Sauce'],         qtyPerServing:0.1 },{ ingredient:ingByName['Cream'],                 qtyPerServing:0.05 },{ ingredient:ingByName['Butter'], qtyPerServing:0.03 },{ ingredient:ingByName['Spice Mix (masala)'], qtyPerServing:0.02 }] },
+    { name:'Mutton Curry',                servingLabel:'plate',    sellingPrice:600,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Mutton'],              qtyPerServing:0.2 },{ ingredient:ingByName['Onion'],               qtyPerServing:0.08 },{ ingredient:ingByName['Tomato'],                 qtyPerServing:0.08 },{ ingredient:ingByName['Spice Mix (masala)'], qtyPerServing:0.02 }] },
+    { name:'Paneer Butter Masala',        servingLabel:'plate',    sellingPrice:600,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Paneer'],             qtyPerServing:0.2 },{ ingredient:ingByName['Tomato Sauce'],         qtyPerServing:0.1 },{ ingredient:ingByName['Cream'],                 qtyPerServing:0.05 },{ ingredient:ingByName['Butter'], qtyPerServing:0.03 }] },
+    { name:'Fish Curry',                  servingLabel:'plate',    sellingPrice:700,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Fish (catfish/fillet)'], qtyPerServing:0.2 },{ ingredient:ingByName['Tomato'],             qtyPerServing:0.08 },{ ingredient:ingByName['Onion'],                  qtyPerServing:0.05 },{ ingredient:ingByName['Spice Mix (masala)'], qtyPerServing:0.02 }] },
+    { name:'Spaghetti Bolognese (Chicken)', servingLabel:'plate',  sellingPrice:600,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Spaghetti / Pasta'],  qtyPerServing:0.15 },{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.15 },{ ingredient:ingByName['Tomato Sauce'],          qtyPerServing:0.1 }] },
+    { name:'Spaghetti in Tomato / White Sauce', servingLabel:'plate', sellingPrice:500, section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Spaghetti / Pasta'], qtyPerServing:0.15 },{ ingredient:ingByName['Tomato Sauce'],         qtyPerServing:0.1 },{ ingredient:ingByName['Cream'],                 qtyPerServing:0.05 }] },
+    { name:'Grilled Whole Fish',          servingLabel:'whole',    sellingPrice:1200, section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Fish (catfish/fillet)'], qtyPerServing:0.5 },{ ingredient:ingByName['Spice Mix (masala)'],   qtyPerServing:0.02 },{ ingredient:ingByName['Cooking Oil'],            qtyPerServing:0.03 }] },
+    { name:'Plain Rice',                  servingLabel:'plate',    sellingPrice:250,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Basmati Rice'],        qtyPerServing:0.15 }] },
+    { name:'Plain Roti',                  servingLabel:'2 pieces', sellingPrice:100,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Wheat Flour'],         qtyPerServing:0.08 },{ ingredient:ingByName['Butter'],                qtyPerServing:0.01 }] },
+    // ── Other Dishes (Nepali) ─────────────────────────────────────────────
+    { name:'Chicken Momo',                servingLabel:'plate of 10', sellingPrice:500, section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.2 },{ ingredient:ingByName['Wonton / Momo Wrapper'], qtyPerServing:1 },{ ingredient:ingByName['Onion'], qtyPerServing:0.05 },{ ingredient:ingByName['Spice Mix (masala)'], qtyPerServing:0.01 }] },
+    { name:'Veg Momo',                    servingLabel:'plate of 10', sellingPrice:400, section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Mixed Vegetables'],   qtyPerServing:0.2 },{ ingredient:ingByName['Wonton / Momo Wrapper'], qtyPerServing:1 },{ ingredient:ingByName['Spice Mix (masala)'],    qtyPerServing:0.01 }] },
+    { name:'Chicken Chowmein',            servingLabel:'plate',    sellingPrice:500,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Noodles (chowmein/thukpa)'], qtyPerServing:0.15 },{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.15 },{ ingredient:ingByName['Cabbage'], qtyPerServing:0.05 },{ ingredient:ingByName['Carrot'], qtyPerServing:0.03 }] },
+    { name:'Chicken Fried Rice',          servingLabel:'plate',    sellingPrice:500,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Basmati Rice'],        qtyPerServing:0.15 },{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.15 },{ ingredient:ingByName['Eggs'],                  qtyPerServing:1  },{ ingredient:ingByName['Mixed Vegetables'], qtyPerServing:0.05 }] },
+    { name:'Shrimp Fried Rice',           servingLabel:'plate',    sellingPrice:700,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Basmati Rice'],        qtyPerServing:0.15 },{ ingredient:ingByName['Shrimp/Prawn'],            qtyPerServing:0.1 },{ ingredient:ingByName['Eggs'],                   qtyPerServing:1  }] },
+    { name:'Chicken Thukpa',              servingLabel:'bowl',     sellingPrice:500,  section:'kitchen', isActive:true, ingredients:[{ ingredient:ingByName['Noodles (chowmein/thukpa)'], qtyPerServing:0.12 },{ ingredient:ingByName['Chicken (whole/pieces)'], qtyPerServing:0.15 },{ ingredient:ingByName['Mixed Vegetables'], qtyPerServing:0.08 }] },
+    // ── Bar ──────────────────────────────────────────────────────────────
+    { name:'Whiskey (30 ml)',             servingLabel:'30 ml peg', sellingPrice:280,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Whiskey (bottle)'],     qtyPerServing:0.03 }] },
+    { name:'Whiskey (60 ml)',             servingLabel:'60 ml peg', sellingPrice:555,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Whiskey (bottle)'],     qtyPerServing:0.06 }] },
+    { name:'Vodka (30 ml)',               servingLabel:'30 ml',     sellingPrice:225,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Vodka (bottle)'],       qtyPerServing:0.03 }] },
+    { name:'Rum (30 ml)',                 servingLabel:'30 ml',     sellingPrice:450,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Rum (bottle)'],         qtyPerServing:0.03 }] },
+    { name:'Tequila (30 ml)',             servingLabel:'30 ml',     sellingPrice:940,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Tequila (bottle)'],     qtyPerServing:0.03 }] },
+    { name:'Liqueur (30 ml)',             servingLabel:'30 ml',     sellingPrice:455,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Liqueur (bottle)'],     qtyPerServing:0.03 }] },
+    { name:'Wine (Glass)',                servingLabel:'150 ml',    sellingPrice:1050, section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Red Wine (bottle)'],    qtyPerServing:0.15 }] },
+    { name:'Gorkha Beer (650 ml)',        servingLabel:'bottle',    sellingPrice:750,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Gorkha Beer (650 ml)'], qtyPerServing:1    }] },
+    { name:'Cappuccino',                  servingLabel:'cup',       sellingPrice:470,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Coffee Beans'],         qtyPerServing:0.02 },{ ingredient:ingByName['Milk (bar)'],             qtyPerServing:0.15 }] },
+    { name:'Americano',                   servingLabel:'cup',       sellingPrice:410,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Coffee Beans'],         qtyPerServing:0.018 }] },
+    { name:'Espresso',                    servingLabel:'shot',      sellingPrice:410,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Coffee Beans'],         qtyPerServing:0.015 }] },
+    { name:'Coke/Fanta/Sprite',           servingLabel:'bottle',    sellingPrice:150,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Coke / Fanta / Sprite'], qtyPerServing:1   }] },
+    { name:'Water',                       servingLabel:'bottle',    sellingPrice:100,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Mineral Water'],        qtyPerServing:1    }] },
+    { name:'Real Juice (Mixed Fruit)',    servingLabel:'pack',      sellingPrice:470,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Real Juice (tetra pack)'], qtyPerServing:1 }] },
+    { name:'Real Juice (Mango)',          servingLabel:'pack',      sellingPrice:470,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Real Juice (tetra pack)'], qtyPerServing:1 }] },
+    { name:'Real Juice (Apple)',          servingLabel:'pack',      sellingPrice:470,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Real Juice (tetra pack)'], qtyPerServing:1 }] },
+    { name:'Real Juice (Orange)',         servingLabel:'pack',      sellingPrice:470,  section:'bar', isActive:true, ingredients:[{ ingredient:ingByName['Real Juice (tetra pack)'], qtyPerServing:1 }] },
+  ]);
+  console.log('✅ Recipes seeded (inventory linked to menu items)');
+
+  // ─── LINK MenuItem → Recipe by name ──────────────────────────────────────
+  // For every MenuItem whose name exactly matches a Recipe name, set recipe field.
+  const allRecipes = await Recipe.find({}).lean();
+  const recipeByName = Object.fromEntries(allRecipes.map(r => [r.name, r._id]));
+  let linkedCount = 0;
+  for (const mi of menuItems) {
+    const recipeId = recipeByName[mi.name];
+    if (recipeId) {
+      await MenuItem.findByIdAndUpdate(mi._id, { recipe: recipeId });
+      linkedCount++;
+    }
+  }
+  console.log(`✅ ${linkedCount}/${menuItems.length} menu items linked to recipes`);
 
   // ─── ADMIN / STAFF USERS ──────────────────────────────────────────────────
   await User.deleteMany({ email: { $in: ['admin@royalsuites.com','superadmin@royalsuites.com','food@royalsuites.com','spa@royalsuites.com','frontdesk@royalsuites.com'] } });
