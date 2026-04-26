@@ -34,6 +34,7 @@ export interface IBill extends Document {
   stripePaymentIntentId: string;
   receiptUrl: string;
   exchangeRateAtPayment?: number;
+  recalculate(): void;
 }
 
 const BillSchema = new Schema<IBill>(
