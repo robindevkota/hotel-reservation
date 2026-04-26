@@ -1694,6 +1694,76 @@ test.describe('Phase 5 — New Feature Scenarios', () => {
     await post(`/checkin/checkout/${discountGuestId}`, {}, p5Admin).catch(() => {});
   });
 
+  // ── SIM-32: Review & Rating lifecycle ────────────────────────────────────
+
+  test('SIM-32 Guest submits review during stay — admin hides it — public list excludes it', async () => {
+    const adminToken = p5Admin;
+
+    // Check-in a guest
+    const { data: roomsD } = await get('/rooms?available=true', adminToken);
+    const freeRooms: any[] = (roomsD.rooms ?? []).filter((r: any) => r.isAvailable === true);
+    if (!freeRooms.length) { test.skip(true, 'No free rooms for SIM-32'); return; }
+
+    const room = freeRooms[0];
+    const { data: resD } = await post('/reservations', {
+      guest: { name: 'Review Sim Guest', email: `reviewsim.${Date.now()}@test.com`, phone: '+10000000099' },
+      room: room._id,
+      checkInDate: simDate(85),
+      checkOutDate: simDate(87),
+      numberOfGuests: 1,
+    }, adminToken);
+    expect(resD.success).toBe(true);
+    await patch(`/reservations/${resD.reservation._id}/confirm`, {}, adminToken);
+    const { data: ciD } = await post(`/checkin/${resD.reservation._id}`, {}, adminToken);
+    expect(ciD.success).toBe(true);
+
+    // Get guest token via QR
+    const { data: qrD } = await get(`/qr/verify/${ciD.qrToken}`);
+    expect(qrD.success).toBe(true);
+    const guestToken = qrD.token;
+
+    // 1. Eligibility — room always true, food/spa false before any orders/bookings
+    const { data: eligD } = await get('/reviews/eligible', guestToken);
+    expect(eligD.success).toBe(true);
+    expect(eligD.eligible.room).toBe(true);
+    expect(eligD.eligible.food).toBe(false);
+    expect(eligD.eligible.spa).toBe(false);
+
+    // 2. Submit room-only review
+    const { data: revD } = await post('/reviews', { roomRating: 5, roomFeedback: 'Pharaonic luxury!' }, guestToken);
+    expect(revD.success).toBe(true);
+    expect(revD.review.roomRating).toBe(5);
+    expect(revD.review.overallRating).toBe(5);
+    const reviewId = revD.review._id;
+
+    // 3. Public list includes the new review
+    const { data: pubBefore } = await get('/reviews/public?limit=50');
+    const visibleBefore = (pubBefore.reviews ?? []).find((r: any) => r._id === reviewId);
+    expect(visibleBefore).toBeDefined();
+
+    // 4. Admin hides the review
+    const { data: hideD } = await patch(`/reviews/${reviewId}/visibility`, {}, adminToken);
+    expect(hideD.isHidden).toBe(true);
+
+    // 5. Public list no longer includes hidden review
+    const { data: pubAfter } = await get('/reviews/public?limit=50');
+    const visibleAfter = (pubAfter.reviews ?? []).find((r: any) => r._id === reviewId);
+    expect(visibleAfter).toBeUndefined();
+
+    // 6. Admin list still shows it (admin sees everything)
+    const { data: adminList } = await get('/reviews?hidden=true', adminToken);
+    const inAdminList = (adminList.reviews ?? []).find((r: any) => r._id === reviewId);
+    expect(inAdminList).toBeDefined();
+    expect(inAdminList.isHidden).toBe(true);
+
+    // 7. Admin restores visibility
+    const { data: showD } = await patch(`/reviews/${reviewId}/visibility`, {}, adminToken);
+    expect(showD.isHidden).toBe(false);
+
+    // Cleanup
+    await post(`/checkin/checkout/${ciD.guest._id}`, {}, adminToken).catch(() => {});
+  });
+
   // ── SIM-P5-08: Exchange Rate via Settings ─────────────────────────────────
 
   test('SIM-P5-08 Exchange rate updated via Settings API — reflected in billing', async () => {

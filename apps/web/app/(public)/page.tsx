@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import FeaturedRoomsClient from '../../components/ui/FeaturedRoomsClient';
 import OfferBanner from '../../components/ui/OfferBanner';
+import PublicReviews from '../../components/ui/PublicReviews';
 
 const S = {
   gold: 'hsl(43 72% 55%)', goldLight: 'hsl(43 65% 72%)', goldDark: 'hsl(43 75% 40%)',
@@ -15,16 +16,18 @@ const S = {
   cinzel: "'Cinzel', serif", cormo: "'Cormorant Garamond', serif", raleway: "'Raleway', sans-serif",
 };
 
-async function getFeaturedRooms() {
+async function getFeaturedRooms(): Promise<{ rooms: any[]; roomRating: number | null }> {
   try {
     const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-    const [roomsRes, catsRes] = await Promise.all([
+    const [roomsRes, catsRes, reviewsRes] = await Promise.all([
       fetch(`${base}/rooms`, { next: { revalidate: 60 } }),
       fetch(`${base}/room-categories`, { next: { revalidate: 60 } }),
+      fetch(`${base}/reviews/public?limit=1`, { next: { revalidate: 60 } }).catch(() => null),
     ]);
-    if (!roomsRes.ok) return [];
+    if (!roomsRes.ok) return { rooms: [], roomRating: null };
     const rooms: any[] = (await roomsRes.json()).rooms || [];
     const categories: any[] = catsRes.ok ? ((await catsRes.json()).categories || []) : [];
+    const roomRating: number | null = reviewsRes?.ok ? ((await reviewsRes.json()).stats?.room ?? null) : null;
 
     // Pick the cheapest available room per category, in category order
     const seen = new Set<string>();
@@ -38,14 +41,14 @@ async function getFeaturedRooms() {
         featured.push({ ...match, _categoryName: cat.name, _categoryIcon: cat.icon });
       }
     }
-    return featured;
+    return { rooms: featured, roomRating };
   } catch {
-    return [];
+    return { rooms: [], roomRating: null };
   }
 }
 
 export default async function HomePage() {
-  const rooms = await getFeaturedRooms();
+  const { rooms, roomRating } = await getFeaturedRooms();
   return (
     <>
       <style>{`
@@ -107,13 +110,15 @@ export default async function HomePage() {
             </p>
           </div>
 
-          <FeaturedRoomsClient rooms={rooms} />
+          <FeaturedRoomsClient rooms={rooms} roomRating={roomRating} />
 
           <div style={{ textAlign: 'center', marginTop: '3rem' }}>
             <Link href="/rooms" style={{ display: 'inline-block', border: `1px solid ${S.gold}`, color: S.gold, fontFamily: S.cinzel, fontSize: '0.72rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '0.875rem 2.5rem' }}>View All Rooms</Link>
           </div>
         </div>
       </section>
+
+      <PublicReviews />
 
       {/* ── CTA ── */}
       <section style={{ padding: '5rem 0', background: S.navy, textAlign: 'center' }}>

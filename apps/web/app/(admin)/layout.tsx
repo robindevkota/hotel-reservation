@@ -7,7 +7,7 @@ import { useAuthStore } from '../../store/authStore';
 import {
   LayoutDashboard, CalendarCheck, BedDouble, UtensilsCrossed,
   Flower2, Users, BookOpen, Receipt, LogOut, Menu, UserCircle,
-  Package2, ShieldPlus, Bell, X, ChevronRight, Tag, UserPlus, GitMerge, SlidersHorizontal, FileBarChart2,
+  Package2, ShieldPlus, Bell, X, ChevronRight, Tag, UserPlus, GitMerge, SlidersHorizontal, FileBarChart2, Star,
 } from 'lucide-react';
 import { getSocket, connectSocket } from '../../lib/socket';
 import type { Order } from '../../store/orderStore';
@@ -188,6 +188,7 @@ const NAV = [
   { href: '/admin/inventory',    label: 'Inventory',    icon: Package2,        departments: ['food', 'front_desk'] },
   { href: '/admin/spa',              label: 'Spa Schedule',  icon: Flower2,    departments: ['spa'] },
   { href: '/admin/walkin-customers', label: 'Walk-in Log',   icon: UserPlus,   departments: ['food','spa'] },
+  { href: '/admin/reviews',           label: 'Reviews',       icon: Star,              departments: null },
   { href: '/admin/channels',          label: 'Channels',      icon: GitMerge,          departments: ['__super_admin__'] },
   { href: '/admin/offers',           label: 'Offers',        icon: Tag,               departments: ['__super_admin__'] },
   { href: '/admin/audit',            label: 'Audit Report',  icon: FileBarChart2,     departments: ['__super_admin__'] },

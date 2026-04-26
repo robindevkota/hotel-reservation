@@ -4305,3 +4305,214 @@ test.describe('U. Nationality Billing', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V. Review & Rating Guards
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('V. Review & Rating Guards', () => {
+
+  test('V-01 guest can submit a room rating during active stay', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const res = await post('/reviews', { roomRating: 5, roomFeedback: 'Excellent room!' }, g.guestToken);
+    expect(res.success).toBe(true);
+    expect(res.review.roomRating).toBe(5);
+    expect(res.review.overallRating).toBe(5);
+  });
+
+  test('V-02 guest cannot rate food without a delivered order', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const res = await post('/reviews', { foodRating: 4 }, g.guestToken);
+    expect(res.success).toBe(false);
+    expect(res.message).toMatch(/no delivered orders/i);
+  });
+
+  test('V-03 guest cannot rate spa without a completed booking', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const res = await post('/reviews', { spaRating: 5 }, g.guestToken);
+    expect(res.success).toBe(false);
+    expect(res.message).toMatch(/no completed spa/i);
+  });
+
+  test('V-04 submitting without any rating returns 400', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const res = await post('/reviews', { roomFeedback: 'great but no stars' }, g.guestToken);
+    expect(res.success).toBe(false);
+    expect(res.message).toMatch(/at least one/i);
+  });
+
+  test('V-05 rating out of range (0 or 6) is rejected', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const r0 = await post('/reviews', { roomRating: 0 }, g.guestToken);
+    expect(r0.success).toBe(false);
+
+    const r6 = await post('/reviews', { roomRating: 6 }, g.guestToken);
+    expect(r6.success).toBe(false);
+  });
+
+  test('V-06 unauthenticated cannot submit review (401)', async () => {
+    const r = await fetch(`${API_URL}/reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomRating: 4 }),
+    });
+    expect(r.status).toBe(401);
+  });
+
+  test('V-07 staff token cannot submit review (403)', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const res = await post('/reviews', { roomRating: 4 }, adminToken);
+    expect(res.success).toBe(false);
+  });
+
+  test('V-08 guest can update existing review (upsert)', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const r1 = await post('/reviews', { roomRating: 3 }, g.guestToken);
+    expect(r1.success).toBe(true);
+    expect(r1.review.roomRating).toBe(3);
+
+    const r2 = await post('/reviews', { roomRating: 5, roomFeedback: 'Updated: even better!' }, g.guestToken);
+    expect(r2.success).toBe(true);
+    expect(r2.review.roomRating).toBe(5);
+    expect(r2.review.roomFeedback).toBe('Updated: even better!');
+  });
+
+  test('V-09 overallRating is computed avg of submitted departments', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    // Place and deliver a food order so food rating is eligible
+    const menu = await get('/menu', g.guestToken);
+    const item = (menu.items ?? menu)?.[0];
+    if (!item) { test.skip(true, 'No menu items'); return; }
+
+    const order = await post('/orders', { items: [{ menuItem: item._id, quantity: 1 }] }, g.guestToken);
+    expect(order.success).toBe(true);
+    // Advance order to delivered
+    for (const status of ['accepted', 'preparing', 'ready', 'delivering', 'delivered']) {
+      await patch(`/orders/${order.order._id}/status`, { status }, adminToken);
+    }
+
+    const res = await post('/reviews', { roomRating: 4, foodRating: 2 }, g.guestToken);
+    expect(res.success).toBe(true);
+    // avg(4,2) = 3.0
+    expect(res.review.overallRating).toBe(3);
+  });
+
+  test('V-10 GET /reviews/eligible returns correct dept flags', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const elig = await get('/reviews/eligible', g.guestToken);
+    expect(elig.success).toBe(true);
+    expect(elig.eligible.room).toBe(true);  // always true
+    expect(typeof elig.eligible.food).toBe('boolean');
+    expect(typeof elig.eligible.spa).toBe('boolean');
+  });
+
+  test('V-11 GET /reviews/public returns only visible reviews with stats', async () => {
+    const data = await get('/reviews/public');
+    expect(data.success).toBe(true);
+    expect(Array.isArray(data.reviews)).toBe(true);
+    expect(typeof data.stats).toBe('object');
+    // All returned reviews must be visible (isHidden=false)
+    for (const r of data.reviews) {
+      expect(r.isHidden).toBeFalsy();
+    }
+  });
+
+  test('V-12 admin can list all reviews including hidden', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const data = await get('/reviews', adminToken);
+    expect(data.success).toBe(true);
+    expect(Array.isArray(data.reviews)).toBe(true);
+    expect(typeof data.total).toBe('number');
+  });
+
+  test('V-13 admin can hide a review — it disappears from public list', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const sub = await post('/reviews', { roomRating: 5 }, g.guestToken);
+    expect(sub.success).toBe(true);
+    const reviewId = sub.review._id;
+
+    // Hide it
+    const hide = await patch(`/reviews/${reviewId}/visibility`, {}, adminToken);
+    expect(hide.success).toBe(true);
+    expect(hide.isHidden).toBe(true);
+
+    // Public list must not include this review
+    const pub = await get('/reviews/public?limit=50');
+    const found = (pub.reviews ?? []).find((r: any) => r._id === reviewId);
+    expect(found).toBeUndefined();
+  });
+
+  test('V-14 admin can un-hide a review — it reappears in public list', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const sub = await post('/reviews', { roomRating: 4 }, g.guestToken);
+    expect(sub.success).toBe(true);
+    const reviewId = sub.review._id;
+
+    // Hide then show
+    await patch(`/reviews/${reviewId}/visibility`, {}, adminToken);
+    const show = await patch(`/reviews/${reviewId}/visibility`, {}, adminToken);
+    expect(show.isHidden).toBe(false);
+
+    const pub = await get('/reviews/public?limit=50');
+    const found = (pub.reviews ?? []).find((r: any) => r._id === reviewId);
+    expect(found).toBeDefined();
+  });
+
+  test('V-15 admin bad-review filter returns only reviews with ≤2 in any dept', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const data = await get('/reviews?bad=true', adminToken);
+    expect(data.success).toBe(true);
+    for (const r of data.reviews) {
+      const hasBad = [r.roomRating, r.foodRating, r.spaRating]
+        .some((v: number | undefined) => v !== undefined && v <= 2);
+      expect(hasBad).toBe(true);
+    }
+  });
+
+  test('V-16 PATCH /reviews/:id/visibility requires admin token (401/403 otherwise)', async () => {
+    const adminToken = await apiLoginAsAdmin();
+    const g = await makeCheckedInGuest(adminToken);
+    if (!g) { test.skip(true, 'No available rooms'); return; }
+
+    const sub = await post('/reviews', { roomRating: 3 }, g.guestToken);
+    expect(sub.success).toBe(true);
+
+    // Unauthenticated
+    const r1 = await fetch(`${API_URL}/reviews/${sub.review._id}/visibility`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    expect([401, 403]).toContain(r1.status);
+
+    // Guest token
+    const r2 = await fetch(`${API_URL}/reviews/${sub.review._id}/visibility`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${g.guestToken}` }, body: '{}' });
+    expect([401, 403]).toContain(r2.status);
+  });
+});

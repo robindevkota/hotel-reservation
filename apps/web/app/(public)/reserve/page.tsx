@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import api from '../../../lib/api';
 import toast from 'react-hot-toast';
-import { PartyPopper, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { PartyPopper, CheckCircle2, AlertTriangle, Star } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 import { useActiveOffer } from '../../../hooks/useActiveOffer';
 import OfferBanner from '../../../components/ui/OfferBanner';
@@ -184,6 +184,7 @@ function ReserveContent() {
     name: '', email: '', phone: '', idProof: '', specialRequests: '',
   });
   const [unavailableRoomIds, setUnavailableRoomIds] = useState<Set<string>>(new Set());
+  const [roomRating, setRoomRating] = useState<number | null>(null);
 
   useEffect(() => {
     const roomId = searchParams.get('room');
@@ -203,6 +204,10 @@ function ReserveContent() {
         const full = list.find(r => r._id === roomId);
         if (full) setSelectedRoom(full);
       }
+    }).catch(() => {});
+    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+    fetch(`${base}/reviews/public?limit=1`).then(r => r.json()).then(d => {
+      if (d?.stats?.room != null) setRoomRating(d.stats.room);
     }).catch(() => {});
   }, [searchParams]);
 
@@ -440,7 +445,15 @@ function ReserveContent() {
                           <div style={{ padding: '0.875rem 1rem' }}>
                             <p style={{ fontFamily: S.cinzel, fontSize: '0.78rem', color: S.navy, marginBottom: '0.35rem' }}>{room.name}</p>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontFamily: S.raleway, fontSize: '0.7rem', color: S.muted, textTransform: 'capitalize' }}>{room.type}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span style={{ fontFamily: S.raleway, fontSize: '0.7rem', color: S.muted, textTransform: 'capitalize' }}>{room.type}</span>
+                                {roomRating != null && !booked && (
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                                    <Star size={10} fill={S.gold} color={S.gold} strokeWidth={1.5} />
+                                    <span style={{ fontFamily: S.cinzel, fontSize: '0.65rem', color: S.navy, fontWeight: 600 }}>{roomRating.toFixed(1)}</span>
+                                  </span>
+                                )}
+                              </div>
                               <span style={{ fontFamily: S.cinzel, fontSize: '0.85rem', color: booked ? S.muted : S.gold }}>
                                 {booked ? 'Booked' : `${currencySymbol}${Math.round(room.pricePerNight * offerRoomMultiplier * (guestType === 'nepali' ? usdToNpr : 1) * 100) / 100}`}
                                 {!booked && offerRoomMultiplier < 1 && <span style={{ fontSize: '0.6rem', color: S.muted, textDecoration: 'line-through', marginLeft: '0.3rem' }}>{currencySymbol}{Math.round(room.pricePerNight * (guestType === 'nepali' ? usdToNpr : 1))}</span>}

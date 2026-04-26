@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Users, ArrowRight, Maximize2 } from 'lucide-react';
+import { Users, ArrowRight, Maximize2, Star } from 'lucide-react';
 import { useActiveOffer } from '../../../hooks/useActiveOffer';
 import OfferBanner from '../../../components/ui/OfferBanner';
 
@@ -21,6 +21,7 @@ export default function RoomsPage() {
   const [rooms, setRooms] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [roomRating, setRoomRating] = useState<number | null>(null);
 
   const { offer } = useActiveOffer();
   const mult = offer?.roomDiscount ? (1 - offer.roomDiscount / 100) : 1;
@@ -36,11 +37,13 @@ export default function RoomsPage() {
     Promise.all([
       fetch(`${base}/rooms`).then(r => r.json()),
       fetch(`${base}/room-categories`).then(r => r.json()),
-    ]).then(([rd, cd]) => {
+      fetch(`${base}/reviews/public?limit=1`).then(r => r.json()).catch(() => null),
+    ]).then(([rd, cd, rv]) => {
       const r: any[] = rd.rooms || [];
       const c: any[] = cd.categories || [];
       setRooms(r);
       setCategories(c);
+      if (rv?.stats?.room != null) setRoomRating(rv.stats.room);
       if (r.length) {
         const max = Math.max(...r.map((x: any) => x.pricePerNight));
         setPriceMax(max);
@@ -184,7 +187,7 @@ export default function RoomsPage() {
                         </p>
 
                         {/* Stats */}
-                        <div style={{ display: 'flex', gap: '1.25rem', marginBottom: '1rem' }}>
+                        <div style={{ display: 'flex', gap: '1.25rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
                           <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway, fontSize: '0.75rem', color: S.muted }}>
                             <Users size={13} color={S.gold} strokeWidth={1.8} />
                             {room.capacity} Guests
@@ -193,6 +196,12 @@ export default function RoomsPage() {
                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway, fontSize: '0.75rem', color: S.muted }}>
                               <Maximize2 size={13} color={S.gold} strokeWidth={1.8} />
                               {room.areaSqm} m²
+                            </span>
+                          )}
+                          {roomRating != null && (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <Star size={12} fill={S.gold} color={S.gold} strokeWidth={1.5} />
+                              <span style={{ fontFamily: S.cinzel, fontSize: '0.72rem', color: S.navy, fontWeight: 600 }}>{roomRating.toFixed(1)}</span>
                             </span>
                           )}
                         </div>

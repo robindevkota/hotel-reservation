@@ -2,7 +2,7 @@ import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Star, Maximize2, Users } from 'lucide-react';
 import RoomBookingCard from '../../../../components/ui/RoomBookingCard';
 
 const S = {
@@ -18,17 +18,22 @@ const S = {
 
 async function getRoom(slug: string) {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/rooms/${slug}`, {
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return null;
-    return (await res.json()).room;
+    const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+    const [roomRes, reviewsRes] = await Promise.all([
+      fetch(`${base}/rooms/${slug}`, { next: { revalidate: 60 } }),
+      fetch(`${base}/reviews/public?limit=1`, { next: { revalidate: 60 } }).catch(() => null),
+    ]);
+    if (!roomRes.ok) return null;
+    const room = (await roomRes.json()).room;
+    const roomRating: number | null = reviewsRes?.ok ? ((await reviewsRes.json()).stats?.room ?? null) : null;
+    return { room, roomRating };
   } catch { return null; }
 }
 
 export default async function RoomDetailPage({ params }: { params: { slug: string } }) {
-  const room = await getRoom(params.slug);
-  if (!room) notFound();
+  const result = await getRoom(params.slug);
+  if (!result) notFound();
+  const { room, roomRating } = result;
 
   const fallback = '/room-pharaoh.jpg';
   const heroImg  = room.images?.[0] || fallback;
@@ -65,7 +70,30 @@ export default async function RoomDetailPage({ params }: { params: { slug: strin
             <h1 style={{ fontFamily: S.cinzel, fontWeight: 700, fontSize: 'clamp(2rem, 5vw, 3.5rem)', color: S.goldLight, marginBottom: '1rem', lineHeight: 1.1 }}>
               {room.name}
             </h1>
-            <div style={{ width: '5rem', height: '1px', background: S.divider }} />
+            <div style={{ width: '5rem', height: '1px', background: S.divider, marginBottom: '1rem' }} />
+            {/* Specs row */}
+            <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              {room.capacity > 0 && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontFamily: S.raleway, fontSize: '0.82rem', color: 'hsl(35 25% 88% / 0.75)' }}>
+                  <Users size={14} color={S.gold} strokeWidth={1.5} />
+                  {room.capacity} Guests
+                </span>
+              )}
+              {room.areaSqm > 0 && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontFamily: S.raleway, fontSize: '0.82rem', color: 'hsl(35 25% 88% / 0.75)' }}>
+                  <Maximize2 size={14} color={S.gold} strokeWidth={1.5} />
+                  {room.areaSqm} m²
+                </span>
+              )}
+              {roomRating != null && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  {[1,2,3,4,5].map(n => (
+                    <Star key={n} size={14} strokeWidth={1.5} fill={n <= Math.round(roomRating) ? S.gold : 'none'} color={n <= Math.round(roomRating) ? S.gold : 'hsl(35 25% 82% / 0.5)'} />
+                  ))}
+                  <span style={{ fontFamily: S.cinzel, fontSize: '0.78rem', color: S.gold, fontWeight: 600, marginLeft: '0.2rem' }}>{roomRating.toFixed(1)}</span>
+                </span>
+              )}
+            </div>
           </div>
         </div>
 

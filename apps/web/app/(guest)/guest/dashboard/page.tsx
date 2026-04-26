@@ -5,7 +5,8 @@ import { useAuthStore } from '../../../../store/authStore';
 import { useBilling } from '../../../../hooks/useBilling';
 import { useGuestSocket } from '../../../../hooks/useSocket';
 import api from '../../../../lib/api';
-import { UtensilsCrossed, Flower2, ClipboardList, Receipt, CheckCircle2, Clock, Hourglass, XCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { UtensilsCrossed, Flower2, ClipboardList, Receipt, CheckCircle2, Clock, Hourglass, XCircle, Star } from 'lucide-react';
 
 const GOLD   = 'hsl(43 72% 55%)';
 const NAVY   = 'hsl(220 55% 14%)';
@@ -34,11 +35,119 @@ type ActivityItem =
   | { kind: 'order'; data: any; sortKey: number }
   | { kind: 'spa';   data: any; sortKey: number };
 
+// ── Inline star picker ────────────────────────────────────────────────────────
+function StarPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [hovered, setHovered] = useState(0);
+  return (
+    <div style={{ display: 'flex', gap: '0.25rem' }}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          onClick={() => onChange(n)}
+          onMouseEnter={() => setHovered(n)}
+          onMouseLeave={() => setHovered(0)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.1rem' }}
+        >
+          <Star
+            size={20}
+            strokeWidth={1.5}
+            fill={(hovered || value) >= n ? GOLD : 'none'}
+            color={(hovered || value) >= n ? GOLD : MUTED}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Rate Your Stay card ───────────────────────────────────────────────────────
+function RateYourStay({ eligible, existing }: { eligible: any; existing: any }) {
+  const [roomRating,   setRoomRating]   = useState<number>(existing?.roomRating ?? 0);
+  const [roomFeedback, setRoomFeedback] = useState(existing?.roomFeedback ?? '');
+  const [foodRating,   setFoodRating]   = useState<number>(existing?.foodRating ?? 0);
+  const [foodFeedback, setFoodFeedback] = useState(existing?.foodFeedback ?? '');
+  const [spaRating,    setSpaRating]    = useState<number>(existing?.spaRating ?? 0);
+  const [spaFeedback,  setSpaFeedback]  = useState(existing?.spaFeedback ?? '');
+  const [saved, setSaved]   = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const hasAny = roomRating > 0 || (eligible?.food && foodRating > 0) || (eligible?.spa && spaRating > 0);
+
+  async function submit() {
+    if (!hasAny) return toast.error('Please rate at least one department');
+    setLoading(true);
+    try {
+      const body: any = {};
+      if (roomRating > 0) { body.roomRating = roomRating; body.roomFeedback = roomFeedback; }
+      if (eligible?.food && foodRating > 0) { body.foodRating = foodRating; body.foodFeedback = foodFeedback; }
+      if (eligible?.spa  && spaRating  > 0) { body.spaRating  = spaRating;  body.spaFeedback  = spaFeedback;  }
+      await api.post('/reviews', body);
+      setSaved(true);
+      toast.success('Thank you for your feedback!');
+    } catch {
+      toast.error('Could not save review');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (saved || (existing && existing.roomRating && (!eligible?.food || existing.foodRating) && (!eligible?.spa || existing.spaRating))) {
+    return (
+      <div style={{ background: '#fff', border: `1px solid ${GOLD}25`, padding: '1.25rem', marginBottom: '1.75rem', textAlign: 'center' }}>
+        <CheckCircle2 size={22} color="hsl(142 55% 38%)" strokeWidth={1.5} style={{ margin: '0 auto 0.5rem' }} />
+        <p style={{ fontFamily: CINZEL, color: NAVY, fontSize: '0.7rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>Review Submitted</p>
+        <p style={{ fontFamily: RALEWAY, color: MUTED, fontSize: '0.75rem', marginTop: '0.25rem' }}>Thank you for helping us improve</p>
+      </div>
+    );
+  }
+
+  const depts = [
+    { key: 'room', label: 'Room & Hotel', eligible: true,           rating: roomRating, setRating: setRoomRating, feedback: roomFeedback, setFeedback: setRoomFeedback },
+    { key: 'food', label: 'Food & Dining', eligible: eligible?.food, rating: foodRating, setRating: setFoodRating, feedback: foodFeedback, setFeedback: setFoodFeedback },
+    { key: 'spa',  label: 'Spa',           eligible: eligible?.spa,  rating: spaRating,  setRating: setSpaRating,  feedback: spaFeedback,  setFeedback: setSpaFeedback  },
+  ].filter(d => d.eligible);
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${GOLD}25`, padding: '1.25rem', marginBottom: '1.75rem', boxShadow: '0 2px 12px hsl(220 55% 14% / 0.06)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+        <Star size={15} color={GOLD} strokeWidth={1.5} fill={GOLD} />
+        <p style={{ fontFamily: CINZEL, color: NAVY, fontSize: '0.6rem', letterSpacing: '0.25em', textTransform: 'uppercase' }}>Rate Your Stay</p>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {depts.map(({ key, label, rating, setRating, feedback, setFeedback }) => (
+          <div key={key}>
+            <p style={{ fontFamily: CINZEL, color: MUTED, fontSize: '0.58rem', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '0.35rem' }}>{label}</p>
+            <StarPicker value={rating} onChange={setRating} />
+            {rating > 0 && (
+              <textarea
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                placeholder="Feedback (optional)"
+                rows={2}
+                style={{ width: '100%', marginTop: '0.4rem', padding: '0.4rem 0.6rem', fontFamily: RALEWAY, fontSize: '0.75rem', color: NAVY, border: `1px solid ${BORDER}`, resize: 'none', background: 'hsl(40 30% 98%)', outline: 'none', boxSizing: 'border-box' }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={submit}
+        disabled={loading || !hasAny}
+        style={{ marginTop: '1rem', width: '100%', padding: '0.625rem', background: hasAny ? NAVY : 'hsl(220 15% 80%)', color: '#fff', fontFamily: CINZEL, fontSize: '0.62rem', letterSpacing: '0.2em', textTransform: 'uppercase', border: 'none', cursor: hasAny ? 'pointer' : 'not-allowed' }}
+      >
+        {loading ? 'Saving…' : 'Submit Review'}
+      </button>
+    </div>
+  );
+}
+
 export default function GuestDashboardPage() {
   const { user } = useAuthStore();
   const { bill, loading: billLoading } = useBilling(true);
   const [orders, setOrders]           = useState<any[]>([]);
   const [spaBookings, setSpaBookings] = useState<any[]>([]);
+  const [eligible, setEligible]       = useState<any>(null);
+  const [existingReview, setExistingReview] = useState<any>(null);
   const guestId = user?.type === 'guest' ? (user as any).guestId : undefined;
 
   useGuestSocket(guestId);
@@ -49,6 +158,9 @@ export default function GuestDashboardPage() {
     api.get('/spa/bookings/my')
       .then(({ data }) => setSpaBookings(data.bookings ?? data ?? []))
       .catch(() => setSpaBookings([]));
+    api.get('/reviews/eligible')
+      .then(({ data }) => { setEligible(data.eligible); setExistingReview(data.existing); })
+      .catch(() => {});
   }, [guestId]);
 
   if (!user || user.type !== 'guest') return null;
@@ -123,6 +235,9 @@ export default function GuestDashboardPage() {
             </Link>
           ))}
         </div>
+
+        {/* Rate Your Stay */}
+        {eligible && <RateYourStay eligible={eligible} existing={existingReview} />}
 
         {/* Recent Activity — food orders + spa bookings merged */}
         {recentActivity.length > 0 && (

@@ -2,7 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Users, Maximize2 } from 'lucide-react';
+import { Users, Maximize2, Star } from 'lucide-react';
 import { useActiveOffer } from '../../hooks/useActiveOffer';
 
 const S = {
@@ -17,7 +17,7 @@ const S = {
   raleway: "'Raleway', sans-serif" as const,
 };
 
-export default function FeaturedRoomsClient({ rooms }: { rooms: any[] }) {
+export default function FeaturedRoomsClient({ rooms, roomRating }: { rooms: any[]; roomRating?: number | null }) {
   const { offer } = useActiveOffer();
   const mult = offer?.roomDiscount ? (1 - offer.roomDiscount / 100) : 1;
   const disc = (p: number) => Math.round(p * mult * 100) / 100;
@@ -52,7 +52,7 @@ export default function FeaturedRoomsClient({ rooms }: { rooms: any[] }) {
           <div style={{ padding: '1.5rem' }}>
             <h3 style={{ fontFamily: S.cinzel, fontWeight: 600, fontSize: '1.1rem', color: S.navy, marginBottom: '0.6rem' }}>{room.name}</h3>
             <p style={{ fontFamily: S.raleway, color: S.muted, fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '1rem' }}>{room.description}</p>
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.875rem', fontSize: '0.75rem', color: S.muted }}>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.875rem', fontSize: '0.75rem', color: S.muted, flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway }}>
                 <Users size={13} color={S.gold} />
                 {room.capacity} Guests
@@ -61,6 +61,12 @@ export default function FeaturedRoomsClient({ rooms }: { rooms: any[] }) {
                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: S.raleway }}>
                   <Maximize2 size={13} color={S.gold} />
                   {room.areaSqm} m²
+                </span>
+              )}
+              {roomRating != null && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Star size={12} fill={S.gold} color={S.gold} strokeWidth={1.5} />
+                  <span style={{ fontFamily: S.cinzel, fontSize: '0.72rem', color: S.navy, fontWeight: 600 }}>{roomRating.toFixed(1)}</span>
                 </span>
               )}
             </div>

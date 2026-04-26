@@ -4,7 +4,7 @@ import api from '../../../../lib/api';
 import {
   CalendarCheck, UserCheck, Clock3, TrendingUp, BedDouble,
   ShoppingCart, DollarSign, ArrowRight, Users,
-  Package2, AlertTriangle, AlertOctagon,
+  Package2, AlertTriangle, AlertOctagon, Star,
 } from 'lucide-react';
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis,
@@ -102,6 +102,76 @@ interface Analytics {
   };
   orderStats: { total: number; delivered: number; pending: number; totalRevenue: number; cashRevenue: number; walkInCount: number };
   spaStats: { total: number; confirmed: number; completed: number; revenue: number; cashRevenue: number; walkInCount: number };
+}
+
+interface RatingStats { total: number; overall: number | null; room: number | null; food: number | null; spa: number | null }
+
+function RatingsSnapshot() {
+  const [stats, setStats] = useState<RatingStats | null>(null);
+
+  useEffect(() => {
+    api.get('/reviews/public?limit=1').then(({ data }) => setStats(data.stats)).catch(() => {});
+  }, []);
+
+  if (!stats || stats.total === 0) return null;
+
+  const depts = [
+    { key: 'room', label: 'Room & Hotel', value: stats.room },
+    { key: 'food', label: 'Food & Dining', value: stats.food },
+    { key: 'spa',  label: 'Spa',           value: stats.spa  },
+  ].filter(d => d.value !== null) as { key: string; label: string; value: number }[];
+
+  if (depts.length === 0) return null;
+
+  const topDept = depts.reduce((a, b) => b.value > a.value ? b : a);
+
+  function StarRow({ value, size = 12 }: { value: number; size?: number }) {
+    return (
+      <span style={{ display: 'inline-flex', gap: '1px', alignItems: 'center' }}>
+        {[1, 2, 3, 4, 5].map(n => (
+          <Star key={n} size={size} strokeWidth={1.5} fill={n <= Math.round(value) ? A.gold : 'none'} color={n <= Math.round(value) ? A.gold : A.border} />
+        ))}
+        <span style={{ marginLeft: '0.3rem', fontFamily: A.cinzel, fontSize: '0.7rem', color: A.navy, fontWeight: 600 }}>{value.toFixed(1)}</span>
+      </span>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: '2.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <p style={{ fontFamily: A.cinzel, fontSize: '0.75rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: A.navy, margin: 0 }}>Guest Ratings</p>
+        <a href="/admin/reviews" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: A.gold, textDecoration: 'none' }}>
+          View All Reviews <ArrowRight size={11} />
+        </a>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${depts.length + 1}, 1fr)`, gap: '1rem' }}>
+        {/* Overall */}
+        <div style={{ background: A.navy, border: `1px solid hsl(43 72% 55% / 0.3)`, padding: '1.1rem 1.25rem' }}>
+          <p style={{ fontFamily: A.cinzel, color: 'hsl(43 72% 65%)', fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Overall</p>
+          {stats.overall != null
+            ? <div style={{ fontFamily: A.cinzel, fontSize: '1.8rem', color: A.gold, fontWeight: 700, lineHeight: 1, marginBottom: '0.35rem' }}>{stats.overall.toFixed(1)}</div>
+            : <div style={{ fontFamily: A.cinzel, fontSize: '1.8rem', color: A.gold, fontWeight: 700, lineHeight: 1, marginBottom: '0.35rem' }}>—</div>
+          }
+          <p style={{ fontFamily: A.raleway, color: 'rgba(245,236,215,0.5)', fontSize: '0.7rem' }}>{stats.total} review{stats.total !== 1 ? 's' : ''}</p>
+        </div>
+        {/* Per-dept */}
+        {depts.map(d => {
+          const isTop = d.key === topDept.key;
+          return (
+            <div key={d.key} style={{ background: '#fff', border: `1px solid ${isTop ? A.gold : A.border}`, padding: '1.1rem 1.25rem', position: 'relative', boxShadow: isTop ? `0 0 0 1px ${A.gold}` : 'none' }}>
+              {isTop && (
+                <div style={{ position: 'absolute', top: '-0.6rem', left: '50%', transform: 'translateX(-50%)', background: A.gold, color: A.navy, fontFamily: A.cinzel, fontSize: '0.48rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.15rem 0.5rem', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                  Highest Rated
+                </div>
+              )}
+              <p style={{ fontFamily: A.cinzel, color: A.muted, fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>{d.label}</p>
+              <div style={{ marginBottom: '0.3rem' }}><StarRow value={d.value} /></div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function AdminDashboardPage() {
@@ -393,6 +463,9 @@ export default function AdminDashboardPage() {
             )}
           </div>
         )}
+
+        {/* Guest Ratings Snapshot */}
+        <RatingsSnapshot />
 
         {/* Tables Row */}
         <div style={{ display:'grid', gridTemplateColumns: scope.showRooms && scope.showFood ? '1fr 1fr' : '1fr', gap:'2rem' }}>
