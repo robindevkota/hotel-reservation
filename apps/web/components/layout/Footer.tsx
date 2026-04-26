@@ -83,6 +83,10 @@ export default function Footer() {
                 <Phone size={14} strokeWidth={1.5} color={S.gold} style={{ flexShrink:0 }} />
                 +977 982 865 1525
               </a>
+              <a href="tel:015349522" style={{ fontFamily:S.raleway, fontSize:'0.82rem', color:S.muted, display:'flex', alignItems:'center', gap:'0.625rem', textDecoration:'none' }}>
+                <Phone size={14} strokeWidth={1.5} color={S.gold} style={{ flexShrink:0 }} />
+                015349522
+              </a>
               <a href="mailto:royalsuitesboutiquehotel2025@gmail.com" title="royalsuitesboutiquehotel2025@gmail.com" style={{ fontFamily:S.raleway, fontSize:'0.75rem', color:S.muted, display:'flex', alignItems:'center', gap:'0.625rem', textDecoration:'none', minWidth:0, overflow:'hidden' }}>
                 <Mail size={14} strokeWidth={1.5} color={S.gold} style={{ flexShrink:0 }} />
                 <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>royalsuitesboutiquehotel2025@gmail.com</span>

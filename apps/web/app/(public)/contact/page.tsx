@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { MapPin, Phone, Mail, Clock, KeyRound, Send } from 'lucide-react';
 import toast from 'react-hot-toast';
+import api from '@/lib/api';
 
 const S = {
   gold: 'hsl(43 72% 55%)', goldLight: 'hsl(43 65% 72%)',
@@ -15,9 +16,10 @@ const S = {
 };
 
 const INFO = [
-  { Icon: MapPin,   label: 'Address',             value: '1 Royal Suites Boulevard, Cairo, Egypt 11511' },
-  { Icon: Phone,    label: 'Reservations',         value: '+20 123 456 7890' },
-  { Icon: Mail,     label: 'Email',                value: 'reservations@royalsuites.com' },
+  { Icon: MapPin,   label: 'Address',             value: 'Kathmandu 44600, Nepal' },
+  { Icon: Phone,    label: 'Mobile',              value: '+977 982 865 1525' },
+  { Icon: Phone,    label: 'Telephone',           value: '015349522' },
+  { Icon: Mail,     label: 'Email',               value: 'royalsuitesboutiquehotel2025@gmail.com' },
   { Icon: Clock,    label: 'Check-In / Check-Out', value: '3:00 PM / 12:00 PM' },
   { Icon: KeyRound, label: 'Front Desk',           value: '24 Hours' },
 ];
@@ -29,10 +31,16 @@ export default function ContactPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    toast.success('Your message has been received. We will respond within 24 hours.');
-    setForm({ name: '', email: '', subject: '', message: '' });
-    setLoading(false);
+    try {
+      await api.post('/contact', form);
+      toast.success('Your message has been received. We will respond within 24 hours.');
+      setForm({ name: '', email: '', subject: '', message: '' });
+    } catch (err: any) {
+      const firstError = err?.response?.data?.errors?.[0]?.msg;
+      toast.error(firstError || 'Failed to send message. Please try again or call us directly.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputStyle: React.CSSProperties = {
@@ -94,8 +102,38 @@ export default function ContactPage() {
                 ))}
               </div>
 
+              {/* Map */}
+              <div style={{ marginTop: '2rem' }}>
+                <p style={{ fontFamily: S.cinzel, fontSize: '0.63rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: S.navy, marginBottom: '0.75rem' }}>Find Us</p>
+                <a
+                  href="https://www.google.com/maps/dir//Royal+Penguin+Boutique+Hotel,+P886%2B5W4,+Kathmandu+44600/@27.7151744,85.311488,14z"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: 'block', position: 'relative' }}
+                >
+                  <iframe
+                    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3532.0!2d85.3101103!3d27.712015!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x39eb18fc3dc48aa3%3A0xbc881b116d5301d8!2sRoyal%20Penguin%20Boutique%20Hotel!5e0!3m2!1sen!2snp!4v1"
+                    width="100%" height="200"
+                    style={{ display: 'block', border: '1px solid hsl(43 72% 55% / 0.25)', filter: 'grayscale(30%) sepia(20%)', pointerEvents: 'none' }}
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    title="Royal Suites location"
+                  />
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    border: '1px solid hsl(43 72% 55% / 0.25)',
+                    display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
+                    padding: '0.5rem', pointerEvents: 'none',
+                  }}>
+                    <span style={{ fontFamily: S.cinzel, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', background: 'hsl(220 55% 18% / 0.85)', color: S.gold, padding: '0.25rem 0.6rem' }}>
+                      Open in Maps ↗
+                    </span>
+                  </div>
+                </a>
+              </div>
+
               {/* Decorative quote */}
-              <div style={{ marginTop: '2.5rem', padding: '1.5rem', background: S.navy, border: `1px solid hsl(43 72% 55% / 0.2)` }}>
+              <div style={{ marginTop: '2rem', padding: '1.5rem', background: S.navy, border: `1px solid hsl(43 72% 55% / 0.2)` }}>
                 <p style={{ fontFamily: S.cormo, fontStyle: 'italic', fontSize: '1.05rem', color: 'rgba(245,236,215,0.7)', lineHeight: 1.7 }}>
                   "Where ancient grandeur meets modern luxury — your sanctuary awaits."
                 </p>
