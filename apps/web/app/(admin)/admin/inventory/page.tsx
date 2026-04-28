@@ -88,7 +88,7 @@ const CONSUME_TYPE_LABELS: Record<string, string> = {
   wastage:           'Spillage / waste',
   complimentary:     'Free drink / gift',
 };
-const WASTAGE_REASONS = ['spillage','breakage','expired','other'];
+const WASTAGE_REASONS = ['spillage','breakage','expired','other','unaccounted'];
 const STATUS_STYLE: Record<string, { bg: string; color: string; dot: string }> = {
   ok:  { bg: 'hsl(142 50% 94%)', color: 'hsl(142 50% 28%)', dot: 'hsl(142 50% 42%)' },
   low: { bg: 'hsl(38 90% 94%)',  color: 'hsl(38 80% 35%)',  dot: 'hsl(38 80% 45%)' },
@@ -141,6 +141,12 @@ export default function InventoryPage() {
   const [varianceData, setVarianceData]     = useState<VarianceIngredient[]>([]);
   const [varianceSummary, setVarianceSummary] = useState<VarianceSummary | null>(null);
   const [varianceLoading, setVarianceLoading] = useState(false);
+
+  // Reconciliation (analytics tab)
+  const [reconData, setReconData]           = useState<VarianceIngredient[]>([]);
+  const [reconSummary, setReconSummary]     = useState<VarianceSummary | null>(null);
+  const [reconLoading, setReconLoading]     = useState(false);
+  const [reconDays, setReconDays]           = useState<'7'|'30'|'all'>('30');
 
   // Analytics data
   const [analyticsData, setAnalyticsData]   = useState<InventoryAnalytics | null>(null);
@@ -264,6 +270,15 @@ export default function InventoryPage() {
     }).catch(() => {}).finally(() => setExpensesLoading(false));
   };
 
+  const fetchRecon = (days: '7'|'30'|'all' = reconDays) => {
+    setReconLoading(true);
+    const params = days !== 'all' ? `?days=${days}` : '';
+    api.get(`/inventory/variance${params}`).then(({ data }) => {
+      setReconData(data.ingredients || []);
+      setReconSummary(data.summary || null);
+    }).catch(() => {}).finally(() => setReconLoading(false));
+  };
+
   useEffect(() => {
     if (isFrontDesk) { fetchExpenses(); fetchIngredients(); return; }
     fetchStats();
@@ -274,7 +289,7 @@ export default function InventoryPage() {
     if (tab === 'recipes' && recipes.length === 0) fetchRecipes();
     if (tab === 'logs') fetchLogs();
     if (tab === 'variance') fetchVariance();
-    if (tab === 'analytics') fetchAnalytics();
+    if (tab === 'analytics') { fetchAnalytics(); fetchRecon(); }
     if (tab === 'expenses') fetchExpenses();
   }, [tab]);
 
@@ -368,6 +383,7 @@ export default function InventoryPage() {
   const openConsumeModal = () => {
     setConsumeMode('dish');
     setConsumeForm({ type:'staff_consumption', ingredientId:'', recipeId:'', qty:'', servings:'1', consumedBy:'', consumptionReason:'', guestId:'', note:'' });
+    fetchIngredients();
     if (recipes.length === 0) fetchRecipes();
     setConsumeModal(true);
   };
@@ -904,6 +920,105 @@ export default function InventoryPage() {
                   </div>
                 </div>
 
+                {/* ── Purchase Reconciliation ── */}
+                <div style={{ background: '#fff', border: `1px solid ${A.border}`, padding: '1.25rem 1.5rem', marginTop: '1.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                      <p style={{ fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: A.navy, fontWeight: 700, margin: 0 }}>
+                        Purchase Reconciliation
+                      </p>
+                      <p style={{ fontFamily: A.raleway, fontSize: '0.72rem', color: A.muted, marginTop: '0.25rem', marginBottom: 0 }}>
+                        For every item restocked: where did it go? Unaccounted = restocked − sold − consumed − wasted − current stock.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {(['7','30','all'] as const).map(d => (
+                        <button key={d} onClick={() => { setReconDays(d); fetchRecon(d); }}
+                          style={{ fontFamily: A.cinzel, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '0.3rem 0.8rem', border: `1px solid ${reconDays === d ? A.gold : A.border}`, background: reconDays === d ? A.gradGold : '#fff', color: reconDays === d ? A.navy : A.muted, cursor: 'pointer', fontWeight: reconDays === d ? 700 : 400 }}>
+                          {d === 'all' ? 'All time' : `${d}d`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {reconLoading ? (
+                    <div style={{ textAlign: 'center', padding: '2rem' }}>
+                      <div style={{ width: '1.5rem', height: '1.5rem', border: `2px solid ${A.gold}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
+                    </div>
+                  ) : reconSummary && (
+                    <>
+                      {/* Summary row */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                        {[
+                          { label: 'Restocked',    value: reconSummary.totalRestocked,  color: 'hsl(142 50% 30%)' },
+                          { label: 'Sold (auto)',  value: reconSummary.totalSold,        color: A.navy },
+                          { label: 'Consumed',     value: reconSummary.totalConsumed,    color: 'hsl(270 50% 35%)' },
+                          { label: 'Wasted',       value: reconSummary.totalWastage,     color: 'hsl(38 80% 35%)' },
+                          { label: 'Unaccounted',  value: reconSummary.totalShrinkage,   color: reconSummary.totalShrinkage > 0 ? 'hsl(0 60% 42%)' : 'hsl(142 50% 30%)' },
+                        ].map(({ label, value, color }) => (
+                          <div key={label} style={{ background: A.papyrus, border: `1px solid ${A.border}`, padding: '0.65rem 0.75rem' }}>
+                            <div style={{ fontFamily: A.cinzel, fontSize: '1rem', fontWeight: 700, color, lineHeight: 1 }}>{value.toFixed(2)}</div>
+                            <div style={{ fontFamily: A.cinzel, fontSize: '0.55rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: A.muted, marginTop: '0.2rem' }}>{label}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Per-ingredient rows — only show items that were restocked in period */}
+                      {(() => {
+                        const active = reconData.filter(r => r.restocked > 0 || r.sold > 0 || r.consumed > 0 || r.wastage > 0);
+                        if (active.length === 0) return (
+                          <p style={{ fontFamily: A.raleway, fontSize: '0.82rem', color: A.muted, textAlign: 'center', padding: '1rem' }}>
+                            No stock movements in this period.
+                          </p>
+                        );
+                        return (
+                          <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: A.raleway, fontSize: '0.78rem' }}>
+                              <thead>
+                                <tr style={{ borderBottom: `1px solid ${A.border}` }}>
+                                  {['Ingredient','Restocked','Sold','Consumed','Wasted','Current Stock','Unaccounted','%',''].map(h => (
+                                    <th key={h} style={{ fontFamily: A.cinzel, fontSize: '0.58rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: A.muted, fontWeight: 600, padding: '0.4rem 0.6rem', textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {active.map(r => (
+                                  <tr key={r.id} style={{ borderBottom: `1px solid ${A.border}50` }}>
+                                    <td style={{ padding: '0.55rem 0.6rem', fontFamily: A.cinzel, fontSize: '0.78rem', color: A.navy, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.name}</td>
+                                    <td style={{ padding: '0.55rem 0.6rem', color: 'hsl(142 50% 30%)', whiteSpace: 'nowrap' }}>+{r.restocked.toFixed(2)} {r.unit}</td>
+                                    <td style={{ padding: '0.55rem 0.6rem', whiteSpace: 'nowrap' }}>{r.sold.toFixed(2)}</td>
+                                    <td style={{ padding: '0.55rem 0.6rem', whiteSpace: 'nowrap' }}>{r.consumed.toFixed(2)}</td>
+                                    <td style={{ padding: '0.55rem 0.6rem', whiteSpace: 'nowrap' }}>{r.wastage.toFixed(2)}</td>
+                                    <td style={{ padding: '0.55rem 0.6rem', fontWeight: 600, color: A.navy, whiteSpace: 'nowrap' }}>{r.currentStock.toFixed(2)} {r.unit}</td>
+                                    <td style={{ padding: '0.55rem 0.6rem', whiteSpace: 'nowrap' }}>
+                                      <span style={{ fontFamily: A.cinzel, fontWeight: 700, color: r.shrinkage > 0 ? 'hsl(0 60% 42%)' : 'hsl(142 50% 30%)' }}>
+                                        {r.shrinkage.toFixed(2)} {r.unit}
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '0.55rem 0.6rem', whiteSpace: 'nowrap' }}>
+                                      <span style={{ color: r.shrinkagePct > 5 ? 'hsl(0 60% 42%)' : r.shrinkagePct > 0 ? 'hsl(38 80% 35%)' : 'hsl(142 50% 30%)', fontWeight: 600 }}>
+                                        {r.shrinkagePct.toFixed(1)}%
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '0.55rem 0.6rem' }}>
+                                      {r.alert && (
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: 'hsl(0 60% 95%)', border: '1px solid hsl(0 60% 80%)', padding: '0.15rem 0.45rem' }}>
+                                          <AlertTriangle size={9} color="hsl(0 60% 42%)" strokeWidth={2.5} />
+                                          <span style={{ fontFamily: A.cinzel, fontSize: '0.55rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'hsl(0 60% 38%)', fontWeight: 700 }}>Review</span>
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
+                </div>
+
                 <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
                   <button onClick={fetchAnalytics} style={{ fontFamily: A.cinzel, fontSize: '0.62rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: A.gold, background: 'none', border: `1px solid ${A.gold}50`, padding: '0.45rem 1rem', cursor: 'pointer' }}>
                     <RefreshCw size={11} strokeWidth={2} style={{ display: 'inline', marginRight: '0.4rem', verticalAlign: 'middle' }} />
@@ -1280,20 +1395,35 @@ export default function InventoryPage() {
                     <ChevronDown size={14} color={A.muted} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <FieldLabel>Quantity *</FieldLabel>
-                    <input className="inv-input" style={inputBase} type="number" min="0.001" step="any"
-                      value={consumeForm.qty} onChange={e => setConsumeForm({ ...consumeForm, qty: e.target.value })} placeholder="e.g. 60" />
-                  </div>
-                  {(consumeForm.type === 'staff_consumption' || consumeForm.type === 'owner_consumption') && (
-                    <div>
-                      <FieldLabel>Consumed By</FieldLabel>
-                      <input className="inv-input" style={inputBase}
-                        value={consumeForm.consumedBy} onChange={e => setConsumeForm({ ...consumeForm, consumedBy: e.target.value })} placeholder="Name" />
+                {(() => {
+                  const selIng = ingredients.find(x => x._id === consumeForm.ingredientId);
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                      <div>
+                        <FieldLabel>Quantity ({selIng ? selIng.unit : '…'}) *</FieldLabel>
+                        <div style={{ position: 'relative' }}>
+                          <input className="inv-input" style={{ ...inputBase, paddingRight: selIng ? '3rem' : inputBase.padding as string }} type="number" min="0.001" step="any"
+                            value={consumeForm.qty} onChange={e => setConsumeForm({ ...consumeForm, qty: e.target.value })} placeholder={selIng ? `in ${selIng.unit}` : 'e.g. 0.3'} />
+                          {selIng && (
+                            <span style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', fontFamily: A.raleway, fontSize: '0.72rem', color: A.gold, fontWeight: 700, pointerEvents: 'none' }}>{selIng.unit}</span>
+                          )}
+                        </div>
+                        {selIng && (
+                          <div style={{ fontFamily: A.raleway, fontSize: '0.7rem', color: A.muted, marginTop: '0.3rem' }}>
+                            Available: <strong style={{ color: A.navy }}>{selIng.stock} {selIng.unit}</strong>
+                          </div>
+                        )}
+                      </div>
+                      {(consumeForm.type === 'staff_consumption' || consumeForm.type === 'owner_consumption') && (
+                        <div>
+                          <FieldLabel>Consumed By</FieldLabel>
+                          <input className="inv-input" style={inputBase}
+                            value={consumeForm.consumedBy} onChange={e => setConsumeForm({ ...consumeForm, consumedBy: e.target.value })} placeholder="Name" />
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
                 {consumeForm.type === 'complimentary' && (
                   <div>
                     <FieldLabel>Guest ID (optional)</FieldLabel>
@@ -1304,16 +1434,14 @@ export default function InventoryPage() {
               </>
             )}
 
-            {consumeForm.type === 'wastage' && (
-              <div>
-                <FieldLabel>Wastage Reason</FieldLabel>
-                <SelectField
-                  value={consumeForm.consumptionReason || WASTAGE_REASONS[0]}
-                  onChange={v => setConsumeForm({ ...consumeForm, consumptionReason: v })}
-                  options={WASTAGE_REASONS}
-                />
-              </div>
-            )}
+            <div>
+              <FieldLabel>Reason (optional)</FieldLabel>
+              <SelectField
+                value={consumeForm.consumptionReason || ''}
+                onChange={v => setConsumeForm({ ...consumeForm, consumptionReason: v })}
+                options={['', ...WASTAGE_REASONS]}
+              />
+            </div>
             <div>
               <FieldLabel>Note (optional)</FieldLabel>
               <input className="inv-input" style={inputBase}
@@ -1399,12 +1527,12 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-function SelectField({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: string[] }) {
+function SelectField({ value, onChange, options, placeholder }: { value: string; onChange: (v: string) => void; options: string[]; placeholder?: string }) {
   return (
     <div style={{ position: 'relative' }}>
       <select className="inv-input" value={value} onChange={e => onChange(e.target.value)}
         style={{ width: '100%', padding: '0.65rem 2rem 0.65rem 0.875rem', border: `1px solid ${A.border}`, outline: 'none', fontFamily: A.raleway, fontSize: '0.85rem', color: A.navy, background: '#fff', appearance: 'none', boxSizing: 'border-box', cursor: 'pointer' }}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
+        {options.map(o => <option key={o} value={o}>{o === '' ? (placeholder ?? '— none —') : o}</option>)}
       </select>
       <ChevronDown size={14} color={A.muted} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
     </div>

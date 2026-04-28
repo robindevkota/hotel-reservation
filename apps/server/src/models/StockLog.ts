@@ -61,7 +61,7 @@ const StockLogSchema = new Schema<IStockLog>(
     ],
     note:               { type: String, default: '' },
     consumedBy:         { type: String },
-    consumptionReason:  { type: String, enum: ['spillage','breakage','expired','other'] },
+    consumptionReason:  { type: String, enum: ['spillage','breakage','expired','other','unaccounted'] },
     guestId:            { type: Schema.Types.ObjectId, ref: 'Guest' },
     variance:           { type: Number },
     cashAmount:         { type: Number, min: 0 },

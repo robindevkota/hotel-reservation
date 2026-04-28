@@ -118,7 +118,7 @@ export const consumeValidation = [
   body('ingredientId').isMongoId(),
   body('qty').isFloat({ min: 0.001 }),
   body('consumedBy').optional().trim(),
-  body('consumptionReason').optional().isIn(['spillage','breakage','expired','other']),
+  body('consumptionReason').optional().isIn(['spillage','breakage','expired','other','unaccounted']),
   body('guestId').optional().isMongoId(),
 ];
 
@@ -139,7 +139,7 @@ export const consumeDishValidation = [
   body('recipeId').isMongoId(),
   body('servings').isFloat({ min: 0.001 }),
   body('consumedBy').optional().trim(),
-  body('consumptionReason').optional().isIn(['spillage','breakage','expired','other']),
+  body('consumptionReason').optional().isIn(['spillage','breakage','expired','other','unaccounted']),
 ];
 
 export async function consumeDish(req: AuthRequest, res: Response): Promise<void> {
@@ -164,8 +164,21 @@ export async function stocktake(req: AuthRequest, res: Response): Promise<void> 
 // ── Variance report ──────────────────────────────────────────────────────────
 
 export async function varianceReport(req: AuthRequest, res: Response): Promise<void> {
-  const since = req.query.since ? new Date(req.query.since as string) : undefined;
-  const data = await getVarianceReport(since);
+  let since: Date | undefined;
+  let until: Date | undefined;
+  if (req.query.since) {
+    since = new Date(req.query.since as string);
+  } else if (req.query.days) {
+    const days = parseInt(req.query.days as string, 10);
+    if (!isNaN(days) && days > 0) {
+      since = new Date();
+      since.setDate(since.getDate() - days);
+    }
+  }
+  if (req.query.until) {
+    until = new Date(req.query.until as string);
+  }
+  const data = await getVarianceReport(since, until);
   res.json({ success: true, ...data });
 }
 

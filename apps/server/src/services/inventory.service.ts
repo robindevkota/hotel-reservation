@@ -364,7 +364,7 @@ export async function executeStocktake(
 
 // ── Variance report ───────────────────────────────────────────────────────────
 
-export async function getVarianceReport(since?: Date): Promise<{
+export async function getVarianceReport(since?: Date, until?: Date): Promise<{
   ingredients: {
     id: string; name: string; unit: string; category: string;
     restocked: number; sold: number; consumed: number; wastage: number;
@@ -373,12 +373,35 @@ export async function getVarianceReport(since?: Date): Promise<{
   }[];
   summary: { totalRestocked: number; totalSold: number; totalConsumed: number; totalWastage: number; totalShrinkage: number };
 }> {
-  const dateFilter = since ? { createdAt: { $gte: since } } : {};
+  const dateFilter: any = {};
+  if (since) dateFilter.createdAt = { $gte: since };
+  if (until) dateFilter.createdAt = { ...(dateFilter.createdAt ?? {}), $lte: until };
 
-  const [ingredients, logs] = await Promise.all([
+  // When until is in the past, fetch post-window logs to reconstruct stock-at-period-end
+  const afterUntilFilter: any = until ? { createdAt: { $gt: until } } : null;
+
+  const [ingredients, logs, afterLogs] = await Promise.all([
     Ingredient.find({ isActive: true }).lean(),
     StockLog.find(dateFilter).lean(),
+    afterUntilFilter ? StockLog.find(afterUntilFilter).lean() : Promise.resolve([] as any[]),
   ]);
+
+  // Build per-ingredient net change AFTER the until window (to reconstruct period-end stock)
+  const afterNetMap = new Map<string, number>();
+  if (afterLogs.length) {
+    for (const log of afterLogs) {
+      for (const line of log.lines) {
+        const id = String(line.ingredient);
+        const prev = afterNetMap.get(id) ?? 0;
+        if (log.type === 'restock' || log.type === 'import' || log.type === 'petty_cash_purchase') {
+          afterNetMap.set(id, prev + line.delta);
+        } else {
+          // sales, consumption, wastage, stocktake — delta is negative for outflows
+          afterNetMap.set(id, prev + line.delta);
+        }
+      }
+    }
+  }
 
   const report = ingredients.map(ing => {
     const id = String(ing._id);
@@ -395,11 +418,18 @@ export async function getVarianceReport(since?: Date): Promise<{
       }
     }
 
-    // shrinkage = what's unaccounted for (not sales, not logged consumption, not wastage)
+    // When until is specified, reconstruct what stock was at period end:
+    // stockAtPeriodEnd = currentStock - netAfterUntil
+    // (if things were added after the window, subtract them; if removed, add them back)
+    const afterNet = afterNetMap.get(id) ?? 0;
+    const stockAtPeriodEnd = until
+      ? Math.max(0, ing.stock - afterNet)
+      : ing.stock;
+
     const accounted = sold + consumed + wastage;
-    const totalOut = restocked > 0 ? restocked : 0;
-    const shrinkage = parseFloat(Math.max(0, totalOut - accounted - ing.stock).toFixed(4));
-    const shrinkagePct = totalOut > 0 ? parseFloat(((shrinkage / totalOut) * 100).toFixed(1)) : 0;
+    const netIn = restocked + Math.max(0, stocktakeVariance);
+    const shrinkage = parseFloat(Math.max(0, netIn - accounted - stockAtPeriodEnd).toFixed(4));
+    const shrinkagePct = netIn > 0 ? parseFloat(((shrinkage / netIn) * 100).toFixed(1)) : 0;
 
     return {
       id, name: ing.name, unit: ing.unit, category: ing.category,
@@ -798,8 +828,12 @@ export async function deductForOrder(
       const deduct = parseFloat((ing.qtyPerServing * line.quantity).toFixed(4));
       if (deduct <= 0) continue;
 
-      const newStock = parseFloat((Math.max(0, ingredient.stock - deduct)).toFixed(4));
-      await Ingredient.findByIdAndUpdate(ingredient._id, { stock: newStock });
+      // Atomic decrement — floors at 0 via two-step: decrement then clamp
+      await Ingredient.findByIdAndUpdate(ingredient._id, { $inc: { stock: -deduct } });
+      await Ingredient.findByIdAndUpdate(
+        { _id: ingredient._id, stock: { $lt: 0 } },
+        { $set: { stock: 0 } }
+      );
 
       logLines.push({
         ingredient: ingredient._id,
