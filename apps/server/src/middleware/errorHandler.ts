@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import logger from '../config/logger';
 
 export class AppError extends Error {
   statusCode: number;
@@ -21,8 +22,10 @@ export function errorHandler(
   const statusCode = 'statusCode' in err ? err.statusCode : 500;
   const message = 'statusCode' in err ? err.message : 'Internal server error';
 
-  if (process.env.NODE_ENV === 'development') {
-    console.error(err);
+  if (statusCode >= 500) {
+    logger.error(message, { stack: err.stack, statusCode });
+  } else if (process.env.NODE_ENV === 'development') {
+    logger.warn(message, { statusCode });
   }
 
   res.status(statusCode).json({

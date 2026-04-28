@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Royal Suites — monthly archive push to Atlas on the 1st at 3am</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-05-01T03:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByMonth>
+        <DaysOfMonth>
+          <Day>1</Day>
+        </DaysOfMonth>
+        <Months>
+          <January/>
+          <February/>
+          <March/>
+          <April/>
+          <May/>
+          <June/>
+          <July/>
+          <August/>
+          <September/>
+          <October/>
+          <November/>
+          <December/>
+        </Months>
+      </ScheduleByMonth>
+    </CalendarTrigger>
+  </Triggers>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Program Files\Git\bin\bash.exe</Command>
+      <!-- UPDATE THIS PATH to match where your project lives -->
+      <Arguments>-c "cd 'C:/Users/user/Desktop/Hotel reservation/royal-suites/apps/server' &amp;&amp; bash scripts/backup-monthly-archive.sh >> backups/archive.log 2>&amp;1"</Arguments>
+    </Exec>
+  </Actions>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
+    <StartWhenAvailable>true</StartWhenAvailable>
+  </Settings>
+</Task>

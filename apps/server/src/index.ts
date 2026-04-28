@@ -13,6 +13,7 @@ import { connectDB } from './config/db';
 import { initSocket } from './services/socket.service';
 import { errorHandler } from './middleware/errorHandler';
 import { syncAllChannels } from './services/ical.service';
+import logger from './config/logger';
 
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -118,7 +119,7 @@ const PORT = process.env.PORT || 5000;
 
 connectDB().then(() => {
   server.listen(PORT, () => {
-    console.log(`🏰 Royal Suites server running on port ${PORT}`);
+    logger.info(`Royal Suites server running on port ${PORT}`);
   });
 
   // Poll OTA iCal feeds every 20 minutes
@@ -127,4 +128,13 @@ connectDB().then(() => {
     syncAllChannels();
     setInterval(syncAllChannels, SYNC_INTERVAL);
   }, 10000); // wait 10s for DB to settle after boot
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled rejection', { reason });
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception', { stack: err.stack });
+  process.exit(1);
 });

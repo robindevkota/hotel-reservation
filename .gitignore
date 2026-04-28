@@ -16,3 +16,9 @@ test-results/
 # Graphify knowledge graph
 graphify-out/
 apps/graphify-out/
+
+# DB backups — never commit these
+apps/server/backups/
+
+# Logs
+apps/server/logs/
