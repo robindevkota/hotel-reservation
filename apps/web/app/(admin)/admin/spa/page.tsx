@@ -888,7 +888,7 @@ export default function AdminSpaPage() {
           defaultDate={scheduleDate}
           defaultStart={blockSlot.startTime || ''}
           onClose={() => setShowBlockModal(false)}
-          onSave={(payload) => doCreateBlock(blockSlot.therapistId, payload)}
+          onSave={(payload: any) => doCreateBlock(blockSlot.therapistId, payload)}
         />
       )}
 
