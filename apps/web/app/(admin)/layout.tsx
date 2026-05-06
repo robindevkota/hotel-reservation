@@ -485,9 +485,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const socket = getSocket();
     connectSocket();
 
-    const onConnect = () => { socket.emit('join:admin'); };
-    if (socket.connected) socket.emit('join:admin');
-    else socket.on('connect', onConnect);
+    const dept = (user as any)?.department;
+    const role = (user as any)?.role;
+    const isFrontDesk = dept === 'front_desk' || role === 'super_admin';
+    console.log('[AdminLayout] socket effect — dept:', dept, 'role:', role, 'isFrontDesk:', isFrontDesk, 'connected:', socket.connected);
+
+    const onConnect = () => {
+      console.log('[AdminLayout] socket connected → join:admin');
+      socket.emit('join:admin');
+    };
+    if (socket.connected) {
+      console.log('[AdminLayout] already connected → join:admin');
+      socket.emit('join:admin');
+    } else {
+      socket.on('connect', onConnect);
+    }
 
     const onNotification = ({ message }: { message: string }) => {
       toast(message, {
@@ -497,14 +509,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       });
     };
 
-    const dept = (user as any)?.department;
-    const role = (user as any)?.role;
-    const isFrontDesk = dept === 'front_desk' || role === 'super_admin';
-
     const onNewOrder = (order: any) => {
+      console.log('[AdminLayout] order:new received — isFrontDesk:', isFrontDesk, 'orderId:', order._id);
       if (!isFrontDesk) return;
       playOrderAlert();
-      setFdQueue(q => q.some(o => o._id === order._id) ? q : [...q, order]);
+      setFdQueue(q => {
+        const next = q.some(o => o._id === order._id) ? q : [...q, order];
+        console.log('[AdminLayout] setFdQueue → queue length:', next.length);
+        return next;
+      });
     };
 
     socket.on('notification:general', onNotification);
