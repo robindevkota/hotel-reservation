@@ -529,9 +529,6 @@ export default function GuestsPage() {
   const activeOrderCount = orders.filter((o: any) => o.status === 'pending').length;
 
   const [pendingAlert, setPendingAlert] = useState<any[] | null>(null);
-  const [orderQueue, setOrderQueue]     = useState<any[]>([]);
-  const currentOrderAlert               = orderQueue[0] ?? null;
-  const dismissOrderAlert               = useCallback(() => setOrderQueue(q => q.slice(1)), []);
 
   useEffect(() => {
     api.get('/orders').then(({ data }) => {
@@ -542,11 +539,15 @@ export default function GuestsPage() {
     }).catch(() => {});
   }, [setOrders]);
 
-  const addOrderToQueue = useCallback((order: any) => {
-    setOrderQueue(q => [...q, order]);
-  }, []);
+  useKitchenSocket();
 
-  useKitchenSocket(addOrderToQueue);
+  // Auto-open live tab when navigated from the layout order alert
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('live') === '1') setTab('live');
+    }
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -757,56 +758,6 @@ export default function GuestsPage() {
         />
       )}
 
-      {/* ── New order alert modal (queue — same pattern as kitchen board) ── */}
-      {currentOrderAlert && (
-        <div style={{ position: 'fixed', inset: 0, background: 'hsl(220 55% 18% / 0.78)', zIndex: 210, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ background: '#fff', maxWidth: '420px', width: '100%', border: `2px solid ${A.gold}`, overflow: 'hidden' }}>
-
-            {/* Header */}
-            <div style={{ background: A.navy, padding: '1.25rem 1.5rem', textAlign: 'center', position: 'relative' }}>
-              <div style={{ fontFamily: A.cinzel, fontSize: '0.58rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: A.gold, opacity: 0.7, marginBottom: '0.3rem' }}>Front Desk</div>
-              <h3 style={{ fontFamily: A.cinzel, fontSize: '1rem', color: A.gold, margin: 0, letterSpacing: '0.1em' }}>New Room Service Order</h3>
-              {orderQueue.length > 1 && (
-                <div style={{ position: 'absolute', top: '1rem', right: '1rem', background: A.gold, color: A.navy, fontFamily: A.cinzel, fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.5rem', letterSpacing: '0.05em' }}>
-                  {orderQueue.length} queued
-                </div>
-              )}
-            </div>
-
-            {/* Body */}
-            <div style={{ padding: '1.5rem' }}>
-              <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
-                <div style={{ fontFamily: A.cinzel, fontSize: '1rem', color: A.navy, marginBottom: '0.2rem' }}>
-                  Room {currentOrderAlert.room?.roomNumber ?? '—'}
-                </div>
-                <div style={{ fontFamily: A.raleway, fontSize: '0.75rem', color: A.muted }}>
-                  {new Date(currentOrderAlert.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
-              </div>
-
-              <div style={{ border: `1px solid ${A.border}`, marginBottom: '1.25rem' }}>
-                {currentOrderAlert.items?.map((item: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.875rem', borderBottom: i < currentOrderAlert.items.length - 1 ? `1px solid ${A.border}` : 'none' }}>
-                    <span style={{ fontFamily: A.raleway, fontSize: '0.82rem', color: A.navy }}>{item.quantity}× {item.menuItem?.name}</span>
-                    <span style={{ fontFamily: A.cinzel, fontSize: '0.75rem', color: A.gold }}>NPR {(item.unitPrice * item.quantity).toFixed(0)}</span>
-                  </div>
-                ))}
-                <div style={{ padding: '0.5rem 0.875rem', background: A.papyrus, display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontFamily: A.cinzel, fontSize: '0.68rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: A.navy }}>Total</span>
-                  <span style={{ fontFamily: A.cinzel, fontSize: '0.9rem', color: A.gold, fontWeight: 700 }}>NPR {currentOrderAlert.totalAmount}</span>
-                </div>
-              </div>
-
-              <button
-                onClick={dismissOrderAlert}
-                style={{ width: '100%', background: A.navy, color: A.gold, fontFamily: A.cinzel, fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.875rem', border: 'none', cursor: 'pointer', fontWeight: 700 }}
-              >
-                {orderQueue.length > 1 ? `Acknowledge · ${orderQueue.length - 1} more waiting` : 'Acknowledge'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

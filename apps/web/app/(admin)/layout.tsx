@@ -175,6 +175,104 @@ function OrderAlertModal({ user }: { user: any }) {
     </div>
   );
 }
+function FrontDeskOrderAlert({ user }: { user: any }) {
+  const [queue, setQueue] = useState<any[]>([]);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket();
+    connectSocket();
+
+    const onNewOrder = (order: any) => {
+      playOrderAlert();
+      setQueue(q => q.some(o => o._id === order._id) ? q : [...q, order]);
+    };
+    socket.on('order:new', onNewOrder);
+    return () => { socket.off('order:new', onNewOrder); };
+  }, [user]);
+
+  const current = queue[0];
+  if (!current) return null;
+  const remaining = queue.length - 1;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(13,27,62,0.6)', backdropFilter: 'blur(3px)' }}>
+      <div style={{ background: '#fff', width: '100%', maxWidth: '440px', border: '2px solid hsl(43 72% 55%)', boxShadow: '0 24px 64px hsl(220 55% 10% / 0.4)', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ background: 'hsl(220 55% 18%)', padding: '1.1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <Bell size={16} color="hsl(43 72% 55%)" strokeWidth={2} />
+            <div>
+              <div style={{ fontFamily: "'Cinzel',serif", fontSize: '0.55rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'hsl(43 72% 55% / 0.6)', marginBottom: '0.1rem' }}>Front Desk</div>
+              <div style={{ fontFamily: "'Cinzel',serif", fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'hsl(43 72% 55%)' }}>New Room Service Order</div>
+            </div>
+          </div>
+          {remaining > 0 && (
+            <span style={{ background: 'hsl(43 72% 55%)', color: 'hsl(220 55% 18%)', fontFamily: "'Cinzel',serif", fontSize: '0.6rem', fontWeight: 700, padding: '0.2rem 0.5rem' }}>
+              +{remaining} more
+            </span>
+          )}
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '1.25rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1rem', paddingBottom: '0.875rem', borderBottom: '1px solid hsl(35 25% 88%)' }}>
+            <p style={{ fontFamily: "'Cinzel',serif", fontSize: '1rem', color: 'hsl(220 55% 18%)', marginBottom: '0.2rem' }}>
+              Room {current.room?.roomNumber ?? '—'}
+            </p>
+            <p style={{ fontFamily: "'Cinzel',serif", fontSize: '0.58rem', letterSpacing: '0.12em', color: 'hsl(220 15% 50%)', textTransform: 'uppercase' }}>
+              {new Date(current.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </p>
+          </div>
+
+          <div style={{ border: '1px solid hsl(35 25% 88%)', marginBottom: '1rem' }}>
+            {current.items?.map((item: any, i: number) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.875rem', borderBottom: i < current.items.length - 1 ? '1px solid hsl(35 25% 88%)' : 'none' }}>
+                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '0.95rem', color: 'hsl(220 55% 18%)' }}>
+                  {item.quantity}× {item.menuItem?.name}
+                </span>
+                <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.68rem', color: 'hsl(220 15% 50%)' }}>
+                  NPR {(item.quantity * item.unitPrice).toFixed(0)}
+                </span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.875rem', background: 'hsl(38 40% 96%)' }}>
+              <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'hsl(220 15% 50%)' }}>Total</span>
+              <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.85rem', fontWeight: 700, color: 'hsl(220 55% 18%)' }}>NPR {current.totalAmount}</span>
+            </div>
+          </div>
+
+          {current.notes && (
+            <div style={{ background: 'hsl(43 72% 55% / 0.08)', border: '1px solid hsl(43 72% 55% / 0.2)', padding: '0.6rem 0.875rem', marginBottom: '1rem' }}>
+              <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '0.9rem', color: 'hsl(220 55% 18%)', fontStyle: 'italic' }}>
+                Note: {current.notes}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '0.875rem 1.25rem', borderTop: '1px solid hsl(35 25% 88%)', display: 'flex', gap: '0.75rem' }}>
+          <button
+            onClick={() => setQueue(q => q.slice(1))}
+            style={{ flex: 1, padding: '0.7rem', border: '1px solid hsl(35 25% 82%)', background: 'transparent', cursor: 'pointer', fontFamily: "'Cinzel',serif", fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'hsl(220 15% 45%)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
+          >
+            <X size={11} /> Dismiss
+          </button>
+          <button
+            onClick={() => { setQueue([]); router.push('/admin/guests?live=1'); }}
+            style={{ flex: 2, padding: '0.7rem', border: 'none', background: 'hsl(220 55% 18%)', cursor: 'pointer', fontFamily: "'Cinzel',serif", fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'hsl(43 72% 55%)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
+          >
+            Go to Live Operations <ChevronRight size={12} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 import { Department } from '../../store/authStore';
 
 // departments: null = visible to everyone (super_admin sees all; admin sees only their dept)
@@ -407,7 +505,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div style={{ minHeight: '100vh', background: 'hsl(38 40% 92%)' }}>
-      {(user as any).department === 'food' && <OrderAlertModal user={user} />}
+      {(user as any).department === 'food'       && <OrderAlertModal user={user} />}
+      {(user as any).department === 'front_desk' && <FrontDeskOrderAlert user={user} />}
       <Sidebar collapsed={collapsed} />
       <div style={{ marginLeft: sidebarW, minHeight: '100vh', transition: 'margin-left 0.25s ease', display: 'flex', flexDirection: 'column' }}>
         <Topbar collapsed={collapsed} setCollapsed={setCollapsed} />
