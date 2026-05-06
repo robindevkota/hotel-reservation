@@ -22,3 +22,4 @@ apps/server/backups/
 
 # Logs
 apps/server/logs/
+apps/server/*.xlsx
