@@ -1,11 +1,11 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import api from '../../../../lib/api';
 import { useOrderStore } from '../../../../store/orderStore';
 import { useAuthStore } from '../../../../store/authStore';
 import { useGuestSocket } from '../../../../hooks/useSocket';
 import toast from 'react-hot-toast';
-import { ClipboardList, CheckCircle2, XCircle, Sparkles, Hourglass, CalendarDays, Star } from 'lucide-react';
+import { ClipboardList, CheckCircle2, XCircle, Sparkles, Hourglass, CalendarDays, Star, Ban, Shirt, Droplets, Wrench, AlarmClock, Moon, BellOff, Wind, Zap, BedDouble, Clock, Bell } from 'lucide-react';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const GOLD    = 'hsl(43 72% 55%)';
@@ -36,7 +36,26 @@ const SPA_STATUS_META: Record<string, { color: string; bg: string; Icon: any; la
   cancelled: { color: 'hsl(0 65% 52%)',   bg: 'hsl(0 65% 52% / 0.1)',   Icon: XCircle,      label: 'Cancelled' },
 };
 
-type Tab = 'orders' | 'spa';
+type Tab = 'orders' | 'spa' | 'services';
+
+const SERVICE_TYPE_META: Record<string, { label: string; Icon: any }> = {
+  laundry:          { label: 'Laundry',        Icon: Shirt      },
+  towels:           { label: 'Towels',          Icon: Wind       },
+  pillows:          { label: 'Pillows',         Icon: BedDouble  },
+  water:            { label: 'Water',           Icon: Droplets   },
+  housekeeping:     { label: 'Housekeeping',    Icon: Sparkles   },
+  maintenance:      { label: 'Maintenance',     Icon: Wrench     },
+  iron:             { label: 'Iron & Board',    Icon: Zap        },
+  wake_up:          { label: 'Wake-Up Call',    Icon: AlarmClock },
+  turndown:         { label: 'Turndown',        Icon: Moon       },
+  do_not_disturb:   { label: 'Do Not Disturb',  Icon: BellOff   },
+};
+
+const SVC_STATUS_META: Record<string, { label: string; color: string; bg: string; Icon: any }> = {
+  pending:      { label: 'Pending',      color: GOLD,                  bg: `${GOLD}20`,               Icon: Hourglass    },
+  acknowledged: { label: 'Acknowledged', color: 'hsl(200 70% 48%)',    bg: 'hsl(200 70% 48% / 0.1)',  Icon: Clock        },
+  done:         { label: 'Done',         color: 'hsl(142 60% 38%)',    bg: 'hsl(142 60% 38% / 0.1)',  Icon: CheckCircle2 },
+};
 
 // ── Inline star rating widget ─────────────────────────────────────────────────
 function StarPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
@@ -171,27 +190,161 @@ function SpaRatingPrompt({ existingReview }: { existingReview: any }) {
   );
 }
 
+// ── Shared cancel confirmation modal ─────────────────────────────────────────
+function CancelConfirmModal({
+  title, message, onConfirm, onClose, loading,
+}: {
+  title: string; message: string; onConfirm: () => void; onClose: () => void; loading: boolean;
+}) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'hsl(220 55% 8% / 0.6)' }} onClick={onClose} />
+      <div style={{ position: 'relative', background: '#fff', width: '100%', maxWidth: '360px', border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
+        <div style={{ background: NAVY, padding: '1rem 1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <p style={{ fontFamily: CINZEL, color: 'hsl(0 65% 72%)', fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', margin: 0 }}>{title}</p>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'hsl(40 20% 60%)', cursor: 'pointer', lineHeight: 1, padding: '0.1rem' }}>✕</button>
+        </div>
+        <div style={{ padding: '1.25rem 1.5rem' }}>
+          <p style={{ fontFamily: RALEWAY, color: NAVY, fontSize: '0.82rem', marginBottom: '1.25rem', lineHeight: 1.6 }}>{message}</p>
+          <div style={{ display: 'flex', gap: '0.625rem' }}>
+            <button
+              onClick={onClose}
+              disabled={loading}
+              style={{ flex: 1, padding: '0.625rem', background: '#fff', border: `1px solid ${BORDER}`, fontFamily: CINZEL, fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: MUTED, cursor: 'pointer' }}
+            >
+              Keep
+            </button>
+            <button
+              onClick={onConfirm}
+              disabled={loading}
+              style={{ flex: 1, padding: '0.625rem', background: 'hsl(0 65% 48%)', border: 'none', fontFamily: CINZEL, fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#fff', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}
+            >
+              {loading ? 'Cancelling…' : 'Yes, Cancel'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 2-min countdown cancel button for food orders ─────────────────────────────
+const CANCEL_WINDOW_MS = 2 * 60 * 1000;
+
+function CancelOrderButton({ order, onCancelled }: { order: any; onCancelled: () => void }) {
+  const [secsLeft, setSecsLeft] = useState(() => {
+    const elapsed = Date.now() - new Date(order.placedAt).getTime();
+    return Math.max(0, Math.ceil((CANCEL_WINDOW_MS - elapsed) / 1000));
+  });
+  const [loading, setLoading]     = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  useEffect(() => {
+    if (secsLeft <= 0) return;
+    const id = setInterval(() => {
+      setSecsLeft(s => {
+        if (s <= 1) { clearInterval(id); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [secsLeft]);
+
+  if (secsLeft <= 0 || !['pending', 'accepted'].includes(order.status)) return null;
+
+  async function handleConfirm() {
+    setLoading(true);
+    try {
+      await api.patch(`/orders/${order._id}/cancel/guest`);
+      toast.success('Order cancelled');
+      setShowModal(false);
+      onCancelled();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Could not cancel order');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const mins = Math.floor(secsLeft / 60);
+  const secs = secsLeft % 60;
+  const timeLabel = `${mins}:${String(secs).padStart(2, '0')}`;
+
+  return (
+    <>
+      <div style={{ marginTop: '0.75rem', borderTop: `1px solid ${BORDER}`, paddingTop: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontFamily: RALEWAY, color: MUTED, fontSize: '0.7rem' }}>
+          Cancel within <span style={{ color: 'hsl(0 65% 52%)', fontWeight: 600 }}>{timeLabel}</span>
+        </span>
+        <button
+          onClick={() => setShowModal(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.35rem 0.875rem', background: 'transparent', border: '1px solid hsl(0 65% 52%)', color: 'hsl(0 65% 52%)', fontFamily: CINZEL, fontSize: '0.55rem', letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer' }}
+        >
+          <Ban size={11} strokeWidth={1.5} /> Cancel
+        </button>
+      </div>
+      {showModal && (
+        <CancelConfirmModal
+          title="Cancel Order"
+          message="Are you sure you want to cancel this order? This cannot be undone."
+          loading={loading}
+          onConfirm={handleConfirm}
+          onClose={() => !loading && setShowModal(false)}
+        />
+      )}
+    </>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function OrdersPage() {
   const { user } = useAuthStore();
+  const isNepali = user?.type === 'guest' && (user as any).nationality === 'nepali';
+  const [exchangeRate, setExchangeRate] = useState(133);
+  useEffect(() => {
+    api.get('/settings/exchange-rate').then(({ data }) => { if (data.rate) setExchangeRate(data.rate); }).catch(() => {});
+  }, []);
+  const fmtSpa = (usd: number) =>
+    isNepali ? `NPR ${Math.round(usd * exchangeRate).toLocaleString()}` : `$${usd}`;
   const { orders, setOrders } = useOrderStore();
   const guestId = user?.type === 'guest' ? (user as any).guestId : undefined;
-  useGuestSocket(guestId);
 
   const [tab, setTab]                 = useState<Tab>('orders');
   const [spaBookings, setSpaBookings] = useState<any[]>([]);
   const [spaLoading, setSpaLoading]   = useState(true);
   const [existingReview, setExistingReview] = useState<any>(null);
+  const [cancellingSpa, setCancellingSpa]     = useState<string | null>(null);
+  const [spaModalTarget, setSpaModalTarget]   = useState<string | null>(null);
+  const [serviceRequests, setServiceRequests] = useState<any[]>([]);
+  const [svcLoading, setSvcLoading]           = useState(true);
+
+  const onServiceUpdated = useCallback((updated: any) => {
+    setServiceRequests(prev => prev.map(r => r._id === updated._id ? updated : r));
+  }, []);
+
+  const onSpaRefresh = useCallback(() => { fetchSpa(); }, []);
+
+  useGuestSocket(guestId, onServiceUpdated, onSpaRefresh, onSpaRefresh);
 
   useEffect(() => {
     api.get('/orders/my').then(({ data }) => setOrders(data.orders));
   }, [setOrders]);
 
-  useEffect(() => {
+  function fetchSpa() {
+    setSpaLoading(true);
     api.get('/spa/bookings/my')
       .then(({ data }) => setSpaBookings(data.bookings ?? data))
       .catch(() => setSpaBookings([]))
       .finally(() => setSpaLoading(false));
+  }
+
+  useEffect(() => { fetchSpa(); }, []);
+
+  useEffect(() => {
+    api.get('/service-requests/my')
+      .then(({ data }) => setServiceRequests(data.requests ?? []))
+      .catch(() => setServiceRequests([]))
+      .finally(() => setSvcLoading(false));
   }, []);
 
   useEffect(() => {
@@ -210,6 +363,7 @@ export default function OrdersPage() {
 
   const activeOrderCount = activeOrders.length;
   const activeSpaCount   = activeSpa.length;
+  const activeSvcCount   = serviceRequests.filter(r => r.status !== 'done').length;
 
   return (
     <div style={{ background: CREAM, minHeight: '100vh' }}>
@@ -227,8 +381,9 @@ export default function OrdersPage() {
         {/* ── Tab strip ── */}
         <div style={{ display: 'flex', borderTop: `1px solid ${GOLD}20` }}>
           {([
-            { key: 'orders', label: 'Food Orders', badge: activeOrderCount },
-            { key: 'spa',    label: 'Spa Bookings', badge: activeSpaCount  },
+            { key: 'orders',   label: 'Food Orders',  badge: activeOrderCount },
+            { key: 'spa',      label: 'Spa',          badge: activeSpaCount   },
+            { key: 'services', label: 'Services',     badge: activeSvcCount   },
           ] as { key: Tab; label: string; badge: number }[]).map(({ key, label, badge }) => {
             const active = tab === key;
             return (
@@ -314,6 +469,10 @@ export default function OrdersPage() {
                               </div>
                             ))}
                           </div>
+                          <CancelOrderButton
+                            order={order}
+                            onCancelled={() => api.get('/orders/my').then(({ data }) => setOrders(data.orders))}
+                          />
                         </div>
                       </div>
                     );
@@ -416,7 +575,17 @@ export default function OrdersPage() {
                               {b.service?.price && (
                                 <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.25rem' }}>
                                   <span style={{ fontFamily: CINZEL, color: MUTED, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Session Price</span>
-                                  <span style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '0.95rem' }}>NPR {b.service.price}</span>
+                                  <span style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '0.95rem' }}>{fmtSpa(b.service.price)}</span>
+                                </div>
+                              )}
+                              {['pending', 'confirmed', 'arrived'].includes(b.status) && (
+                                <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: '0.625rem', marginTop: '0.25rem', display: 'flex', justifyContent: 'flex-end' }}>
+                                  <button
+                                    onClick={() => setSpaModalTarget(b._id)}
+                                    style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.35rem 0.875rem', background: 'transparent', border: '1px solid hsl(0 65% 52%)', color: 'hsl(0 65% 52%)', fontFamily: CINZEL, fontSize: '0.55rem', letterSpacing: '0.12em', textTransform: 'uppercase', cursor: 'pointer' }}
+                                  >
+                                    <Ban size={11} strokeWidth={1.5} /> Cancel Booking
+                                  </button>
                                 </div>
                               )}
                             </div>
@@ -450,7 +619,7 @@ export default function OrdersPage() {
                                 </div>
                               </div>
                               <div style={{ textAlign: 'right' }}>
-                                {b.service?.price && <p style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '0.9rem' }}>NPR {b.service.price}</p>}
+                                {b.service?.price && <p style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '0.9rem' }}>{fmtSpa(b.service.price)}</p>}
                                 <p style={{ fontFamily: CINZEL, fontSize: '0.55rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: meta.color }}>{meta.label}</p>
                               </div>
                             </div>
@@ -479,7 +648,77 @@ export default function OrdersPage() {
           </>
         )}
 
+        {/* ════════════════════════════════════════════════════════════════
+            SERVICES TAB
+        ════════════════════════════════════════════════════════════════ */}
+        {tab === 'services' && (
+          <>
+            {svcLoading ? (
+              <div style={{ textAlign: 'center', padding: '3rem 0', color: MUTED, fontFamily: RALEWAY, fontSize: '0.85rem' }}>Loading requests…</div>
+            ) : serviceRequests.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '4rem 1rem' }}>
+                <div style={{ width: '4rem', height: '4rem', background: `${GOLD}12`, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
+                  <Bell size={24} color={GOLD} strokeWidth={1.5} />
+                </div>
+                <p style={{ fontFamily: CINZEL, color: NAVY, fontSize: '0.8rem', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '0.4rem' }}>No service requests yet</p>
+                <p style={{ color: MUTED, fontSize: '0.8rem', fontFamily: RALEWAY }}>Use Quick Services on the dashboard to request assistance</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {serviceRequests.map((req: any) => {
+                  const typeMeta  = SERVICE_TYPE_META[req.type]  || { label: req.type, Icon: Bell };
+                  const statMeta  = SVC_STATUS_META[req.status]  || SVC_STATUS_META.pending;
+                  const { Icon: TypeIcon } = typeMeta;
+                  const { Icon: StatIcon } = statMeta;
+                  return (
+                    <div key={req._id} style={{ background: '#fff', border: `1px solid ${req.status === 'done' ? BORDER : GOLD + '30'}`, padding: '0.875rem 1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: req.status === 'done' ? 0.7 : 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{ width: '2.25rem', height: '2.25rem', background: statMeta.bg, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <TypeIcon size={14} color={statMeta.color} strokeWidth={1.5} />
+                        </div>
+                        <div>
+                          <p style={{ fontFamily: CINZEL, color: NAVY, fontSize: '0.72rem', letterSpacing: '0.06em' }}>{typeMeta.label}</p>
+                          <p style={{ fontFamily: RALEWAY, color: MUTED, fontSize: '0.63rem', marginTop: '0.1rem' }}>
+                            {new Date(req.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {' · '}{new Date(req.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', fontFamily: CINZEL, fontSize: '0.52rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: statMeta.color, background: statMeta.bg, padding: '0.2rem 0.5rem' }}>
+                        <StatIcon size={10} strokeWidth={2} />{statMeta.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
       </div>
+
+      {spaModalTarget && (
+        <CancelConfirmModal
+          title="Cancel Booking"
+          message="Are you sure you want to cancel this spa booking? This cannot be undone."
+          loading={cancellingSpa === spaModalTarget}
+          onConfirm={async () => {
+            const id = spaModalTarget;
+            setCancellingSpa(id);
+            try {
+              await api.patch(`/spa/bookings/${id}/cancel`);
+              toast.success('Booking cancelled');
+              setSpaModalTarget(null);
+              fetchSpa();
+            } catch (e: any) {
+              toast.error(e?.response?.data?.message || 'Could not cancel booking');
+            } finally {
+              setCancellingSpa(null);
+            }
+          }}
+          onClose={() => { if (!cancellingSpa) setSpaModalTarget(null); }}
+        />
+      )}
     </div>
   );
 }

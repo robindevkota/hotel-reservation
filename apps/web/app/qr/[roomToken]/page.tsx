@@ -13,6 +13,7 @@ interface SessionData {
   roomType: string;
   floorNumber: number;
   guestName: string;
+  nationality: 'nepali' | 'foreign';
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -41,7 +42,7 @@ export default function QRLandingPage() {
   const handleConfirm = () => {
     if (!session) return;
     setStatus('entering');
-    loginAsGuest(session.token, session.guestId, session.roomId, session.roomName, session.roomNumber, session.guestName);
+    loginAsGuest(session.token, session.guestId, session.roomId, session.roomName, session.roomNumber, session.guestName, session.nationality);
     setTimeout(() => router.replace('/guest/dashboard'), 1200);
   };
 

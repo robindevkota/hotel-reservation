@@ -13,6 +13,7 @@ import { connectDB } from './config/db';
 import { initSocket } from './services/socket.service';
 import { errorHandler } from './middleware/errorHandler';
 import { syncAllChannels } from './services/ical.service';
+import { startCronJobs } from './services/cron.service';
 import logger from './config/logger';
 
 // Routes
@@ -35,6 +36,7 @@ import channelRoutes from './routes/channel.routes';
 import settingsRoutes from './routes/settings.routes';
 import reviewRoutes from './routes/review.routes';
 import contactRoutes from './routes/contact.routes';
+import serviceRequestRoutes from './routes/serviceRequest.routes';
 
 const app = express();
 const server = http.createServer(app);
@@ -109,6 +111,7 @@ app.use('/api/channels', channelRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/service-requests', serviceRequestRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', ts: new Date() }));
 
@@ -128,6 +131,8 @@ connectDB().then(() => {
     syncAllChannels();
     setInterval(syncAllChannels, SYNC_INTERVAL);
   }, 10000); // wait 10s for DB to settle after boot
+
+  startCronJobs();
 });
 
 process.on('unhandledRejection', (reason) => {

@@ -24,7 +24,12 @@ function playBeep() {
   } catch { /* browser blocked audio — silent fail */ }
 }
 
-export function useGuestSocket(guestId: string | undefined) {
+export function useGuestSocket(
+  guestId: string | undefined,
+  onServiceUpdated?: (req: any) => void,
+  onSpaConfirmed?: (bookingId: string) => void,
+  onSpaRescheduled?: (data: { bookingId: string; newStart: string; newDate: string }) => void,
+) {
   const { updateOrderStatus } = useOrderStore();
 
   useEffect(() => {
@@ -32,16 +37,52 @@ export function useGuestSocket(guestId: string | undefined) {
     const socket = getSocket();
     connectSocket();
 
-    socket.emit('join:guest-room', guestId);
+    const joinRoom = () => { socket.emit('join:guest-room', guestId); };
+    if (socket.connected) joinRoom(); else socket.on('connect', joinRoom);
 
-    socket.on('order:status-update', ({ orderId, status }: { orderId: string; status: string }) => {
-      updateOrderStatus(orderId, status);
-    });
+    const handleOrder   = ({ orderId, status }: { orderId: string; status: string }) => updateOrderStatus(orderId, status);
+    const handleSvc     = (req: any) => onServiceUpdated?.(req);
+    const handleSpaConf = ({ bookingId }: { bookingId: string }) => onSpaConfirmed?.(bookingId);
+    const handleSpaResc = (data: any) => onSpaRescheduled?.(data);
+
+    socket.on('order:status-update',    handleOrder);
+    socket.on('service:updated',        handleSvc);
+    socket.on('spa:booking-confirmed',  handleSpaConf);
+    socket.on('spa:rescheduled',        handleSpaResc);
 
     return () => {
-      socket.off('order:status-update');
+      socket.off('connect',              joinRoom);
+      socket.off('order:status-update',  handleOrder);
+      socket.off('service:updated',      handleSvc);
+      socket.off('spa:booking-confirmed', handleSpaConf);
+      socket.off('spa:rescheduled',      handleSpaResc);
     };
-  }, [guestId, updateOrderStatus]);
+  }, [guestId, updateOrderStatus, onServiceUpdated, onSpaConfirmed, onSpaRescheduled]);
+}
+
+export function useFrontDeskSocket(
+  onServiceNew?:     (req: any) => void,
+  onServiceUpdated?: (req: any) => void,
+) {
+  useEffect(() => {
+    const socket = getSocket();
+    connectSocket();
+
+    const onConnect = () => { socket.emit('join:admin'); };
+    if (socket.connected) onConnect(); else socket.on('connect', onConnect);
+
+    const handleNew     = (req: any) => onServiceNew?.(req);
+    const handleUpdated = (req: any) => onServiceUpdated?.(req);
+
+    socket.on('service:new',     handleNew);
+    socket.on('service:updated', handleUpdated);
+
+    return () => {
+      socket.off('connect',          onConnect);
+      socket.off('service:new',      handleNew);
+      socket.off('service:updated',  handleUpdated);
+    };
+  }, [onServiceNew, onServiceUpdated]);
 }
 
 export function useKitchenSocket(onNewOrder?: (order: any) => void) {

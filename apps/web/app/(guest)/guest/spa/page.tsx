@@ -6,6 +6,8 @@ import toast from 'react-hot-toast';
 import { Clock, Sparkles, X, CalendarDays, CheckCircle2, XCircle, Hourglass, Sun, Sunset, Moon, ChevronRight } from 'lucide-react';
 import { useActiveOffer } from '../../../../hooks/useActiveOffer';
 import OfferBanner from '../../../../components/ui/OfferBanner';
+import { useAuthStore } from '../../../../store/authStore';
+import { getSocket, connectSocket } from '../../../../lib/socket';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const GOLD   = 'hsl(43 72% 55%)';
@@ -63,9 +65,22 @@ const BOOKING_STATUS: Record<string, { bg: string; color: string; Icon: any }> =
 type Step = 'date' | 'window' | 'slots' | 'confirm';
 
 export default function SpaPage() {
+  const { user } = useAuthStore();
+  const nationality = user?.type === 'guest' ? (user as any).nationality : 'foreign';
+  const isNepali = nationality === 'nepali';
+
+  const [exchangeRate, setExchangeRate] = useState(133); // fallback NPR/USD rate
+  useEffect(() => {
+    api.get('/settings/exchange-rate').then(({ data }) => { if (data.rate) setExchangeRate(data.rate); }).catch(() => {});
+  }, []);
+
+  const fmtPrice = (usdPrice: number) =>
+    isNepali ? `NPR ${Math.round(usdPrice * exchangeRate).toLocaleString()}` : `$${usdPrice}`;
+
   const [services, setServices]         = useState<any[]>([]);
   const [myBookings, setMyBookings]     = useState<any[]>([]);
   const [selected, setSelected]         = useState<any>(null);
+  const [rescheduleNotice, setRescheduleNotice] = useState<{ newStart: string; newDate: string } | null>(null);
 
   // Booking wizard state
   const [step, setStep]                 = useState<Step>('date');
@@ -81,6 +96,14 @@ export default function SpaPage() {
   useEffect(() => {
     api.get('/spa/services').then(({ data }) => setServices(data.services));
     api.get('/spa/bookings/my').then(({ data }) => setMyBookings(data.bookings));
+
+    const socket = getSocket();
+    connectSocket();
+    socket.on('spa:rescheduled', ({ newStart, newDate }: { bookingId: string; newStart: string; newDate: string }) => {
+      setRescheduleNotice({ newStart, newDate });
+      api.get('/spa/bookings/my').then(({ data }) => setMyBookings(data.bookings));
+    });
+    return () => { socket.off('spa:rescheduled'); };
   }, []);
 
   const openModal = (service: any) => {
@@ -161,6 +184,21 @@ export default function SpaPage() {
       <div style={{ background: CREAM, minHeight: '100vh', paddingBottom: '5rem' }}>
         <OfferBanner filter="spa" />
 
+        {/* ── Reschedule notice banner ─────────────────────────────────────── */}
+        {rescheduleNotice && (
+          <div style={{ background: 'hsl(38 90% 94%)', borderBottom: `1px solid ${GOLD}60`, padding: '0.75rem 1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <span style={{ color: GOLD, fontSize: '1rem' }}>𓋹</span>
+              <p style={{ fontFamily: CINZEL, color: 'hsl(38 80% 30%)', fontSize: '0.72rem', letterSpacing: '0.05em' }}>
+                Your spa session has been rescheduled to <strong>{rescheduleNotice.newDate}</strong> at <strong>{rescheduleNotice.newStart}</strong>.
+              </p>
+            </div>
+            <button onClick={() => setRescheduleNotice(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'hsl(38 60% 45%)', padding: '0.25rem', flexShrink: 0 }}>
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <div style={{ background: NAVY, padding: '2rem 1.5rem 1.75rem', textAlign: 'center' }}>
           <p style={{ fontFamily: CINZEL, color: GOLD, fontSize: '0.58rem', letterSpacing: '0.5em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Ancient Rituals</p>
@@ -191,8 +229,8 @@ export default function SpaPage() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem', marginBottom: '0.35rem' }}>
                       <h3 style={{ fontFamily: CINZEL, color: NAVY, fontSize: '0.85rem', letterSpacing: '0.05em', fontWeight: 600, lineHeight: 1.3 }}>{service.name}</h3>
                       <span style={{ fontFamily: CINZEL, color: GOLD, fontSize: '1rem', fontWeight: 700, flexShrink: 0 }}>
-                        NPR {spaPrice(service.price)}
-                        {spaMultiplier < 1 && <span style={{ fontSize: '0.68rem', color: MUTED, textDecoration: 'line-through', marginLeft: '0.3rem' }}>NPR {service.price}</span>}
+                        {fmtPrice(spaPrice(service.price))}
+                        {spaMultiplier < 1 && <span style={{ fontSize: '0.68rem', color: MUTED, textDecoration: 'line-through', marginLeft: '0.3rem' }}>{fmtPrice(service.price)}</span>}
                       </span>
                     </div>
                     <p style={{ fontFamily: RALEWAY, color: MUTED, fontSize: '0.75rem', lineHeight: 1.5, marginBottom: '0.5rem', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{service.description}</p>
@@ -240,7 +278,7 @@ export default function SpaPage() {
                         )}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.4rem', flexShrink: 0 }}>
-                        <span style={{ fontFamily: CINZEL, color: GOLD, fontSize: '0.95rem', fontWeight: 700 }}>NPR {booking.price}</span>
+                        <span style={{ fontFamily: CINZEL, color: GOLD, fontSize: '0.95rem', fontWeight: 700 }}>{fmtPrice(booking.price)}</span>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: sc.bg, color: sc.color, fontFamily: CINZEL, fontSize: '0.58rem', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '0.25rem 0.6rem', fontWeight: 700 }}>
                           <StatusIcon size={10} strokeWidth={2} /> {booking.status.replace('_', ' ')}
                         </span>
@@ -280,8 +318,8 @@ export default function SpaPage() {
                   </div>
                 </div>
                 <span style={{ fontFamily: "'Cinzel Decorative', serif", color: GOLD, fontSize: '1.3rem', fontWeight: 700, flexShrink: 0, marginLeft: '1rem' }}>
-                  NPR {spaPrice(selected.price)}
-                  {spaMultiplier < 1 && <span style={{ fontSize: '0.8rem', color: MUTED, textDecoration: 'line-through', marginLeft: '0.4rem' }}>NPR {selected.price}</span>}
+                  {fmtPrice(spaPrice(selected.price))}
+                  {spaMultiplier < 1 && <span style={{ fontSize: '0.8rem', color: MUTED, textDecoration: 'line-through', marginLeft: '0.4rem' }}>{fmtPrice(selected.price)}</span>}
                 </span>
               </div>
 
@@ -440,7 +478,7 @@ export default function SpaPage() {
                       ['Time of Day', windowInfo ? `${windowInfo.label} (${windowInfo.hours})` : '—'],
                       ['Your Preference', pickedSlot || 'Earliest available'],
                       ['Duration', `${selected.duration} min`],
-                      ['Price', spaMultiplier < 1 ? `NPR ${spaPrice(selected.price)} (was NPR ${selected.price})` : `NPR ${selected.price}`],
+                      ['Price', spaMultiplier < 1 ? `${fmtPrice(spaPrice(selected.price))} (was ${fmtPrice(selected.price)})` : fmtPrice(selected.price)],
                     ].map(([k, v]) => (
                       <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingBottom: '0.6rem', marginBottom: '0.6rem', borderBottom: `1px solid ${BORDER}` }}>
                         <span style={{ fontFamily: CINZEL, fontSize: '0.6rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: MUTED }}>{k}</span>
@@ -457,7 +495,7 @@ export default function SpaPage() {
                     style={{ width: '100%', background: `linear-gradient(135deg, ${GOLD}, hsl(43 65% 68%))`, color: NAVY, fontFamily: CINZEL, fontSize: '0.68rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '1rem', border: 'none', cursor: 'pointer', fontWeight: 700, opacity: loading ? 0.7 : 1, transition: 'opacity 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                     {loading
                       ? <><div style={{ width: '1rem', height: '1rem', border: `2px solid ${NAVY}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} /> Confirming…</>
-                      : <><Sparkles size={13} /> Confirm · NPR {spaPrice(selected.price)}</>
+                      : <><Sparkles size={13} /> Confirm · {fmtPrice(spaPrice(selected.price))}</>
                     }
                   </button>
                   <button onClick={() => setStep('slots')}

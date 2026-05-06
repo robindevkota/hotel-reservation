@@ -6,7 +6,7 @@ import { useBilling } from '../../../../hooks/useBilling';
 import { useGuestSocket } from '../../../../hooks/useSocket';
 import api from '../../../../lib/api';
 import toast from 'react-hot-toast';
-import { UtensilsCrossed, Flower2, ClipboardList, Receipt, CheckCircle2, Clock, Hourglass, XCircle, Star } from 'lucide-react';
+import { UtensilsCrossed, Flower2, ClipboardList, Receipt, CheckCircle2, Clock, Hourglass, XCircle, Star, Shirt, Droplets, Sparkles, Wrench, AlarmClock, Moon, BellOff, Wind, Zap, BedDouble } from 'lucide-react';
 
 const GOLD   = 'hsl(43 72% 55%)';
 const NAVY   = 'hsl(220 55% 14%)';
@@ -141,6 +141,73 @@ function RateYourStay({ eligible, existing }: { eligible: any; existing: any }) 
   );
 }
 
+const SERVICE_TYPES = [
+  { type: 'laundry',        label: 'Laundry',      Icon: Shirt      },
+  { type: 'towels',         label: 'Towels',        Icon: Wind       },
+  { type: 'pillows',        label: 'Pillows',       Icon: BedDouble  },
+  { type: 'water',          label: 'Water',         Icon: Droplets   },
+  { type: 'housekeeping',   label: 'Housekeeping',  Icon: Sparkles   },
+  { type: 'maintenance',    label: 'Maintenance',   Icon: Wrench     },
+  { type: 'iron',           label: 'Iron & Board',  Icon: Zap        },
+  { type: 'wake_up',        label: 'Wake-Up Call',  Icon: AlarmClock },
+  { type: 'turndown',       label: 'Turndown',      Icon: Moon       },
+  { type: 'do_not_disturb', label: 'Do Not Disturb', Icon: BellOff  },
+];
+
+const COOLDOWN_MS = 5 * 60 * 1000;
+
+function QuickServices() {
+  const [cooldowns, setCooldowns]   = useState<Record<string, number>>({});
+  const [sending, setSending]       = useState<string | null>(null);
+
+  async function request(type: string) {
+    if (cooldowns[type] && Date.now() < cooldowns[type]) return;
+    setSending(type);
+    try {
+      await api.post('/service-requests', { type });
+      toast.success('Request sent — front desk notified');
+      setCooldowns(prev => ({ ...prev, [type]: Date.now() + COOLDOWN_MS }));
+    } catch {
+      toast.error('Could not send request');
+    } finally {
+      setSending(null);
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: '1.75rem' }}>
+      <p style={{ fontFamily: CINZEL, color: NAVY, fontSize: '0.6rem', letterSpacing: '0.25em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Quick Services</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+        {SERVICE_TYPES.map(({ type, label, Icon }) => {
+          const onCooldown = cooldowns[type] && Date.now() < cooldowns[type];
+          const busy = sending === type;
+          return (
+            <button
+              key={type}
+              onClick={() => request(type)}
+              disabled={!!onCooldown || !!busy}
+              style={{
+                background: onCooldown ? `${GOLD}10` : '#fff',
+                border: `1px solid ${onCooldown ? GOLD : BORDER}`,
+                padding: '0.6rem 0.25rem',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem',
+                cursor: (onCooldown || busy) ? 'not-allowed' : 'pointer',
+                opacity: onCooldown ? 0.55 : 1,
+                transition: 'all 0.15s',
+              }}
+            >
+              <Icon size={16} color={onCooldown ? GOLD : NAVY} strokeWidth={1.5} />
+              <span style={{ fontFamily: CINZEL, color: onCooldown ? GOLD : MUTED, fontSize: '0.45rem', letterSpacing: '0.06em', textTransform: 'uppercase', textAlign: 'center', lineHeight: 1.3 }}>
+                {onCooldown ? 'Sent' : label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function GuestDashboardPage() {
   const { user } = useAuthStore();
   const { bill, loading: billLoading } = useBilling(true);
@@ -235,6 +302,9 @@ export default function GuestDashboardPage() {
             </Link>
           ))}
         </div>
+
+        {/* Quick Services (SOS) */}
+        <QuickServices />
 
         {/* Rate Your Stay */}
         {eligible && <RateYourStay eligible={eligible} existing={existingReview} />}

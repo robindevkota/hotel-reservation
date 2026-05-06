@@ -20,6 +20,7 @@ export interface GuestUser {
   roomName: string;
   roomNumber: string;
   name: string;
+  nationality: 'nepali' | 'foreign';
   type: 'guest';
 }
 
@@ -30,7 +31,7 @@ interface AuthState {
   accessToken: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  loginAsGuest: (token: string, guestId: string, roomId: string, roomName: string, roomNumber: string, name: string) => void;
+  loginAsGuest: (token: string, guestId: string, roomId: string, roomName: string, roomNumber: string, name: string, nationality?: 'nepali' | 'foreign') => void;
   logout: () => Promise<void>;
   setUser: (user: AuthUser, token: string) => void;
   isAdmin: () => boolean;
@@ -59,10 +60,10 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      loginAsGuest: (token, guestId, roomId, roomName, roomNumber, name) => {
+      loginAsGuest: (token, guestId, roomId, roomName, roomNumber, name, nationality = 'foreign') => {
         if (typeof window !== 'undefined') localStorage.setItem('accessToken', token);
         set({
-          user: { id: guestId, guestId, roomId, roomName, roomNumber, name, type: 'guest' },
+          user: { id: guestId, guestId, roomId, roomName, roomNumber, name, nationality, type: 'guest' },
           accessToken: token,
         });
       },

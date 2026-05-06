@@ -234,6 +234,30 @@ export async function cancelOrder(req: AuthRequest, res: Response): Promise<void
   res.json({ success: true, order });
 }
 
+export async function cancelOrderGuest(req: AuthRequest, res: Response): Promise<void> {
+  const guest = req.guest!;
+  const order = await Order.findById(req.params.id);
+  if (!order) throw new AppError('Order not found', 404);
+  if (String(order.guest) !== String(guest._id)) throw new AppError('Not your order', 403);
+
+  if (!['pending', 'accepted'].includes(order.status)) {
+    throw new AppError('Order cannot be cancelled at this stage', 400);
+  }
+
+  const ageMs = Date.now() - new Date(order.placedAt).getTime();
+  if (ageMs > 2 * 60 * 1000) {
+    throw new AppError('Cancellation window has passed (2 minutes)', 400);
+  }
+
+  order.status = 'cancelled';
+  order.cancelledAt = new Date();
+  order.cancelReason = 'Cancelled by guest';
+  await order.save();
+
+  emitOrderUpdate(String(order.guest), String(order._id), 'cancelled');
+  res.json({ success: true, order });
+}
+
 export async function assignWaiter(req: AuthRequest, res: Response): Promise<void> {
   const order = await Order.findByIdAndUpdate(
     req.params.id,

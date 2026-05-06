@@ -3,6 +3,7 @@ import { body } from 'express-validator';
 import SpaService from '../models/SpaService';
 import SpaTherapist from '../models/SpaTherapist';
 import SpaBooking from '../models/SpaBooking';
+import SpaTherapistBlock from '../models/SpaTherapistBlock';
 import Offer from '../models/Offer';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth.middleware';
@@ -14,6 +15,8 @@ import {
   getWindowSummary,
   autoAssignTherapist,
   getDaySchedule,
+  doReschedule,
+  toMin,
 } from '../services/spa.service';
 
 // ── validation ────────────────────────────────────────────────────────────────
@@ -44,6 +47,14 @@ export const therapistValidation = [
   body('name').notEmpty().trim(),
   body('specializations').isArray({ min: 1 }),
   body('breakDuration').optional().isInt({ min: 0 }),
+];
+
+export const blockValidation = [
+  body('date').isISO8601(),
+  body('blockStart').matches(/^\d{2}:\d{2}$/),
+  body('blockEnd').matches(/^\d{2}:\d{2}$/),
+  body('type').isIn(['break', 'unavailable']),
+  body('reason').optional().isString().trim(),
 ];
 
 export const serviceValidation = [
@@ -372,13 +383,48 @@ export async function updateBookingStatus(req: AuthRequest, res: Response): Prom
 // ── arrive: admin marks guest arrived + sets actualStart ──────────────────────
 
 export async function markArrived(req: AuthRequest, res: Response): Promise<void> {
-  const booking = await SpaBooking.findById(req.params.id);
+  const booking = await SpaBooking.findById(req.params.id).populate('service', 'gracePeriod');
   if (!booking) throw new AppError('Booking not found', 404);
   if (!['pending','confirmed'].includes(booking.status)) {
     throw new AppError('Booking is not in a state where arrival can be recorded', 400);
   }
 
   const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const isToday = booking.date.toDateString() === now.toDateString();
+
+  // Grace period check — only applies to today's bookings
+  if (isToday && booking.therapist) {
+    const grace = (booking.service as any)?.gracePeriod ?? 15;
+    const graceExpiredAt = toMin(booking.scheduledStart) + grace;
+
+    if (nowMin > graceExpiredAt) {
+      // Grace has expired — check if therapist is currently in_progress with another booking
+      const { gte, lt } = dayBounds(booking.date);
+      const conflictSession = await SpaBooking.findOne({
+        therapist: booking.therapist,
+        date: { $gte: gte, $lt: lt },
+        status: 'in_progress',
+        _id: { $ne: booking._id },
+      });
+
+      if (conflictSession) {
+        // Therapist is serving someone else — auto-reschedule the late guest
+        const rescheduled = await doReschedule(String(booking._id));
+        if (!rescheduled) throw new AppError('Therapist unavailable and no slots found for reschedule', 409);
+        const newDateStr = rescheduled.date.toISOString().split('T')[0];
+        res.status(409).json({
+          success: false,
+          rescheduled: true,
+          message: `Grace period elapsed and therapist is in session. Booking moved to ${newDateStr} at ${rescheduled.scheduledStart}.`,
+          booking: rescheduled,
+        });
+        return;
+      }
+      // Therapist is free — allow arrival even though late, fall through to normal logic
+    }
+  }
+
   const actualStart = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
   const actualEnd   = addMinutes(actualStart, booking.durationSnapshot);
 
@@ -388,7 +434,7 @@ export async function markArrived(req: AuthRequest, res: Response): Promise<void
 
   await booking.save();
 
-  // Check if running into next booking for this therapist
+  // Warn if session will overrun into next booking
   let warning = '';
   if (booking.therapist) {
     const { gte, lt } = dayBounds(booking.date);
@@ -401,9 +447,9 @@ export async function markArrived(req: AuthRequest, res: Response): Promise<void
 
     if (nextBooking) {
       const therapist = await SpaTherapist.findById(booking.therapist);
-      const breakDur = therapist?.breakDuration ?? 15;
-      const actualEndMin = parseInt(actualEnd.split(':')[0]) * 60 + parseInt(actualEnd.split(':')[1]);
-      const nextStartMin = parseInt(nextBooking.scheduledStart.split(':')[0]) * 60 + parseInt(nextBooking.scheduledStart.split(':')[1]);
+      const breakDur  = therapist?.breakDuration ?? 15;
+      const actualEndMin  = toMin(actualEnd);
+      const nextStartMin  = toMin(nextBooking.scheduledStart);
       if (actualEndMin + breakDur > nextStartMin) {
         warning = `Session will run into next booking at ${nextBooking.scheduledStart}`;
       }
@@ -411,6 +457,21 @@ export async function markArrived(req: AuthRequest, res: Response): Promise<void
   }
 
   res.json({ success: true, booking, warning });
+}
+
+// ── reschedule: admin-triggered move to next available slot ──────────────────
+
+export async function rescheduleBooking(req: AuthRequest, res: Response): Promise<void> {
+  const booking = await SpaBooking.findById(req.params.id);
+  if (!booking) throw new AppError('Booking not found', 404);
+  if (!['pending', 'confirmed'].includes(booking.status)) {
+    throw new AppError('Only pending or confirmed bookings can be rescheduled', 400);
+  }
+
+  const rescheduled = await doReschedule(String(booking._id));
+  if (!rescheduled) throw new AppError('No available slots found in the next 7 days', 409);
+
+  res.json({ success: true, booking: rescheduled });
 }
 
 // ── complete: admin marks session done + charges bill ─────────────────────────
@@ -454,6 +515,57 @@ export async function markCompleted(req: AuthRequest, res: Response): Promise<vo
     }
   }
 
+  await booking.save();
+  res.json({ success: true, booking });
+}
+
+// ── therapist blocks (break / unavailable periods) ────────────────────────────
+
+export async function createBlock(req: AuthRequest, res: Response): Promise<void> {
+  const therapist = await SpaTherapist.findById(req.params.id);
+  if (!therapist) throw new AppError('Therapist not found', 404);
+
+  const { date, blockStart, blockEnd, type, reason } = req.body;
+
+  if (toMin(blockEnd) <= toMin(blockStart)) {
+    throw new AppError('blockEnd must be after blockStart', 400);
+  }
+
+  const block = await SpaTherapistBlock.create({
+    therapist:  therapist._id,
+    date:       new Date(date),
+    blockStart,
+    blockEnd,
+    type,
+    reason,
+    createdBy:  req.user!._id,
+  });
+
+  res.status(201).json({ success: true, block });
+}
+
+export async function deleteBlock(req: AuthRequest, res: Response): Promise<void> {
+  const block = await SpaTherapistBlock.findOneAndDelete({
+    _id:       req.params.blockId,
+    therapist: req.params.id,
+  });
+  if (!block) throw new AppError('Block not found', 404);
+  res.json({ success: true });
+}
+
+// ── guest cancel: guest cancels their own booking anytime before in_progress ──
+
+export async function cancelBookingGuest(req: AuthRequest, res: Response): Promise<void> {
+  const guest = req.guest!;
+  const booking = await SpaBooking.findById(req.params.id);
+  if (!booking) throw new AppError('Booking not found', 404);
+  if (String(booking.guest) !== String(guest._id)) throw new AppError('Not your booking', 403);
+
+  if (!['pending', 'confirmed', 'arrived'].includes(booking.status)) {
+    throw new AppError('Booking cannot be cancelled at this stage', 400);
+  }
+
+  booking.status = 'cancelled';
   await booking.save();
   res.json({ success: true, booking });
 }

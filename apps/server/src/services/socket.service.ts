@@ -47,7 +47,10 @@ export function getIO(): Server {
 
 // Emit helpers
 export function emitOrderUpdate(guestId: string, orderId: string, status: string): void {
-  getIO().to(`guest:${guestId}`).emit('order:status-update', { orderId, status });
+  const io = getIO();
+  io.to(`guest:${guestId}`).emit('order:status-update', { orderId, status });
+  io.to('kitchen').emit('order:status-update', { orderId, status });
+  io.to('admin').emit('order:status-update', { orderId, status });
 }
 
 export function emitNewOrder(order: object): void {
@@ -67,6 +70,23 @@ export function emitSpaConfirmed(guestId: string, bookingId: string): void {
   getIO().to(`guest:${guestId}`).emit('spa:booking-confirmed', { bookingId });
 }
 
+export function emitSpaRescheduled(guestId: string, bookingId: string, newStart: string, newDate: string): void {
+  getIO().to(`guest:${guestId}`).emit('spa:rescheduled', { bookingId, newStart, newDate });
+  getIO().to('admin').emit('spa:rescheduled', { bookingId, newStart, newDate });
+}
+
 export function emitNotification(room: string, message: string): void {
   getIO().to(room).emit('notification:general', { message });
+}
+
+export function emitServiceRequest(request: object): void {
+  getIO().to('admin').emit('service:new', request);
+}
+
+export function emitServiceUpdated(request: any): void {
+  getIO().to('admin').emit('service:updated', request);
+  const guestId = request.guest?._id ?? request.guest;
+  if (guestId) {
+    getIO().to(`guest:${String(guestId)}`).emit('service:updated', request);
+  }
 }

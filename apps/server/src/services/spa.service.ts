@@ -11,12 +11,14 @@
 import SpaTherapist, { ISpaTherapist } from '../models/SpaTherapist';
 import SpaBooking, { ISpaBooking } from '../models/SpaBooking';
 import SpaService, { ISpaService } from '../models/SpaService';
+import SpaTherapistBlock from '../models/SpaTherapistBlock';
 import mongoose from 'mongoose';
+import { emitSpaRescheduled } from './socket.service';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 /** "HH:MM" → total minutes since midnight */
-function toMin(hhmm: string): number {
+export function toMin(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
 }
@@ -41,11 +43,17 @@ function dayBounds(date: Date): { gte: Date; lt: Date } {
  * Given a therapist's bookings on a day, return the earliest minute they are free
  * (i.e. after their last active session ends + break).
  * Returns 0 if they have no active bookings that day.
+ *
+ * nowMin: current time in minutes (today) or Infinity (future date).
+ * Confirmed bookings whose grace period has expired (scheduledStart + gracePeriod <= nowMin)
+ * are skipped — the therapist was released when grace elapsed.
+ * Bookings must be populated with { service: 'gracePeriod' } for this to work.
  */
 function therapistBusyUntil(
   bookings: ISpaBooking[],
   therapistId: string,
-  breakDuration: number
+  breakDuration: number,
+  nowMin: number
 ): number {
   const mine = bookings.filter(
     b => b.therapist && String(b.therapist) === therapistId &&
@@ -53,14 +61,35 @@ function therapistBusyUntil(
   );
   if (!mine.length) return 0;
 
-  let latestEnd = 0;
+  let latestEnd = -1;
   for (const b of mine) {
-    // Use actualEnd if session already started, else scheduledEnd
+    // Grace-expired confirmed booking — therapist was released, skip it
+    if (b.status === 'confirmed') {
+      const grace = (b.service as any)?.gracePeriod ?? 0;
+      const graceEndMin = toMin(b.scheduledStart) + grace;
+      if (graceEndMin <= nowMin) continue;
+    }
     const endTime = b.actualEnd || b.scheduledEnd;
     const endMin = toMin(endTime);
     if (endMin > latestEnd) latestEnd = endMin;
   }
-  return latestEnd + breakDuration;
+  return latestEnd < 0 ? 0 : latestEnd + breakDuration;
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+/** Returns true if a slot [slotStart, slotEnd) overlaps any block for the given therapist */
+function slotOverlapsBlock(
+  blocks: Array<{ therapist: any; blockStart: string; blockEnd: string }>,
+  therapistId: string,
+  slotStart: number,
+  slotEnd: number
+): boolean {
+  return blocks.some(
+    b => String(b.therapist) === therapistId &&
+         slotStart < toMin(b.blockEnd) &&
+         slotEnd   > toMin(b.blockStart)
+  );
 }
 
 // ── public: get available slots ───────────────────────────────────────────────
@@ -91,13 +120,24 @@ export async function getAvailableSlots(
   });
   if (!therapists.length) return [];
 
-  // All active bookings for these therapists on this date
+  // All active bookings and manual blocks for these therapists on this date
   const { gte, lt } = dayBounds(date);
-  const bookings = await SpaBooking.find({
-    therapist: { $in: therapists.map(t => t._id) },
-    date: { $gte: gte, $lt: lt },
-    status: { $in: ['pending','confirmed','arrived','in_progress'] },
-  }) as ISpaBooking[];
+  const [bookings, blocks] = await Promise.all([
+    SpaBooking.find({
+      therapist: { $in: therapists.map(t => t._id) },
+      date: { $gte: gte, $lt: lt },
+      status: { $in: ['pending','confirmed','arrived','in_progress'] },
+    }).populate('service', 'gracePeriod') as Promise<ISpaBooking[]>,
+    SpaTherapistBlock.find({
+      therapist: { $in: therapists.map(t => t._id) },
+      date: { $gte: gte, $lt: lt },
+    }),
+  ]);
+
+  // nowMin: current time in minutes for today; Infinity for future dates (no grace release)
+  const isToday = date.toDateString() === new Date().toDateString();
+  const now = new Date();
+  const nowMin = isToday ? now.getHours() * 60 + now.getMinutes() : Infinity;
 
   const startMin = toMin(service.operatingStart);
   const endMin   = toMin(service.operatingEnd);
@@ -120,8 +160,8 @@ export async function getAvailableSlots(
 
     const freeTherapistIds: string[] = [];
     for (const therapist of therapists) {
-      const busyUntil = therapistBusyUntil(bookings, String(therapist._id), therapist.breakDuration);
-      if (busyUntil <= t) {
+      const busyUntil = therapistBusyUntil(bookings, String(therapist._id), therapist.breakDuration, nowMin);
+      if (busyUntil <= t && !slotOverlapsBlock(blocks, String(therapist._id), t, t + dur)) {
         freeTherapistIds.push(String(therapist._id));
       }
     }
@@ -215,11 +255,87 @@ export async function autoAssignTherapist(
   return best ?? null;
 }
 
+// ── public: find next available slot (for reschedule) ────────────────────────
+
+/**
+ * Search forward from fromDate + fromTimeMin for the next bookable slot.
+ * Checks today first (slots after fromTimeMin), then up to 6 more days.
+ * Returns the slot with auto-assigned therapist, or null if nothing found.
+ */
+export async function findNextAvailableSlot(
+  serviceId: string,
+  fromDate: Date,
+  fromTimeMin: number
+): Promise<{ date: Date; startTime: string; endTime: string; therapistId: string } | null> {
+  for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+    const checkDate = new Date(fromDate);
+    checkDate.setDate(checkDate.getDate() + dayOffset);
+
+    const slots = await getAvailableSlots(serviceId, checkDate, 'any');
+    for (const slot of slots) {
+      if (dayOffset === 0 && toMin(slot.startTime) <= fromTimeMin) continue;
+      if (!slot.freeTherapistIds.length) continue;
+      const therapist = await autoAssignTherapist(slot.freeTherapistIds, checkDate);
+      if (!therapist) continue;
+      return {
+        date: checkDate,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        therapistId: String(therapist._id),
+      };
+    }
+  }
+  return null;
+}
+
+// ── public: reschedule a booking to the next free slot ───────────────────────
+
+/**
+ * Move a pending/confirmed booking to the next available slot.
+ * Updates scheduledStart/End, therapist, date; emits spa:rescheduled to guest.
+ * Returns the updated booking, or null if no slot found.
+ */
+export async function doReschedule(bookingId: string): Promise<ISpaBooking | null> {
+  const booking = await SpaBooking.findById(bookingId);
+  if (!booking || !['pending', 'confirmed'].includes(booking.status)) return null;
+
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  const next = await findNextAvailableSlot(String(booking.service), now, nowMin);
+  if (!next) return null;
+
+  booking.date           = next.date;
+  booking.scheduledStart = next.startTime;
+  booking.scheduledEnd   = next.endTime;
+  booking.therapist      = new mongoose.Types.ObjectId(next.therapistId);
+  booking.status         = 'confirmed';
+
+  try {
+    await booking.save();
+  } catch (err: any) {
+    if (err.code === 11000) return null; // race condition — slot just taken
+    throw err;
+  }
+
+  if (booking.guest) {
+    emitSpaRescheduled(
+      String(booking.guest),
+      String(booking._id),
+      next.startTime,
+      next.date.toISOString().split('T')[0]
+    );
+  }
+
+  return booking;
+}
+
 // ── public: day schedule for admin timeline ───────────────────────────────────
 
 export interface TherapistSchedule {
   therapist: { _id: string; name: string; breakDuration: number };
   bookings: ISpaBooking[];
+  blocks: Array<{ _id: string; blockStart: string; blockEnd: string; type: 'break' | 'unavailable'; reason?: string }>;
   freeSlots: Array<{ startTime: string; endTime: string }>;
 }
 
@@ -227,14 +343,15 @@ export async function getDaySchedule(date: Date): Promise<TherapistSchedule[]> {
   const therapists = await SpaTherapist.find({ isActive: true }).populate('specializations', 'name');
   const { gte, lt } = dayBounds(date);
 
-  const allBookings = await SpaBooking.find({
-    date: { $gte: gte, $lt: lt },
-  })
-    .populate('guest', 'name email nationality')
-    .populate('walkInCustomer', 'name phone nationality')
-    .populate('service', 'name duration category')
-    .populate('therapist', 'name')
-    .sort({ scheduledStart: 1 }) as ISpaBooking[];
+  const [allBookings, allBlocks] = await Promise.all([
+    SpaBooking.find({ date: { $gte: gte, $lt: lt } })
+      .populate('guest', 'name email nationality')
+      .populate('walkInCustomer', 'name phone nationality')
+      .populate('service', 'name duration category gracePeriod')
+      .populate('therapist', 'name')
+      .sort({ scheduledStart: 1 }) as Promise<ISpaBooking[]>,
+    SpaTherapistBlock.find({ date: { $gte: gte, $lt: lt } }),
+  ]);
 
   const result: TherapistSchedule[] = [];
 
@@ -245,22 +362,41 @@ export async function getDaySchedule(date: Date): Promise<TherapistSchedule[]> {
       return String(tid) === String(therapist._id);
     });
 
-    // Compute free gaps between 09:00 and 21:00
+    const myBlocks = allBlocks
+      .filter(bl => String(bl.therapist) === String(therapist._id))
+      .map(bl => ({
+        _id:        String(bl._id),
+        blockStart: bl.blockStart,
+        blockEnd:   bl.blockEnd,
+        type:       bl.type,
+        reason:     bl.reason,
+      }));
+
+    // Compute free gaps between 09:00 and 21:00, accounting for blocks
     const freeSlots: Array<{ startTime: string; endTime: string }> = [];
     let cursor = toMin('09:00');
     const dayEnd = toMin('21:00');
 
-    const active = myBookings
-      .filter(b => !['cancelled','completed'].includes(b.status))
-      .sort((a, b) => toMin(a.scheduledStart) - toMin(b.scheduledStart));
+    // Merge active bookings + blocks into a unified busy list, sorted by start
+    type BusyPeriod = { start: number; end: number };
+    const busyPeriods: BusyPeriod[] = [
+      ...myBookings
+        .filter(b => !['cancelled', 'completed'].includes(b.status))
+        .map(b => ({
+          start: toMin(b.scheduledStart),
+          end:   toMin(b.scheduledEnd) + therapist.breakDuration,
+        })),
+      ...myBlocks.map(bl => ({
+        start: toMin(bl.blockStart),
+        end:   toMin(bl.blockEnd),
+      })),
+    ].sort((a, b) => a.start - b.start);
 
-    for (const booking of active) {
-      const bStart = toMin(booking.scheduledStart);
-      const bEnd   = toMin(booking.scheduledEnd) + therapist.breakDuration;
-      if (cursor < bStart) {
-        freeSlots.push({ startTime: fromMin(cursor), endTime: fromMin(bStart) });
+    for (const period of busyPeriods) {
+      if (cursor < period.start) {
+        freeSlots.push({ startTime: fromMin(cursor), endTime: fromMin(period.start) });
       }
-      cursor = Math.max(cursor, bEnd);
+      cursor = Math.max(cursor, period.end);
     }
     if (cursor < dayEnd) {
       freeSlots.push({ startTime: fromMin(cursor), endTime: fromMin(dayEnd) });
@@ -273,6 +409,7 @@ export async function getDaySchedule(date: Date): Promise<TherapistSchedule[]> {
         breakDuration: therapist.breakDuration,
       },
       bookings: myBookings,
+      blocks:   myBlocks,
       freeSlots,
     });
   }

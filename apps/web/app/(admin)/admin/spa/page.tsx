@@ -162,6 +162,8 @@ export default function AdminSpaPage() {
   const [editingTherapist, setEditingTherapist]   = useState<any>(null);
   const [editingService, setEditingService]       = useState<any>(null);
   const [walkInSlot, setWalkInSlot]               = useState<{ therapistId: string; startTime: string } | null>(null);
+  const [showBlockModal, setShowBlockModal]       = useState(false);
+  const [blockSlot, setBlockSlot]                 = useState<{ therapistId: string; startTime?: string } | null>(null);
 
   const fetchSchedule = useCallback(async () => {
     setLoading(true);
@@ -229,6 +231,34 @@ export default function AdminSpaPage() {
       setSelectedBooking(null);
       fetchSchedule(); fetchAll();
     } catch (e: any) { toast.error(e.response?.data?.message || 'Failed'); }
+  };
+
+  const doReschedule = async (id: string) => {
+    try {
+      const { data } = await api.patch(`/spa/bookings/${id}/reschedule`);
+      const b = data.booking;
+      const newDate = new Date(b.date).toLocaleDateString();
+      toast.success(`Rescheduled to ${newDate} at ${b.scheduledStart}`);
+      setSelectedBooking(null);
+      fetchSchedule(); fetchAll();
+    } catch (e: any) { toast.error(e.response?.data?.message || 'No available slots found'); }
+  };
+
+  const doCreateBlock = async (therapistId: string, payload: { date: string; blockStart: string; blockEnd: string; type: 'break' | 'unavailable'; reason?: string }) => {
+    try {
+      await api.post(`/spa/therapists/${therapistId}/blocks`, payload);
+      toast.success('Block added');
+      setShowBlockModal(false);
+      fetchSchedule();
+    } catch (e: any) { toast.error(e.response?.data?.message || 'Failed to add block'); }
+  };
+
+  const doDeleteBlock = async (therapistId: string, blockId: string) => {
+    try {
+      await api.delete(`/spa/therapists/${therapistId}/blocks/${blockId}`);
+      toast.success('Block removed');
+      fetchSchedule();
+    } catch (e: any) { toast.error(e.response?.data?.message || 'Failed to remove block'); }
   };
 
   // ── derived stats ─────────────────────────────────────────────────────────
@@ -454,6 +484,10 @@ export default function AdminSpaPage() {
                         {next && (
                           <div style={{ fontFamily: A.cinzel, fontSize: '0.52rem', color: A.muted, letterSpacing: '0.04em' }}>{next}</div>
                         )}
+                        <Btn variant="ghost" small onClick={() => { setBlockSlot({ therapistId: row.therapist._id }); setShowBlockModal(true); }}
+                          style={{ marginTop: '0.2rem', fontSize: '0.52rem', padding: '0.1rem 0.4rem' }}>
+                          <Coffee size={10} /> Block
+                        </Btn>
                       </div>
 
                       {/* Timeline */}
@@ -491,6 +525,31 @@ export default function AdminSpaPage() {
                             );
                           })}
 
+                        {/* Manual blocks (break / unavailable) */}
+                        {(row.blocks || []).map((bl: any) => (
+                          <div key={bl._id}
+                            onClick={() => doDeleteBlock(row.therapist._id, bl._id)}
+                            title={`${bl.type === 'unavailable' ? 'Unavailable' : 'Break'}: ${bl.blockStart}–${bl.blockEnd}${bl.reason ? ` · ${bl.reason}` : ''} · Click to remove`}
+                            style={{
+                              position: 'absolute', top: 0, bottom: 0,
+                              left: `${pct(bl.blockStart)}%`, width: `${Math.max(1.5, durPct(bl.blockStart, bl.blockEnd))}%`,
+                              background: bl.type === 'unavailable'
+                                ? 'hsl(0 60% 92%)'
+                                : 'repeating-linear-gradient(45deg, transparent, transparent 3px, hsl(220 15% 60% / 0.18) 3px, hsl(220 15% 60% / 0.18) 6px)',
+                              borderLeft: `3px solid ${bl.type === 'unavailable' ? 'hsl(0 60% 55%)' : 'hsl(220 15% 55%)'}`,
+                              cursor: 'pointer', zIndex: 3, overflow: 'hidden',
+                              padding: '0.25rem 0.3rem',
+                            }}>
+                            {durPct(bl.blockStart, bl.blockEnd) > 4 && (
+                              <div style={{ fontFamily: A.cinzel, fontSize: '0.55rem', fontWeight: 700,
+                                color: bl.type === 'unavailable' ? 'hsl(0 60% 40%)' : 'hsl(220 15% 40%)',
+                                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {bl.type === 'unavailable' ? '✕ Unavailable' : '☕ Break'}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+
                         {/* Free slots — clickable to create walk-in */}
                         {row.freeSlots.map((fs: any, i: number) => (
                           <div key={`free-${i}`} className="free-slot"
@@ -514,17 +573,25 @@ export default function AdminSpaPage() {
                           const start = b.actualStart || b.scheduledStart;
                           const end   = b.actualEnd   || b.scheduledEnd;
                           const isLive = b.status === 'in_progress';
-                          // Overrun: actualEnd > scheduledEnd by >5 min
+                          // Overrun: session started late and will exceed scheduledEnd
                           const overrun = b.actualStart && isToday &&
                             toMin(b.actualEnd || b.scheduledEnd) > toMin(b.scheduledEnd) + 5;
+                          // Overdue: confirmed but grace period has elapsed with no arrival
+                          const grace = b.service?.gracePeriod ?? 15;
+                          const isOverdue = isToday && b.status === 'confirmed' &&
+                            toMin(b.scheduledStart) + grace <= nowMin;
+                          const blockBg   = isOverdue ? 'hsl(38 90% 88%)' : overrun ? 'hsl(38 90% 88%)' : sc.bg;
+                          const blockBdr  = isOverdue ? 'hsl(38 70% 45%)' : overrun ? 'hsl(38 70% 45%)' : sc.text;
+                          const blockClr  = isOverdue ? 'hsl(38 70% 28%)' : overrun ? 'hsl(38 70% 30%)' : sc.text;
                           return (
                             <div key={b._id} className="timeline-block"
                               onClick={() => setSelectedBooking(b)}
                               style={{
                                 position: 'absolute', top: '4px', bottom: '4px',
                                 left: `${pct(start)}%`, width: `${Math.max(1.5, durPct(start, end))}%`,
-                                background: overrun ? 'hsl(38 90% 88%)' : sc.bg,
-                                borderLeft: `3px solid ${overrun ? 'hsl(38 70% 45%)' : sc.text}`,
+                                background: blockBg,
+                                borderLeft: `3px solid ${blockBdr}`,
+                                outline: isOverdue ? `1px solid hsl(38 70% 55%)` : 'none',
                                 overflow: 'hidden', padding: '0.25rem 0.4rem',
                                 transition: 'opacity 0.15s',
                               }}>
@@ -532,12 +599,15 @@ export default function AdminSpaPage() {
                                 {isLive && (
                                   <span className="live-dot" style={{ width: '6px', height: '6px', borderRadius: '50%', background: sc.text, flexShrink: 0 }} />
                                 )}
-                                <div style={{ fontFamily: A.cinzel, fontSize: '0.62rem', color: overrun ? 'hsl(38 70% 30%)' : sc.text, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {isOverdue && (
+                                  <span style={{ fontSize: '0.55rem', flexShrink: 0 }}>⏰</span>
+                                )}
+                                <div style={{ fontFamily: A.cinzel, fontSize: '0.62rem', color: blockClr, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {b.guest?.name || 'Guest'}
                                 </div>
                               </div>
                               {durPct(start, end) > 6 && (
-                                <div style={{ fontFamily: A.cinzel, fontSize: '0.55rem', color: sc.text, opacity: 0.8 }}>
+                                <div style={{ fontFamily: A.cinzel, fontSize: '0.55rem', color: blockClr, opacity: 0.8 }}>
                                   {b.scheduledStart} · {b.service?.name?.split(' ')[0]}
                                 </div>
                               )}
@@ -546,12 +616,12 @@ export default function AdminSpaPage() {
                                   display: 'inline-block', marginTop: '0.15rem',
                                   fontFamily: A.cinzel, fontSize: '0.48rem', letterSpacing: '0.1em',
                                   textTransform: 'uppercase', fontWeight: 700,
-                                  color: overrun ? 'hsl(38 70% 30%)' : sc.text,
-                                  background: overrun ? 'hsl(38 70% 45% / 0.15)' : `${sc.text}18`,
-                                  border: `1px solid ${overrun ? 'hsl(38 70% 45% / 0.4)' : `${sc.text}40`}`,
+                                  color: blockClr,
+                                  background: `${blockBdr}18`,
+                                  border: `1px solid ${blockBdr}40`,
                                   padding: '0.05rem 0.35rem',
                                 }}>
-                                  {overrun ? 'overrun' : b.status.replace('_', ' ')}
+                                  {isOverdue ? 'overdue' : overrun ? 'overrun' : b.status.replace('_', ' ')}
                                 </div>
                               )}
                             </div>
@@ -579,6 +649,14 @@ export default function AdminSpaPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <div style={{ width: '12px', height: '12px', background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, hsl(38 72% 55% / 0.2) 2px, hsl(38 72% 55% / 0.2) 4px)', border: `1px dashed ${A.gold}` }} />
                     <span style={{ fontFamily: A.cinzel, fontSize: '0.58rem', color: A.muted, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Break</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <div style={{ width: '12px', height: '12px', background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, hsl(220 15% 60% / 0.3) 2px, hsl(220 15% 60% / 0.3) 4px)', borderLeft: '3px solid hsl(220 15% 55%)' }} />
+                    <span style={{ fontFamily: A.cinzel, fontSize: '0.58rem', color: A.muted, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Scheduled Break</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <div style={{ width: '12px', height: '12px', background: 'hsl(0 60% 92%)', borderLeft: '3px solid hsl(0 60% 55%)' }} />
+                    <span style={{ fontFamily: A.cinzel, fontSize: '0.58rem', color: A.muted, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Unavailable</span>
                   </div>
                   {isToday && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -760,6 +838,12 @@ export default function AdminSpaPage() {
             onArrive={() => doArrive(selectedBooking._id)}
             onStatus={(s: string) => doStatus(selectedBooking._id, s)}
             onComplete={(method: 'room_bill' | 'cash') => doComplete(selectedBooking._id, method)}
+            onReschedule={() => doReschedule(selectedBooking._id)}
+            isOverdue={
+              isToday &&
+              selectedBooking?.status === 'confirmed' &&
+              toMin(selectedBooking?.scheduledStart || '00:00') + (selectedBooking?.service?.gracePeriod ?? 15) <= nowMin
+            }
             onClose={() => setSelectedBooking(null)}
             onPrint={() => {
               const b = selectedBooking;
@@ -796,6 +880,18 @@ export default function AdminSpaPage() {
         />
       )}
 
+      {/* ── BLOCK MODAL ───────────────────────────────────────────────────── */}
+      {showBlockModal && blockSlot && (
+        <BlockModal
+          therapistId={blockSlot.therapistId}
+          therapistName={schedule.find((r: any) => r.therapist._id === blockSlot.therapistId)?.therapist.name || ''}
+          defaultDate={scheduleDate}
+          defaultStart={blockSlot.startTime || ''}
+          onClose={() => setShowBlockModal(false)}
+          onSave={(payload) => doCreateBlock(blockSlot.therapistId, payload)}
+        />
+      )}
+
       {/* ── THERAPIST FORM ────────────────────────────────────────────────── */}
       {showTherapistForm && (
         <TherapistFormModal
@@ -820,7 +916,7 @@ export default function AdminSpaPage() {
 
 // ── Booking Detail Modal ──────────────────────────────────────────────────────
 
-function BookingDetailModal({ booking: b, exchangeRate, onArrive, onStatus, onComplete, onPrint }: any) {
+function BookingDetailModal({ booking: b, exchangeRate, onArrive, onStatus, onComplete, onPrint, onReschedule, isOverdue }: any) {
   const sc = STATUS_COLORS[b.status] || STATUS_COLORS.pending;
   return (
     <div>
@@ -866,6 +962,15 @@ function BookingDetailModal({ booking: b, exchangeRate, onArrive, onStatus, onCo
             {b.status === 'pending' ? 'Confirm' : 'Re-confirm'}
           </Btn>
         )}
+        {['pending','confirmed'].includes(b.status) && (
+          <Btn
+            variant="ghost"
+            onClick={onReschedule}
+            style={isOverdue ? { background: 'hsl(38 90% 88%)', color: 'hsl(38 70% 28%)', borderColor: 'hsl(38 70% 45%)' } : undefined}
+          >
+            <RefreshCw size={13} /> {isOverdue ? '⏰ Reschedule (Overdue)' : 'Reschedule'}
+          </Btn>
+        )}
         {['pending','confirmed','arrived'].includes(b.status) && (
           <Btn variant="danger" onClick={() => onStatus('cancelled')}><X size={13} /> Cancel</Btn>
         )}
@@ -874,6 +979,87 @@ function BookingDetailModal({ booking: b, exchangeRate, onArrive, onStatus, onCo
         )}
       </div>
     </div>
+  );
+}
+
+// ── Block Modal ───────────────────────────────────────────────────────────────
+
+function BlockModal({ therapistId: _tid, therapistName, defaultDate, defaultStart, onClose, onSave }: any) {
+  const [form, setForm] = useState({
+    date:       defaultDate || '',
+    blockStart: defaultStart || '',
+    blockEnd:   '',
+    type:       'break' as 'break' | 'unavailable',
+    reason:     '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  const handleSave = async () => {
+    if (!form.date || !form.blockStart || !form.blockEnd) {
+      return;
+    }
+    setSaving(true);
+    await onSave(form);
+    setSaving(false);
+  };
+
+  const fieldStyle: React.CSSProperties = {
+    fontFamily: A.cinzel, fontSize: '0.75rem', border: `1px solid ${A.border}`,
+    padding: '0.45rem 0.6rem', width: '100%', background: A.papyrus, color: A.navy,
+    outline: 'none', boxSizing: 'border-box',
+  };
+  const labelStyle: React.CSSProperties = {
+    fontFamily: A.cinzel, fontSize: '0.58rem', letterSpacing: '0.1em',
+    textTransform: 'uppercase', color: A.muted, display: 'block', marginBottom: '0.3rem',
+  };
+
+  return (
+    <Modal title={`Block Time — ${therapistName}`} onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div>
+          <label style={labelStyle}>Date</label>
+          <input type="date" value={form.date} onChange={e => set('date', e.target.value)} style={fieldStyle} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div>
+            <label style={labelStyle}>From</label>
+            <input type="time" value={form.blockStart} onChange={e => set('blockStart', e.target.value)} style={fieldStyle} />
+          </div>
+          <div>
+            <label style={labelStyle}>To</label>
+            <input type="time" value={form.blockEnd} onChange={e => set('blockEnd', e.target.value)} style={fieldStyle} />
+          </div>
+        </div>
+        <div>
+          <label style={labelStyle}>Type</label>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {(['break', 'unavailable'] as const).map(t => (
+              <button key={t} onClick={() => set('type', t)} style={{
+                fontFamily: A.cinzel, fontSize: '0.65rem', letterSpacing: '0.06em',
+                textTransform: 'uppercase', padding: '0.35rem 0.9rem',
+                border: `1px solid ${form.type === t ? A.gold : A.border}`,
+                background: form.type === t ? A.gold : 'transparent',
+                color: form.type === t ? '#fff' : A.navy, cursor: 'pointer',
+              }}>{t === 'break' ? '☕ Break' : '✕ Unavailable'}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label style={labelStyle}>Reason (optional)</label>
+          <input value={form.reason} onChange={e => set('reason', e.target.value)}
+            placeholder="e.g. Lunch, Training, Doctor appointment"
+            style={fieldStyle} />
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', paddingTop: '0.5rem' }}>
+          <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+          <Btn variant="primary" onClick={handleSave} disabled={saving || !form.blockStart || !form.blockEnd}>
+            {saving ? 'Saving…' : 'Add Block'}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

@@ -34,6 +34,7 @@ export async function verifyQR(req: Request, res: Response): Promise<void> {
     roomType: room.type,
     floorNumber: room.floorNumber,
     guestName: guest.name,
+    nationality: guest.nationality,
   });
 }
 

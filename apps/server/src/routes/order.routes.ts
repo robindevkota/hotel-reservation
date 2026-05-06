@@ -9,6 +9,7 @@ const router = Router();
 router.post('/', ...requireGuest, orders.orderValidation, validate, orders.placeOrder);
 router.post('/admin', ...requireStaff, requireAdmin, orders.adminPlaceOrder);
 router.get('/my', ...requireGuest, orders.getMyOrders);
+router.patch('/:id/cancel/guest', ...requireGuest, orders.cancelOrderGuest);
 
 router.get('/', ...requireStaff, requireAdmin, orders.getAllOrders);
 router.patch('/:id/status', ...requireStaff, requireAdmin, orders.updateOrderStatus);
