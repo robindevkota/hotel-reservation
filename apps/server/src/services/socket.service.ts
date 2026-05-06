@@ -53,9 +53,15 @@ export function emitOrderUpdate(guestId: string, orderId: string, status: string
   io.to('admin').emit('order:status-update', { orderId, status });
 }
 
-export function emitNewOrder(order: object): void {
-  getIO().to('kitchen').emit('order:new', order);
-  getIO().to('admin').emit('order:new', order);
+export async function emitNewOrder(order: object): Promise<void> {
+  const io = getIO();
+  const [kitchenSockets, adminSockets] = await Promise.all([
+    io.in('kitchen').fetchSockets(),
+    io.in('admin').fetchSockets(),
+  ]);
+  console.log(`[emitNewOrder] kitchen sockets: ${kitchenSockets.length}, admin sockets: ${adminSockets.length}`);
+  io.to('kitchen').emit('order:new', order);
+  io.to('admin').emit('order:new', order);
 }
 
 export function emitOrderAssigned(orderId: string, waiter: string): void {

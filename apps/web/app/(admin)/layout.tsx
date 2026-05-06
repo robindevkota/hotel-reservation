@@ -490,6 +490,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const isFrontDesk = dept === 'front_desk' || role === 'super_admin';
     console.log('[AdminLayout] socket effect — dept:', dept, 'role:', role, 'isFrontDesk:', isFrontDesk, 'connected:', socket.connected);
 
+    const onAnyEvent = (event: string, ...args: any[]) => {
+      console.log('[AdminLayout] socket received event:', event, args);
+    };
+    socket.onAny(onAnyEvent);
+
     const onConnect = () => {
       console.log('[AdminLayout] socket connected → join:admin');
       socket.emit('join:admin');
@@ -524,6 +529,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     socket.on('order:new', onNewOrder);
 
     return () => {
+      socket.offAny(onAnyEvent);
       socket.off('connect', onConnect);
       socket.off('notification:general', onNotification);
       socket.off('order:new', onNewOrder);
