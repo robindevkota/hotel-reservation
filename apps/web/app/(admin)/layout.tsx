@@ -184,12 +184,19 @@ function FrontDeskOrderAlert({ user }: { user: any }) {
     const socket = getSocket();
     connectSocket();
 
+    // Explicitly join admin room (don't rely on parent useEffect ordering)
+    const joinAdmin = () => { socket.emit('join:admin'); };
+    if (socket.connected) joinAdmin(); else socket.on('connect', joinAdmin);
+
     const onNewOrder = (order: any) => {
       playOrderAlert();
       setQueue(q => q.some(o => o._id === order._id) ? q : [...q, order]);
     };
     socket.on('order:new', onNewOrder);
-    return () => { socket.off('order:new', onNewOrder); };
+    return () => {
+      socket.off('connect', joinAdmin);
+      socket.off('order:new', onNewOrder);
+    };
   }, [user]);
 
   const current = queue[0];
@@ -505,8 +512,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div style={{ minHeight: '100vh', background: 'hsl(38 40% 92%)' }}>
-      {(user as any).department === 'food'       && <OrderAlertModal user={user} />}
-      {(user as any).department === 'front_desk' && <FrontDeskOrderAlert user={user} />}
+      {(user as any).department === 'food' && <OrderAlertModal user={user} />}
+      {((user as any).department === 'front_desk' || (user as any).role === 'super_admin') && (
+        <FrontDeskOrderAlert user={user} />
+      )}
       <Sidebar collapsed={collapsed} />
       <div style={{ marginLeft: sidebarW, minHeight: '100vh', transition: 'margin-left 0.25s ease', display: 'flex', flexDirection: 'column' }}>
         <Topbar collapsed={collapsed} setCollapsed={setCollapsed} />
