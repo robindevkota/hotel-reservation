@@ -173,7 +173,7 @@ function ManageBookingContent() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
                 <button className="mgmt-btn-primary" disabled={loading} onClick={handleLookup}>
                   {loading ? 'Searching...' : 'Find Booking →'}
                 </button>

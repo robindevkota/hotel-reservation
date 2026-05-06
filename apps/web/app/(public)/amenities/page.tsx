@@ -45,13 +45,11 @@ export default async function AmenitiesPage() {
         .spa-row:hover .spa-thumb img{transform:scale(1.1);}
         .spa-name{font-size:0.82rem;color:hsl(220 55% 18%);margin-bottom:0.3rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
         .spa-desc{font-size:0.75rem;color:hsl(220 15% 40%);margin-bottom:0.4rem;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;white-space:normal;}
-        .spa-grid{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;align-items:start;}
-        @media(max-width:768px){.spa-grid{grid-template-columns:1fr;}}
       `}</style>
 
       <div style={{ minHeight: '100vh', background: S.cream }}>
         {/* Header */}
-        <div style={{ position: 'relative', background: S.navy, padding: '10rem 1.5rem 5rem', textAlign: 'center', overflow: 'hidden' }}>
+        <div className="am-hero" style={{ position: 'relative', background: S.navy, textAlign: 'center', overflow: 'hidden' }}>
           <Image src="/spa.jpg" alt="" fill style={{ objectFit: 'cover', opacity: 0.25 }} />
           <div style={{ position: 'relative', zIndex: 1 }}>
             <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Beyond the Room</p>
@@ -61,7 +59,7 @@ export default async function AmenitiesPage() {
         </div>
 
         {/* Hotel Facilities */}
-        <section style={{ padding: '5rem 0', background: S.cream }}>
+        <section className="am-section-pad" style={{ background: S.cream }}>
           <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1.5rem' }}>
             <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
               <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Experience</p>
@@ -82,7 +80,7 @@ export default async function AmenitiesPage() {
         </section>
 
         {/* Cleopatra's Spa */}
-        <section style={{ padding: '5rem 0', background: S.papyrus }}>
+        <section className="am-section-pad" style={{ background: S.papyrus }}>
           <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 1.5rem' }}>
             <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
               <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Ancient Rituals</p>
@@ -97,7 +95,7 @@ export default async function AmenitiesPage() {
               {/* Spa image */}
               <div style={{ position: 'relative', overflow: 'hidden' }}>
                 <Image src="/spa.jpg" alt="Cleopatra's Spa" width={900} height={600}
-                  style={{ width: '100%', height: '480px', objectFit: 'cover', display: 'block' }} />
+                  className="spa-main-img" style={{ width: '100%', objectFit: 'cover', display: 'block' }} />
                 <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, hsl(220 55% 18% / 0.65) 0%, transparent 55%)' }} />
                 <div style={{ position: 'absolute', bottom: '1.5rem', left: '1.5rem', right: '1.5rem' }}>
                   <h3 style={{ fontFamily: S.cinzel, color: S.cream, fontSize: '1.2rem', marginBottom: '0.35rem' }}>The Pharaoh&apos;s Spa</h3>

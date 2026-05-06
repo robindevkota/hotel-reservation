@@ -34,7 +34,10 @@ export default function RoomBookingCard({ room, typeLabel }: Props) {
   const mult = offer?.roomDiscount ? (1 - offer.roomDiscount / 100) : 1;
   const discPrice = Math.round(room.pricePerNight * mult * 100) / 100;
 
+  const reserveHref = `/reserve?room=${room._id}&roomName=${encodeURIComponent(room.name)}&price=${room.pricePerNight}`;
+
   return (
+    <>
     <div style={{ position: 'sticky', top: '6rem' }}>
       <div style={{ background: S.navy, border: `1px solid hsl(43 72% 55% / 0.2)`, overflow: 'hidden' }}>
         {/* Price header */}
@@ -85,7 +88,7 @@ export default function RoomBookingCard({ room, typeLabel }: Props) {
         <div style={{ padding: '1.25rem 1.5rem 1.75rem' }}>
           {room.isAvailable ? (
             <Link
-              href={`/reserve?room=${room._id}&roomName=${encodeURIComponent(room.name)}&price=${room.pricePerNight}`}
+              href={reserveHref}
               style={{ display: 'block', textAlign: 'center', background: 'linear-gradient(135deg, hsl(43 72% 55%), hsl(43 65% 72%))', color: S.navy, fontFamily: S.cinzel, fontSize: '0.7rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '1rem', fontWeight: 600, textDecoration: 'none', transition: 'opacity 0.2s' }}
             >
               Reserve This Room
@@ -115,5 +118,34 @@ export default function RoomBookingCard({ room, typeLabel }: Props) {
         ))}
       </div>
     </div>
+
+    {/* Mobile sticky reserve bar — fixed at viewport bottom, hidden on desktop */}
+    <div className="mobile-reserve-bar">
+      <div>
+        {mult < 1 ? (
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+            <span style={{ fontFamily: S.cinzel, fontSize: '1.4rem', fontWeight: 700, color: S.gold, lineHeight: 1 }}>${discPrice}</span>
+            <span style={{ fontFamily: S.cinzel, fontSize: '0.85rem', color: 'rgba(245,236,215,0.3)', textDecoration: 'line-through' }}>${room.pricePerNight}</span>
+          </div>
+        ) : (
+          <span style={{ fontFamily: S.cinzel, fontSize: '1.4rem', fontWeight: 700, color: S.gold, lineHeight: 1 }}>${room.pricePerNight}</span>
+        )}
+        <div style={{ fontFamily: S.raleway, fontSize: '0.63rem', color: 'rgba(245,236,215,0.4)', letterSpacing: '0.08em', marginTop: '0.15rem' }}>per night</div>
+      </div>
+
+      {room.isAvailable ? (
+        <Link
+          href={reserveHref}
+          style={{ background: 'linear-gradient(135deg, hsl(43 72% 55%), hsl(43 65% 72%))', color: S.navy, fontFamily: S.cinzel, fontSize: '0.65rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '0.75rem 1.75rem', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap', flexShrink: 0 }}
+        >
+          Reserve Now
+        </Link>
+      ) : (
+        <div style={{ border: '1px solid rgba(245,236,215,0.15)', color: 'rgba(245,236,215,0.3)', fontFamily: S.cinzel, fontSize: '0.65rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.75rem 1rem', flexShrink: 0 }}>
+          Unavailable
+        </div>
+      )}
+    </div>
+    </>
   );
 }

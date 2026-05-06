@@ -63,7 +63,7 @@ export default async function RoomDetailPage({ params }: { params: { slug: strin
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, hsl(220 55% 18% / 0.4) 0%, transparent 60%)' }} />
 
           {/* Text */}
-          <div style={{ position: 'absolute', bottom: '3rem', left: 0, right: 0, maxWidth: '1280px', margin: '0 auto', padding: '0 2rem' }}>
+          <div className="room-hero-text">
             <p style={{ fontFamily: S.cormo, color: S.gold, fontSize: '1rem', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
               {typeLabel} · Floor {room.floorNumber}
             </p>
@@ -98,8 +98,8 @@ export default async function RoomDetailPage({ params }: { params: { slug: strin
         </div>
 
         {/* ── Body ── */}
-        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '4rem 2rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '3.5rem', alignItems: 'start' }}>
+        <div className="room-body">
+          <div className="room-grid">
 
             {/* ── Left: main content ── */}
             <div>

@@ -238,3 +238,130 @@ a {
   white-space: nowrap;
   border: 0;
 }
+
+/* ─── Footer ─────────────────────────────────────────────────────── */
+.footer-link {
+  font-family: 'Raleway', sans-serif;
+  font-size: 0.82rem;
+  color: rgba(245,236,215,0.5);
+  transition: color 0.2s;
+}
+.footer-link:hover { color: hsl(43 72% 55%); }
+
+.footer-map-frame {
+  width: 100%;
+  height: 160px;
+  border: 1px solid hsl(43 72% 55% / 0.25);
+  filter: grayscale(30%) sepia(20%);
+  display: block;
+}
+
+@media (max-width: 1024px) {
+  .footer-grid      { grid-template-columns: 1fr 1fr !important; gap: 2.5rem !important; }
+  .footer-map-col   { grid-column: 1 / -1; }
+  .footer-map-frame { height: 180px; }
+}
+
+@media (max-width: 640px) {
+  .footer-grid       { grid-template-columns: 1fr !important; gap: 2rem !important; }
+  .footer-map-col    { grid-column: auto; }
+  .footer-wrap       { padding: 2.5rem 1.25rem 1.5rem !important; }
+  .footer-brand-text { max-width: 100% !important; }
+}
+
+@media (max-width: 300px) {
+  .footer-links-grid { grid-template-columns: 1fr !important; }
+}
+
+/* ─── Mobile Sticky Reserve Bar (Room Detail) ────────────────────── */
+.mobile-reserve-bar { display: none; }
+
+@media (max-width: 768px) {
+  .mobile-reserve-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 50;
+    background: hsl(220 55% 18%);
+    border-top: 1px solid hsl(43 72% 55% / 0.35);
+    padding: 0.875rem 1.25rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .room-body { padding-bottom: 5rem !important; }
+}
+
+/* ─── Manage Booking Page ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .mgmt-btn-primary,
+  .mgmt-btn-secondary,
+  .mgmt-btn-danger { width: 100%; }
+}
+
+/* ─── Room Detail Page ───────────────────────────────────────────── */
+.room-hero-text {
+  position: absolute;
+  bottom: 3rem; left: 0; right: 0;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+.room-body {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 4rem 2rem;
+}
+
+.room-grid {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 3.5rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .room-hero-text { bottom: 1.5rem; padding: 0 1rem; }
+  .room-body      { padding: 2.5rem 1rem; }
+  .room-grid      { grid-template-columns: 1fr; gap: 2rem; }
+}
+
+/* ─── Contact Page ───────────────────────────────────────────────── */
+.cnt-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 4rem;
+  align-items: start;
+}
+
+.cnt-name-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 768px) {
+  .cnt-grid     { grid-template-columns: 1fr; gap: 2.5rem; }
+  .cnt-name-row { grid-template-columns: 1fr; }
+}
+
+/* ─── Amenities Page ─────────────────────────────────────────────── */
+.am-hero        { padding: 10rem 1.5rem 5rem; }
+.am-section-pad { padding: 5rem 0; }
+.spa-main-img   { height: 480px; }
+
+.spa-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2.5rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .am-hero        { padding: 6rem 1.5rem 3rem; }
+  .am-section-pad { padding: 3rem 0; }
+  .spa-main-img   { height: 260px; }
+  .spa-grid       { grid-template-columns: 1fr; }
+}

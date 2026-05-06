@@ -80,7 +80,7 @@ export default function ContactPage() {
 
         {/* Body */}
         <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '5rem 1.5rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: '4rem', alignItems: 'start' }}>
+          <div className="cnt-grid">
 
             {/* ── Left: Info ── */}
             <div>
@@ -148,7 +148,7 @@ export default function ContactPage() {
               <div style={{ width: '4rem', height: '1px', background: S.divider, marginBottom: '2rem' }} />
 
               <form onSubmit={handleSubmit}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div className="cnt-name-row">
                   <div>
                     <label style={labelStyle}>Full Name</label>
                     <input className="cnt-input" style={inputStyle} placeholder="Your name" required

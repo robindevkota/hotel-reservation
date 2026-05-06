@@ -17,25 +17,6 @@ const S = {
 export default function Footer() {
   return (
     <footer style={{ background: S.navy, color: S.cream }}>
-      <style dangerouslySetInnerHTML={{ __html: `
-        .footer-link{font-family:'Raleway',sans-serif;font-size:0.82rem;color:rgba(245,236,215,0.5);transition:color 0.2s;}
-        .footer-link:hover{color:hsl(43 72% 55%);}
-        .footer-map-frame{width:100%;height:160px;border:1px solid hsl(43 72% 55% / 0.25);filter:grayscale(30%) sepia(20%);display:block;}
-        @media(max-width:1024px){
-          .footer-grid{grid-template-columns:1fr 1fr!important;gap:2.5rem!important;}
-          .footer-map-col{grid-column:1/-1;}
-          .footer-map-frame{height:180px;}
-        }
-        @media(max-width:640px){
-          .footer-grid{grid-template-columns:1fr!important;gap:2rem!important;}
-          .footer-map-col{grid-column:auto;}
-          .footer-wrap{padding:2.5rem 1.25rem 1.5rem!important;}
-          .footer-brand-text{max-width:100%!important;}
-        }
-        @media(max-width:400px){
-          .footer-links-grid{grid-template-columns:1fr!important;}
-        }
-      ` }} />
 
       <div className="footer-wrap" style={{ maxWidth:'1280px', margin:'0 auto', padding:'4rem 1.5rem 2rem' }}>
         <div className="footer-grid" style={{ display:'grid', gridTemplateColumns:'1.4fr 0.9fr 1.3fr 1.2fr', gap:'2rem', marginBottom:'3rem', alignItems:'start' }}>
@@ -59,7 +40,7 @@ export default function Footer() {
           {/* Quick Links */}
           <div>
             <h4 style={{ fontFamily:S.cinzel, fontSize:'0.68rem', letterSpacing:'0.2em', textTransform:'uppercase', color:S.gold, marginBottom:'1.25rem' }}>Quick Links</h4>
-            <ul style={{ listStyle:'none', padding:0, margin:0, display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.6rem 0.75rem' }}>
+            <ul className="footer-links-grid" style={{ listStyle:'none', padding:0, margin:0, display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0.6rem 0.75rem' }}>
               {[
                 { href:'/', label:'Home' },
                 { href:'/rooms', label:'Rooms' },
