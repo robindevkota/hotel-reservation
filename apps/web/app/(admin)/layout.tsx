@@ -471,26 +471,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [fdQueue, setFdQueue] = useState<any[]>([]);
 
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
+  useEffect(() => { setHydrated(true); }, []);
 
   useEffect(() => {
     if (hydrated && (!user || user.type !== 'staff')) router.replace('/login');
   }, [user, router, hydrated]);
 
-  // Join admin socket room and listen for low-stock notifications
+  // Admin socket: join room + notifications + front-desk order alert
   useEffect(() => {
     if (!user) return;
     const socket = getSocket();
     connectSocket();
+
     const onConnect = () => { socket.emit('join:admin'); };
-    if (socket.connected) {
-      socket.emit('join:admin');
-    } else {
-      socket.on('connect', onConnect);
-    }
+    if (socket.connected) socket.emit('join:admin');
+    else socket.on('connect', onConnect);
+
     const onNotification = ({ message }: { message: string }) => {
       toast(message, {
         duration: 6000,
@@ -498,10 +496,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         icon: '⚠️',
       });
     };
+
+    const dept = (user as any)?.department;
+    const role = (user as any)?.role;
+    const isFrontDesk = dept === 'front_desk' || role === 'super_admin';
+
+    const onNewOrder = (order: any) => {
+      if (!isFrontDesk) return;
+      playOrderAlert();
+      setFdQueue(q => q.some(o => o._id === order._id) ? q : [...q, order]);
+    };
+
     socket.on('notification:general', onNotification);
+    socket.on('order:new', onNewOrder);
+
     return () => {
       socket.off('connect', onConnect);
       socket.off('notification:general', onNotification);
+      socket.off('order:new', onNewOrder);
     };
   }, [user]);
 
@@ -509,13 +521,85 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!user || user.type !== 'staff') return null;
 
   const sidebarW = collapsed ? '4.5rem' : '15rem';
+  const fdCurrent  = fdQueue[0] ?? null;
+  const fdRemaining = fdQueue.length - 1;
 
   return (
     <div style={{ minHeight: '100vh', background: 'hsl(38 40% 92%)' }}>
       {(user as any).department === 'food' && <OrderAlertModal user={user} />}
-      {((user as any).department === 'front_desk' || (user as any).role === 'super_admin') && (
-        <FrontDeskOrderAlert user={user} />
+
+      {/* ── Front-desk new order modal ── */}
+      {fdCurrent && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(13,27,62,0.65)', backdropFilter: 'blur(3px)' }}>
+          <div style={{ background: '#fff', width: '100%', maxWidth: '440px', border: '2px solid hsl(43 72% 55%)', boxShadow: '0 24px 64px hsl(220 55% 10% / 0.4)', overflow: 'hidden' }}>
+
+            <div style={{ background: 'hsl(220 55% 18%)', padding: '1.1rem 1.25rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <Bell size={16} color="hsl(43 72% 55%)" strokeWidth={2} />
+                <div>
+                  <div style={{ fontFamily: "'Cinzel',serif", fontSize: '0.52rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'hsl(43 72% 55% / 0.65)', marginBottom: '0.1rem' }}>Front Desk</div>
+                  <div style={{ fontFamily: "'Cinzel',serif", fontSize: '0.72rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'hsl(43 72% 55%)' }}>New Room Service Order</div>
+                </div>
+              </div>
+              {fdRemaining > 0 && (
+                <span style={{ background: 'hsl(43 72% 55%)', color: 'hsl(220 55% 18%)', fontFamily: "'Cinzel',serif", fontSize: '0.6rem', fontWeight: 700, padding: '0.2rem 0.5rem' }}>
+                  +{fdRemaining} more
+                </span>
+              )}
+            </div>
+
+            <div style={{ padding: '1.25rem' }}>
+              <div style={{ textAlign: 'center', marginBottom: '1rem', paddingBottom: '0.875rem', borderBottom: '1px solid hsl(35 25% 88%)' }}>
+                <p style={{ fontFamily: "'Cinzel',serif", fontSize: '1rem', color: 'hsl(220 55% 18%)', marginBottom: '0.2rem' }}>
+                  Room {fdCurrent.room?.roomNumber ?? fdCurrent.walkInCustomer?.name ?? '—'}
+                </p>
+                <p style={{ fontFamily: "'Cinzel',serif", fontSize: '0.58rem', letterSpacing: '0.12em', color: 'hsl(220 15% 50%)', textTransform: 'uppercase' }}>
+                  {new Date(fdCurrent.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+
+              <div style={{ border: '1px solid hsl(35 25% 88%)', marginBottom: '1rem' }}>
+                {fdCurrent.items?.map((item: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.875rem', borderBottom: i < fdCurrent.items.length - 1 ? '1px solid hsl(35 25% 88%)' : 'none' }}>
+                    <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '0.95rem', color: 'hsl(220 55% 18%)' }}>
+                      {item.quantity}× {item.menuItem?.name}
+                    </span>
+                    <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.68rem', color: 'hsl(220 15% 50%)' }}>
+                      NPR {(item.quantity * item.unitPrice).toFixed(0)}
+                    </span>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.875rem', background: 'hsl(38 40% 96%)' }}>
+                  <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'hsl(220 15% 50%)' }}>Total</span>
+                  <span style={{ fontFamily: "'Cinzel',serif", fontSize: '0.85rem', fontWeight: 700, color: 'hsl(220 55% 18%)' }}>NPR {fdCurrent.totalAmount}</span>
+                </div>
+              </div>
+
+              {fdCurrent.notes && (
+                <div style={{ background: 'hsl(43 72% 55% / 0.08)', border: '1px solid hsl(43 72% 55% / 0.2)', padding: '0.6rem 0.875rem', marginBottom: '1rem' }}>
+                  <p style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: '0.9rem', color: 'hsl(220 55% 18%)', fontStyle: 'italic' }}>Note: {fdCurrent.notes}</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '0.875rem 1.25rem', borderTop: '1px solid hsl(35 25% 88%)', display: 'flex', gap: '0.75rem' }}>
+              <button
+                onClick={() => setFdQueue(q => q.slice(1))}
+                style={{ flex: 1, padding: '0.7rem', border: '1px solid hsl(35 25% 82%)', background: 'transparent', cursor: 'pointer', fontFamily: "'Cinzel',serif", fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'hsl(220 15% 45%)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
+              >
+                <X size={11} /> Dismiss
+              </button>
+              <button
+                onClick={() => { setFdQueue([]); router.push('/admin/guests?live=1'); }}
+                style={{ flex: 2, padding: '0.7rem', border: 'none', background: 'hsl(220 55% 18%)', cursor: 'pointer', fontFamily: "'Cinzel',serif", fontSize: '0.6rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'hsl(43 72% 55%)', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem' }}
+              >
+                Go to Live Operations <ChevronRight size={12} />
+              </button>
+            </div>
+          </div>
+        </div>
       )}
+
       <Sidebar collapsed={collapsed} />
       <div style={{ marginLeft: sidebarW, minHeight: '100vh', transition: 'margin-left 0.25s ease', display: 'flex', flexDirection: 'column' }}>
         <Topbar collapsed={collapsed} setCollapsed={setCollapsed} />
