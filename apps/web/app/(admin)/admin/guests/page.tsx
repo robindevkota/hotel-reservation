@@ -278,31 +278,6 @@ function PendingOrdersAlert({ orders, onDismiss, onView }: {
   );
 }
 
-// ── Real-time new order toast (bottom-right) ──────────────────────────────────
-function OrderNotifToast({ notif, onDismiss }: { notif: any; onDismiss: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onDismiss, 15000);
-    return () => clearTimeout(t);
-  }, [onDismiss]);
-
-  return (
-    <div style={{ background: A.navy, border: `1px solid ${A.gold}`, padding: '0.875rem 1rem', minWidth: '260px', maxWidth: '300px', boxShadow: '0 4px 24px hsl(220 55% 8% / 0.45)', animation: 'slideInRight 0.25s ease' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }}>
-            <ChefHat size={12} color={A.gold} strokeWidth={1.5} />
-            <span style={{ fontFamily: A.cinzel, fontSize: '0.55rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: A.gold }}>New Room Service</span>
-          </div>
-          <p style={{ fontFamily: A.raleway, fontSize: '0.78rem', color: 'hsl(40 30% 90%)' }}>
-            Room {notif.room?.roomNumber ?? '—'} · {notif.items?.length ?? 0} item(s)
-          </p>
-          <p style={{ fontFamily: A.cinzel, fontSize: '0.85rem', color: A.gold, marginTop: '0.15rem' }}>NPR {notif.totalAmount}</p>
-        </div>
-        <button onClick={onDismiss} style={{ background: 'none', border: 'none', color: 'hsl(40 20% 55%)', cursor: 'pointer', fontSize: '0.85rem', padding: 0, lineHeight: 1 }}>✕</button>
-      </div>
-    </div>
-  );
-}
 
 // ── Live Operations Tab (Room Service + Service Requests unified) ─────────────
 
@@ -554,7 +529,9 @@ export default function GuestsPage() {
   const activeOrderCount = orders.filter((o: any) => o.status === 'pending').length;
 
   const [pendingAlert, setPendingAlert] = useState<any[] | null>(null);
-  const [orderNotifs, setOrderNotifs]   = useState<any[]>([]);
+  const [orderQueue, setOrderQueue]     = useState<any[]>([]);
+  const currentOrderAlert               = orderQueue[0] ?? null;
+  const dismissOrderAlert               = useCallback(() => setOrderQueue(q => q.slice(1)), []);
 
   useEffect(() => {
     api.get('/orders').then(({ data }) => {
@@ -565,11 +542,11 @@ export default function GuestsPage() {
     }).catch(() => {});
   }, [setOrders]);
 
-  const addOrderNotif = useCallback((order: any) => {
-    setOrderNotifs(prev => [{ ...order, _nid: `${order._id}-${Date.now()}` }, ...prev].slice(0, 5));
+  const addOrderToQueue = useCallback((order: any) => {
+    setOrderQueue(q => [...q, order]);
   }, []);
 
-  useKitchenSocket(addOrderNotif);
+  useKitchenSocket(addOrderToQueue);
 
   const fetchData = async () => {
     try {
@@ -629,7 +606,7 @@ export default function GuestsPage() {
 
   return (
     <>
-      <style>{adminTableCss + `@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}@keyframes slideInRight{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}`}</style>
+      <style>{adminTableCss + `@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
       <div style={{ padding: '2rem' }}>
 
         {/* ── Page header ── */}
@@ -780,17 +757,56 @@ export default function GuestsPage() {
         />
       )}
 
-      {/* ── Live new-order notification toasts ── */}
-      <div style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', zIndex: 150, display: 'flex', flexDirection: 'column', gap: '0.5rem', pointerEvents: 'none' }}>
-        {orderNotifs.map(n => (
-          <div key={n._nid} style={{ pointerEvents: 'auto' }}>
-            <OrderNotifToast
-              notif={n}
-              onDismiss={() => setOrderNotifs(prev => prev.filter(x => x._nid !== n._nid))}
-            />
+      {/* ── New order alert modal (queue — same pattern as kitchen board) ── */}
+      {currentOrderAlert && (
+        <div style={{ position: 'fixed', inset: 0, background: 'hsl(220 55% 18% / 0.78)', zIndex: 210, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#fff', maxWidth: '420px', width: '100%', border: `2px solid ${A.gold}`, overflow: 'hidden' }}>
+
+            {/* Header */}
+            <div style={{ background: A.navy, padding: '1.25rem 1.5rem', textAlign: 'center', position: 'relative' }}>
+              <div style={{ fontFamily: A.cinzel, fontSize: '0.58rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: A.gold, opacity: 0.7, marginBottom: '0.3rem' }}>Front Desk</div>
+              <h3 style={{ fontFamily: A.cinzel, fontSize: '1rem', color: A.gold, margin: 0, letterSpacing: '0.1em' }}>New Room Service Order</h3>
+              {orderQueue.length > 1 && (
+                <div style={{ position: 'absolute', top: '1rem', right: '1rem', background: A.gold, color: A.navy, fontFamily: A.cinzel, fontSize: '0.65rem', fontWeight: 700, padding: '0.2rem 0.5rem', letterSpacing: '0.05em' }}>
+                  {orderQueue.length} queued
+                </div>
+              )}
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '1.5rem' }}>
+              <div style={{ marginBottom: '1rem', textAlign: 'center' }}>
+                <div style={{ fontFamily: A.cinzel, fontSize: '1rem', color: A.navy, marginBottom: '0.2rem' }}>
+                  Room {currentOrderAlert.room?.roomNumber ?? '—'}
+                </div>
+                <div style={{ fontFamily: A.raleway, fontSize: '0.75rem', color: A.muted }}>
+                  {new Date(currentOrderAlert.placedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              </div>
+
+              <div style={{ border: `1px solid ${A.border}`, marginBottom: '1.25rem' }}>
+                {currentOrderAlert.items?.map((item: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0.875rem', borderBottom: i < currentOrderAlert.items.length - 1 ? `1px solid ${A.border}` : 'none' }}>
+                    <span style={{ fontFamily: A.raleway, fontSize: '0.82rem', color: A.navy }}>{item.quantity}× {item.menuItem?.name}</span>
+                    <span style={{ fontFamily: A.cinzel, fontSize: '0.75rem', color: A.gold }}>NPR {(item.unitPrice * item.quantity).toFixed(0)}</span>
+                  </div>
+                ))}
+                <div style={{ padding: '0.5rem 0.875rem', background: A.papyrus, display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontFamily: A.cinzel, fontSize: '0.68rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: A.navy }}>Total</span>
+                  <span style={{ fontFamily: A.cinzel, fontSize: '0.9rem', color: A.gold, fontWeight: 700 }}>NPR {currentOrderAlert.totalAmount}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={dismissOrderAlert}
+                style={{ width: '100%', background: A.navy, color: A.gold, fontFamily: A.cinzel, fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.875rem', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+              >
+                {orderQueue.length > 1 ? `Acknowledge · ${orderQueue.length - 1} more waiting` : 'Acknowledge'}
+              </button>
+            </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </>
   );
 }
