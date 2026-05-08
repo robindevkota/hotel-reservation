@@ -181,7 +181,7 @@ export default function AdminRoomsPage() {
       const fd = new FormData();
       fd.append('image', file);
       try {
-        const { data } = await api.post('/rooms/upload-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+        const { data } = await api.post('/rooms/upload-image', fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 });
         uploaded.push(data.url);
       } catch (err: unknown) {
         const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
