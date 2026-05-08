@@ -174,8 +174,8 @@ export default function AdminRoomsPage() {
     setUploading(true);
     const uploaded: string[] = [];
     for (const file of Array.from(files)) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error(`${file.name} exceeds the 5 MB limit — please compress it first.`);
+      if (file.size > 15 * 1024 * 1024) {
+        toast.error(`${file.name} exceeds the 15 MB limit — please compress it first.`);
         continue;
       }
       const fd = new FormData();
