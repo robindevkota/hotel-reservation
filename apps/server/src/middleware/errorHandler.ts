@@ -30,7 +30,7 @@ export function errorHandler(
   const message = 'statusCode' in err ? err.message : 'Internal server error';
 
   if (statusCode >= 500) {
-    logger.error(message, { stack: err.stack, statusCode });
+    logger.error(err.message, { stack: err.stack, statusCode, name: err.name });
   } else if (process.env.NODE_ENV === 'development') {
     logger.warn(message, { statusCode });
   }
