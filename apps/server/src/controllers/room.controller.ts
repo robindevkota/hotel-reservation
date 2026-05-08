@@ -1,11 +1,14 @@
 import { Request, Response } from 'express';
 import { body } from 'express-validator';
+import sharp from 'sharp';
 import Room from '../models/Room';
 import Reservation from '../models/Reservation';
 import Guest from '../models/Guest';
 import { AppError } from '../middleware/errorHandler';
 import { generateQRToken } from '../utils/generateQR';
 import cloudinary from '../config/cloudinary';
+
+const CLOUDINARY_MAX_BYTES = 9 * 1024 * 1024; // 9 MB — stay under free plan 10 MB hard limit
 
 export const roomValidation = [
   body('name').trim().notEmpty(),
@@ -69,14 +72,21 @@ export async function createRoom(req: Request, res: Response): Promise<void> {
 }
 
 export async function updateRoom(req: Request, res: Response): Promise<void> {
+  delete req.body.qrToken;
+  delete req.body.qrCodeUrl;
   const room = await Room.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
   if (!room) throw new AppError('Room not found', 404);
   res.json({ success: true, room });
 }
 
 export async function deleteRoom(req: Request, res: Response): Promise<void> {
-  const room = await Room.findByIdAndDelete(req.params.id);
+  const room = await Room.findById(req.params.id);
   if (!room) throw new AppError('Room not found', 404);
+
+  const hadGuest = await Guest.exists({ room: room._id });
+  if (hadGuest) throw new AppError('Cannot delete a room that has hosted guests — the physical QR stand would become invalid. Set isAvailable: false instead.', 400);
+
+  await room.deleteOne();
   res.json({ success: true, message: 'Room deleted' });
 }
 
@@ -179,11 +189,21 @@ export async function getRoomCalendar(req: Request, res: Response): Promise<void
 export async function uploadRoomImage(req: Request, res: Response): Promise<void> {
   if (!req.file) throw new AppError('No file provided', 400);
 
+  let buffer = req.file.buffer;
+
+  // Compress if over Cloudinary free plan limit
+  if (buffer.byteLength > CLOUDINARY_MAX_BYTES) {
+    buffer = await sharp(buffer)
+      .resize({ width: 2400, withoutEnlargement: true })
+      .jpeg({ quality: 82, mozjpeg: true })
+      .toBuffer();
+  }
+
   const result = await new Promise<{ secure_url: string }>((resolve, reject) => {
     cloudinary.uploader.upload_stream(
       { resource_type: 'image', folder: 'rooms' },
       (err, data) => err ? reject(err) : resolve(data as { secure_url: string })
-    ).end(req.file!.buffer);
+    ).end(buffer);
   });
 
   res.json({ success: true, url: result.secure_url });
