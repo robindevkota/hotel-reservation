@@ -21,6 +21,7 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   if (err instanceof MulterError && err.code === 'LIMIT_FILE_SIZE') {
+    logger.warn('Upload rejected: file exceeds 5 MB limit');
     res.status(413).json({ success: false, message: 'Image too large — maximum size is 5 MB.' });
     return;
   }
