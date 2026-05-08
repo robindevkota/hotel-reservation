@@ -6,7 +6,7 @@ import { requireAdmin } from '../middleware/role.middleware';
 import { validate } from '../middleware/validate.middleware';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
 
 router.get('/', rooms.listRooms);
 router.get('/availability', rooms.getRoomAvailability);
