@@ -174,13 +174,18 @@ export default function AdminRoomsPage() {
     setUploading(true);
     const uploaded: string[] = [];
     for (const file of Array.from(files)) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`${file.name} exceeds the 5 MB limit — please compress it first.`);
+        continue;
+      }
       const fd = new FormData();
       fd.append('image', file);
       try {
         const { data } = await api.post('/rooms/upload-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
         uploaded.push(data.url);
-      } catch {
-        toast.error(`Failed to upload ${file.name}`);
+      } catch (err: unknown) {
+        const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+        toast.error(msg ?? `Failed to upload ${file.name}`);
       }
     }
     setUploadedImages(prev => [...prev, ...uploaded]);

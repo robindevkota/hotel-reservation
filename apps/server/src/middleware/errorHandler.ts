@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { MulterError } from 'multer';
 import logger from '../config/logger';
 
 export class AppError extends Error {
@@ -19,6 +20,11 @@ export function errorHandler(
   res: Response,
   _next: NextFunction
 ): void {
+  if (err instanceof MulterError && err.code === 'LIMIT_FILE_SIZE') {
+    res.status(413).json({ success: false, message: 'Image too large — maximum size is 5 MB.' });
+    return;
+  }
+
   const statusCode = 'statusCode' in err ? err.statusCode : 500;
   const message = 'statusCode' in err ? err.message : 'Internal server error';
 
