@@ -112,14 +112,48 @@ CTA section also updated:
 
 ---
 
+## Session 2 Updates (2026-05-14) — Thamel & Guest Types
+
+### Problem fixed
+Original SEO never mentioned **Thamel** (the hotel's actual neighbourhood) or the guest types it serves. Searches like "couple friendly hotel Thamel" or "family hotel Kathmandu" would not match.
+
+### Changes made
+- Sitewide title changed to: *"Luxury Hotel & Spa in Thamel, Kathmandu"*
+- Keywords expanded to include:
+  - `luxury hotel Thamel`, `boutique hotel Thamel Kathmandu`, `hotel in Thamel`
+  - `couple friendly hotel Thamel`, `romantic hotel Thamel`, `honeymoon hotel Kathmandu`
+  - `family friendly hotel Kathmandu`
+  - `business hotel Thamel`
+  - `comfortable hotel Kathmandu`, `smart hotel Thamel`
+- JSON-LD `Hotel` schema updated:
+  - `streetAddress` changed from `"Kathmandu"` to `"Thamel"`
+  - `addressRegion` added: `"Bagmati Province"`
+  - `audience` array added: Couples, Families, Business Travellers, Solo Travellers
+  - `tourBookingPage` added: `https://royalsuitesnp.com/reserve`
+- All per-page metadata (rooms, reserve, contact, amenities) updated with Thamel + guest-type language
+
+### Target searches now covered
+| Search | Covered by |
+|--------|-----------|
+| "luxury hotel Thamel" | Title, keywords, JSON-LD |
+| "smart hotel Kathmandu" | Keywords, description |
+| "comfortable hotel Thamel" | Keywords |
+| "couple friendly hotel Thamel" | Keywords, JSON-LD audience |
+| "family friendly hotel Kathmandu" | Keywords, JSON-LD audience |
+| "honeymoon hotel Kathmandu" | Keywords |
+| "business hotel Thamel" | Keywords, JSON-LD audience |
+| "hotel with spa Thamel" | Keywords, amenities metadata |
+
+---
+
 ## What To Do Next (if needed)
 
 - **Submit sitemap to Google Search Console** — go to [search.google.com/search-console](https://search.google.com/search-console), add property `royalsuitesnp.com`, and submit `https://royalsuitesnp.com/sitemap.xml`
 - **Test structured data** — use [Google's Rich Results Test](https://search.google.com/test/rich-results) with `https://royalsuitesnp.com`
 - **Test Open Graph** — use [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/) or [opengraph.xyz](https://www.opengraph.xyz/) with the live URL
+- **Google Business Profile** — register on Google Business to appear in Google Maps and the hotel panel — this is the single biggest thing you can do right now for local searches
 - **Add individual room-level metadata** — `app/(public)/rooms/[slug]/page.tsx` could use `generateMetadata()` to produce per-room titles/descriptions dynamically from the API
 - **Core Web Vitals** — run Lighthouse on the live site; images already use Next.js `<Image>` (auto-optimised). Check LCP on mobile.
-- **Google Business Profile** — register `royalsuitesnp.com` on Google Business to appear in Google Maps and the hotel panel
 
 ---
 
@@ -129,11 +163,14 @@ CTA section also updated:
 |-------|-------|
 | Name | Royal Suites Boutique Hotel & Spa |
 | URL | https://royalsuitesnp.com |
+| Neighbourhood | Thamel |
 | Location | Kathmandu 44600, Nepal |
+| Region | Bagmati Province |
 | Phone | +977 982 865 1525 |
 | Email | royalsuitesboutiquehotel2025@gmail.com |
 | Check-in | 3:00 PM |
 | Check-out | 12:00 PM |
 | Rooms | 27 across 5 floors |
+| Guest types | Couples, Families, Business Travellers, Solo Travellers |
 | Categories | Superior King, Superior Twin, Executive Suite Twin, Deluxe King Suite, Junior Suite, Suite with City View, Presidential Suite |
 | Price range | $230–$1,200/night |
