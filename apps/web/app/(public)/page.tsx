@@ -7,14 +7,14 @@ import OfferBanner from '../../components/ui/OfferBanner';
 import PublicReviews from '../../components/ui/PublicReviews';
 
 export const metadata: Metadata = {
-  title: 'Royal Suites — Boutique Hotel & Spa | Kathmandu, Nepal',
-  description: 'Royal Suites is Kathmandu\'s Egyptian-inspired luxury boutique hotel. 27 rooms across 5 floors, Cleopatra\'s Spa, fine dining & bar, and 24/7 butler service. Book direct.',
+  title: 'Royal Suites — Luxury Hotel & Spa in Thamel, Kathmandu',
+  description: 'Royal Suites is a luxury boutique hotel inside Thamel, Kathmandu — perfect for couples, families, business travellers & solo guests. 27 rooms, Cleopatra\'s Spa, restaurant, smart QR portal & 24/7 butler service. Book direct.',
   alternates: { canonical: 'https://royalsuitesnp.com' },
   openGraph: {
-    title: 'Royal Suites — Boutique Hotel & Spa | Kathmandu, Nepal',
-    description: 'Kathmandu\'s Egyptian-inspired luxury boutique hotel. 27 rooms, spa, fine dining, and 24/7 butler service.',
+    title: 'Royal Suites — Luxury Hotel & Spa in Thamel, Kathmandu',
+    description: 'Luxury boutique hotel inside Thamel, Kathmandu. Couples, families & business travellers welcome. Spa, restaurant, smart QR guest portal & 24/7 butler service.',
     url: 'https://royalsuitesnp.com',
-    images: [{ url: '/hero-bg.jpg', width: 1200, height: 630, alt: 'Royal Suites Boutique Hotel Kathmandu' }],
+    images: [{ url: '/hero-bg.jpg', width: 1200, height: 630, alt: 'Royal Suites Luxury Hotel Thamel Kathmandu' }],
   },
 };
 
@@ -70,16 +70,24 @@ const hotelJsonLd = {
       url: 'https://royalsuitesnp.com',
       logo: 'https://royalsuitesnp.com/logo.jpg',
       image: 'https://royalsuitesnp.com/hero-bg.jpg',
-      description: "Kathmandu's Egyptian-inspired luxury boutique hotel. 27 rooms across 5 floors, Cleopatra's Spa, restaurant & bar, rooftop infinity pool, and 24/7 butler service.",
+      description: "Luxury boutique hotel & spa inside Thamel, Kathmandu. Egyptian-inspired décor, 27 rooms across 5 floors, Cleopatra's Spa, restaurant & bar, rooftop infinity pool, smart QR guest portal, and 24/7 butler service. Ideal for couples, families, business travellers and solo guests.",
       telephone: '+977-982-865-1525',
       email: 'royalsuitesboutiquehotel2025@gmail.com',
       address: {
         '@type': 'PostalAddress',
-        streetAddress: 'Kathmandu',
+        streetAddress: 'Thamel',
         addressLocality: 'Kathmandu',
+        addressRegion: 'Bagmati Province',
         postalCode: '44600',
         addressCountry: 'NP',
       },
+      tourBookingPage: 'https://royalsuitesnp.com/reserve',
+      audience: [
+        { '@type': 'Audience', audienceType: 'Couples' },
+        { '@type': 'Audience', audienceType: 'Families' },
+        { '@type': 'Audience', audienceType: 'Business Travellers' },
+        { '@type': 'Audience', audienceType: 'Solo Travellers' },
+      ],
       geo: { '@type': 'GeoCoordinates', latitude: 27.712015, longitude: 85.310110 },
       checkinTime: '15:00',
       checkoutTime: '12:00',
