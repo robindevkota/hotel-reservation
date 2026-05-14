@@ -1,3 +1,4 @@
+// metadata must live in a separate file for client components — see app/(public)/rooms/metadata.ts
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -155,7 +156,7 @@ export default function RoomsPage() {
                     <div className="rc">
                       {/* Image */}
                       <div style={{ position: 'relative', overflow: 'hidden', height: '15rem' }}>
-                        <Image src={room.images?.[0] || '/room-deluxe.jpg'} alt={room.name} fill className="rc-img" />
+                        <Image src={cat?.images?.[0] || room.images?.[0] || '/room-deluxe.jpg'} alt={room.name} fill className="rc-img" />
                         {/* Category badge */}
                         <div style={{ position: 'absolute', top: '0.875rem', left: '0.875rem', background: S.gradGold, color: S.navy, fontFamily: S.cinzel, fontSize: '0.6rem', letterSpacing: '0.15em', textTransform: 'uppercase', padding: '0.3rem 0.75rem', fontWeight: 700 }}>
                           {cat?.name || room.type}

@@ -1,6 +1,19 @@
+import type { Metadata } from 'next';
 import React from 'react';
 import Image from 'next/image';
 import { Sparkles, Waves, UtensilsCrossed, ConciergeBell, Wind, Dumbbell } from 'lucide-react';
+
+export const metadata: Metadata = {
+  title: 'Amenities & Spa — Cleopatra\'s Spa, Restaurant, Pool & More',
+  description: 'Royal Suites Kathmandu offers Cleopatra\'s Spa, infinity rooftop pool, restaurant & bar, fast Wi-Fi, 24/7 butler service, steam room, gym, and a smart QR guest portal — book spa, order food, and track your bill from your phone.',
+  alternates: { canonical: 'https://royalsuitesnp.com/amenities' },
+  openGraph: {
+    title: 'Amenities & Spa | Royal Suites Kathmandu',
+    description: 'Cleopatra\'s Spa, rooftop infinity pool, restaurant & bar, fast Wi-Fi, butler service, steam room, and gym — all at Royal Suites Kathmandu.',
+    url: 'https://royalsuitesnp.com/amenities',
+    images: [{ url: '/spa.jpg', width: 1200, height: 630, alt: 'Cleopatra\'s Spa at Royal Suites Kathmandu' }],
+  },
+};
 
 const S = {
   gold: 'hsl(43 72% 55%)', goldLight: 'hsl(43 65% 72%)',

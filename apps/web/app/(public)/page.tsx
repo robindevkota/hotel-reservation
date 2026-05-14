@@ -1,9 +1,22 @@
+import type { Metadata } from 'next';
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import FeaturedRoomsClient from '../../components/ui/FeaturedRoomsClient';
 import OfferBanner from '../../components/ui/OfferBanner';
 import PublicReviews from '../../components/ui/PublicReviews';
+
+export const metadata: Metadata = {
+  title: 'Royal Suites — Boutique Hotel & Spa | Kathmandu, Nepal',
+  description: 'Royal Suites is Kathmandu\'s Egyptian-inspired luxury boutique hotel. 27 rooms across 5 floors, Cleopatra\'s Spa, fine dining & bar, and 24/7 butler service. Book direct.',
+  alternates: { canonical: 'https://royalsuitesnp.com' },
+  openGraph: {
+    title: 'Royal Suites — Boutique Hotel & Spa | Kathmandu, Nepal',
+    description: 'Kathmandu\'s Egyptian-inspired luxury boutique hotel. 27 rooms, spa, fine dining, and 24/7 butler service.',
+    url: 'https://royalsuitesnp.com',
+    images: [{ url: '/hero-bg.jpg', width: 1200, height: 630, alt: 'Royal Suites Boutique Hotel Kathmandu' }],
+  },
+};
 
 const S = {
   gold: 'hsl(43 72% 55%)', goldLight: 'hsl(43 65% 72%)', goldDark: 'hsl(43 75% 40%)',
@@ -47,10 +60,68 @@ async function getFeaturedRooms(): Promise<{ rooms: any[]; roomRating: number | 
   }
 }
 
+const hotelJsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Hotel',
+      '@id': 'https://royalsuitesnp.com/#hotel',
+      name: 'Royal Suites Boutique Hotel & Spa',
+      url: 'https://royalsuitesnp.com',
+      logo: 'https://royalsuitesnp.com/logo.jpg',
+      image: 'https://royalsuitesnp.com/hero-bg.jpg',
+      description: "Kathmandu's Egyptian-inspired luxury boutique hotel. 27 rooms across 5 floors, Cleopatra's Spa, restaurant & bar, rooftop infinity pool, and 24/7 butler service.",
+      telephone: '+977-982-865-1525',
+      email: 'royalsuitesboutiquehotel2025@gmail.com',
+      address: {
+        '@type': 'PostalAddress',
+        streetAddress: 'Kathmandu',
+        addressLocality: 'Kathmandu',
+        postalCode: '44600',
+        addressCountry: 'NP',
+      },
+      geo: { '@type': 'GeoCoordinates', latitude: 27.712015, longitude: 85.310110 },
+      checkinTime: '15:00',
+      checkoutTime: '12:00',
+      starRating: { '@type': 'Rating', ratingValue: '4' },
+      priceRange: '$$$',
+      numberOfRooms: 27,
+      amenityFeature: [
+        { '@type': 'LocationFeatureSpecification', name: "Cleopatra's Spa", value: true },
+        { '@type': 'LocationFeatureSpecification', name: 'Rooftop Infinity Pool', value: true },
+        { '@type': 'LocationFeatureSpecification', name: 'Restaurant & Bar', value: true },
+        { '@type': 'LocationFeatureSpecification', name: 'Free Wi-Fi', value: true },
+        { '@type': 'LocationFeatureSpecification', name: '24/7 Butler Service', value: true },
+        { '@type': 'LocationFeatureSpecification', name: 'Steam Room & Sauna', value: true },
+        { '@type': 'LocationFeatureSpecification', name: 'Fitness Centre', value: true },
+        { '@type': 'LocationFeatureSpecification', name: '24-Hour Front Desk', value: true },
+        { '@type': 'LocationFeatureSpecification', name: 'QR Guest Portal', value: true },
+        { '@type': 'LocationFeatureSpecification', name: 'In-Room Digital Dining Order', value: true },
+        { '@type': 'LocationFeatureSpecification', name: 'Live Billing via QR', value: true },
+        { '@type': 'LocationFeatureSpecification', name: 'In-Room Spa Booking', value: true },
+        { '@type': 'LocationFeatureSpecification', name: 'Digital Quick Services', value: true },
+      ],
+      hasMap: 'https://www.google.com/maps/dir//Royal+Penguin+Boutique+Hotel,+P886%2B5W4,+Kathmandu+44600/@27.7151744,85.311488,14z',
+      sameAs: ['https://royalsuitesnp.com'],
+    },
+    {
+      '@type': 'WebSite',
+      '@id': 'https://royalsuitesnp.com/#website',
+      url: 'https://royalsuitesnp.com',
+      name: 'Royal Suites Boutique Hotel & Spa',
+      publisher: { '@id': 'https://royalsuitesnp.com/#hotel' },
+    },
+  ],
+};
+
 export default async function HomePage() {
   const { rooms, roomRating } = await getFeaturedRooms();
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(hotelJsonLd) }}
+      />
       <style>{`
         .room-card{background:#fff;border:1px solid hsl(35 25% 82%);overflow:hidden;transition:all 0.5s ease;box-shadow:0 8px 32px -8px hsl(220 55% 18%/0.12);}
         .room-card:hover{border-color:hsl(43 72% 55%/0.5);box-shadow:0 4px 20px -4px hsl(43 72% 55%/0.3);}
@@ -82,7 +153,7 @@ export default async function HomePage() {
           <p style={{ fontFamily: S.cinzel, fontWeight: 400, fontSize: '1.2rem', color: S.cream, letterSpacing: '0.15em', marginBottom: '1.5rem' }}>Boutique Hotel &amp; Spa</p>
           <div style={{ width: '6rem', height: '1px', background: S.divider, margin: '0 auto 2rem' }} />
           <p style={{ fontFamily: S.cormo, fontStyle: 'italic', fontSize: '1.15rem', color: 'hsl(35 25% 88% / 0.8)', maxWidth: '36rem', margin: '0 auto 2.5rem', lineHeight: 1.7 }}>
-            Experience the grandeur of ancient Egypt reimagined for the modern traveler. Where timeless luxury meets pharaonic splendor.
+            Experience the grandeur of an Egyptian-inspired sanctuary in the heart of Kathmandu. Scan your room QR to order food, book the spa, track your bill, and request services — all from your phone.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'center' }}>
             <Link href="/reserve" style={{ display: 'inline-block', background: S.gradGold, color: S.navy, fontFamily: S.cinzel, fontSize: '0.75rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '1rem 2.5rem', fontWeight: 600 }}>Reserve Now</Link>
@@ -127,7 +198,7 @@ export default async function HomePage() {
           <h2 style={{ fontFamily: S.cinzel, fontWeight: 600, fontSize: 'clamp(1.6rem, 3vw, 2.5rem)', color: S.goldLight, marginBottom: '1rem' }}>Reserve Your Royal Chamber</h2>
           <div style={{ width: '6rem', height: '1px', background: S.divider, margin: '0 auto 1.5rem' }} />
           <p style={{ fontFamily: S.cormo, fontStyle: 'italic', color: 'hsl(35 25% 88% / 0.6)', fontSize: '1.1rem', marginBottom: '2.5rem' }}>
-            Experience luxury as the ancients knew it. Your pharaoh&apos;s sanctuary awaits.
+            Experience luxury as it was always meant to be. Your royal sanctuary in Kathmandu awaits.
           </p>
           <Link href="/reserve" style={{ display: 'inline-block', background: S.gradGold, color: S.navy, fontFamily: S.cinzel, fontSize: '0.75rem', letterSpacing: '0.2em', textTransform: 'uppercase', padding: '1rem 3rem', fontWeight: 600 }}>
             Book Your Stay
